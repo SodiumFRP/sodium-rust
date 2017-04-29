@@ -124,20 +124,23 @@ pub trait CellSink<ENV,A>: Cell<ENV,A> {
 
 struct CellImpl<ENV,A> {
     id: u32,
-    value: A,
+    value: Box<Any>,
     observer_ids: Vec<u32>,
     observers: Vec<Box<Fn(&mut ENV,&A)>>,
     update_fn: Box<Fn(&FrpContext<ENV>)->A>,
     dependent_cells: Vec<u32>
 }
 
-impl<ENV,A> Cell<ENV,A> for CellImpl<ENV,A> {
+impl<ENV,A:'static> Cell<ENV,A> for CellImpl<ENV,A> {
     fn current_value<'a>(&'a self) -> &'a A {
-        &self.value
+        match self.value.as_ref().downcast_ref::<A>() {
+            Some(value) => value,
+            None => panic!("Any type does not match Phantom Type")
+        }
     }
 }
 
-impl<ENV:'static,A> CellSink<ENV,A> for CellImpl<ENV,A> {
+impl<ENV:'static,A:'static + Clone> CellSink<ENV,A> for CellImpl<ENV,A> {
     fn change_value<F>(&self, env: &mut ENV, with_frp_context: &F, value: A)
     where F:Fn(&mut ENV, &FnMut(&mut FrpContext<ENV>)) {
         let cell_id = self.id.clone();
@@ -153,7 +156,7 @@ impl<ENV:'static,A> CellSink<ENV,A> for CellImpl<ENV,A> {
                     env,
                     &|frp_context| {
                         if let Some(cell) = frp_context.cell_map.get_mut(&cell_id) {
-                            //cell.value = value;
+                            cell.value = Box::new(value.clone()) as Box<Any>;
                         }
                         loop {
                             let dependent_cell_op = dependent_cells.pop();
