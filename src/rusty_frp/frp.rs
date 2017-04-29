@@ -26,8 +26,8 @@ impl<ENV: 'static> FrpContext<ENV> {
         }
     }
 
-    pub fn transaction<F,F2>(env: &mut ENV, with_frp_context: &F, k: &F2)
-    where F:Fn(&mut ENV, &FnMut(&mut FrpContext<ENV>)), F2: Fn(&mut ENV, &F)
+    pub fn transaction<F,F2>(env: &mut ENV, with_frp_context: &F, k: &mut F2)
+    where F:Fn(&mut ENV, &FnMut(&mut FrpContext<ENV>)), F2: FnMut(&mut ENV, &F)
     {
         with_frp_context(
             env,
@@ -131,16 +131,42 @@ struct CellImpl<ENV,A> {
     dependent_cells: Vec<u32>
 }
 
-/*
-impl<'a,ENV,A> Cell<ENV,A> for CellImpl<'a,ENV,A> {
-    fn current_value<'b>(&'b self) -> &'b A {
+impl<ENV,A> Cell<ENV,A> for CellImpl<ENV,A> {
+    fn current_value<'a>(&'a self) -> &'a A {
         &self.value
     }
 }
 
-impl<'a,ENV,A> CellSink<ENV,A> for CellImpl<'a,ENV,A> {
-    fn change_value(&mut self, value: A) {
-        self.value = value;
+impl<ENV:'static,A> CellSink<ENV,A> for CellImpl<ENV,A> {
+    fn change_value<F>(&self, env: &mut ENV, with_frp_context: &F, value: A)
+    where F:Fn(&mut ENV, &FnMut(&mut FrpContext<ENV>)) {
+        let cell_id = self.id.clone();
+        let mut dependent_cells = Vec::new();
+        for dependent_cell in &self.dependent_cells {
+            dependent_cells.push(dependent_cell.clone());
+        }
+        FrpContext::transaction(
+            env,
+            with_frp_context,
+            &mut |env, with_frp_context| {
+                with_frp_context(
+                    env,
+                    &|frp_context| {
+                        if let Some(cell) = frp_context.cell_map.get_mut(&cell_id) {
+                            //cell.value = value;
+                        }
+                        loop {
+                            let dependent_cell_op = dependent_cells.pop();
+                            match dependent_cell_op {
+                                Some(dependent_cell) => {
+                                    frp_context.cells_to_be_updated.insert(dependent_cell);
+                                }
+                                None => break
+                            }
+                        }
+                    }
+                );
+            }
+        );
     }
 }
-*/
