@@ -53,6 +53,7 @@ impl<'a,ENV> FrpContext<'a,ENV> {
     where F:Fn(&mut ENV, &FnMut(&mut FrpContext<ENV>))
     {
         let mut ts = TopologicalSort::<u32>::new();
+        let mut change_notifiers: Vec<Box<Fn(&mut ENV)>> = Vec::new();
         with_frp_context(
             env,
             &|frp_context| {
@@ -76,17 +77,35 @@ impl<'a,ENV> FrpContext<'a,ENV> {
                     }
                 }
                 frp_context.transaction_depth = frp_context.transaction_depth - 1;
-            }
-            /* TODO: Make this commented out code work
-            loop {
-                let change_notifier_op = frp_context.change_notifiers.pop();
-                match change_notifier_op {
-                    Some(change_notifier) => {
-                        change_notifier(env);
-                    },
-                    None => break
+                loop {
+                    let change_notifier_op = frp_context.change_notifiers.pop();
+                    match change_notifier_op {
+                        Some(change_notifier) => {
+                            let (observer_id,cell_id) = change_notifier;
+                            let observer_op = frp_context.observer_map.get(&observer_id);
+                            let cell_op = frp_context.cell_map.get(&cell_id);
+                            match observer_op {
+                                Some(observer) => {
+                                    match cell_op {
+                                        Some(cell) => {
+                                            let observer2 = observer.clone();
+                                            /*
+                                            change_notifiers.push(Box::new(
+                                                |env| {
+                                                    observer2(env, cell.value.as_ref());
+                                                }
+                                            ));*/
+                                        },
+                                        None => ()
+                                    }
+                                }
+                                None => ()
+                            }
+                        },
+                        None => break
+                    }
                 }
-            }*/
+            }
         );
     }
 
@@ -115,7 +134,8 @@ pub trait Cell<ENV,A> {
 }
 
 pub trait CellSink<ENV,A>: Cell<ENV,A> {
-    fn change_value(&mut self, value: A);
+    fn change_value<F>(&self, env: &mut ENV, with_frp_context: &F, value: A)
+    where F:Fn(&mut ENV, &FnMut(&mut FrpContext<ENV>));
 }
 
 struct CellImpl<'a,ENV:'a,A:'a> {
@@ -126,6 +146,7 @@ struct CellImpl<'a,ENV:'a,A:'a> {
     dependent_cells: Vec<u32>
 }
 
+/*
 impl<'a,ENV,A> Cell<ENV,A> for CellImpl<'a,ENV,A> {
     fn current_value<'b>(&'b self) -> &'b A {
         &self.value
@@ -137,3 +158,4 @@ impl<'a,ENV,A> CellSink<ENV,A> for CellImpl<'a,ENV,A> {
         self.value = value;
     }
 }
+*/
