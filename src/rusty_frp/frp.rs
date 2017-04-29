@@ -3,19 +3,23 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-pub struct FrpContext<ENV> {
-    free_id: u32,
-    cell_map: HashMap<u32,CellImpl<ENV,Box<Any>>>,
+pub struct FrpContext<'a,ENV:'a> {
+    free_cell_id: u32,
+    free_observer_id: u32,
+    cell_map: HashMap<u32,CellImpl<'a,ENV,Box<Any>>>,
+    observer_map: HashMap<u32,Box<Fn(&mut ENV,&Any)>>,
     cells_to_be_updated: HashSet<u32>,
-    change_notifiers: Vec<Box<Fn(&mut ENV)>>,
+    change_notifiers: Vec<(u32,u32)>,
     transaction_depth: u32
 }
 
-impl<ENV> FrpContext<ENV> {
-    pub fn new() -> FrpContext<ENV> {
+impl<'a,ENV> FrpContext<'a,ENV> {
+    pub fn new() -> FrpContext<'a,ENV> {
         FrpContext {
-            free_id: 0,
+            free_cell_id: 0,
+            free_observer_id: 0,
             cell_map: HashMap::new(),
+            observer_map: HashMap::new(),
             cells_to_be_updated: HashSet::new(),
             change_notifiers: Vec::new(),
             transaction_depth: 0
@@ -94,8 +98,14 @@ impl<ENV> FrpContext<ENV> {
         } else {
             return;
         }
+        let mut notifiers_to_add: Vec<u32> = Vec::new();
         if let Some(cell) = self.cell_map.get_mut(cell_id) {
-            cell.value = Box::new(value);
+            for observer_id in &cell.observer_ids {
+                notifiers_to_add.push(observer_id.clone());
+            }
+        }
+        for notifier_to_add in notifiers_to_add {
+            self.change_notifiers.push((notifier_to_add, cell_id.clone()));
         }
     }
 }
@@ -108,21 +118,21 @@ pub trait CellSink<ENV,A>: Cell<ENV,A> {
     fn change_value(&mut self, value: A);
 }
 
-struct CellImpl<ENV,A> {
+struct CellImpl<'a,ENV:'a,A:'a> {
     id: u32,
     value: A,
-    observers: Vec<Box<Fn(&mut ENV,&A)>>,
-    update_fn: Box<Fn(&FrpContext<ENV>)->A>,
+    observer_ids: Vec<u32>,
+    update_fn: Box<Fn(&FrpContext<'a,ENV>)->A>,
     dependent_cells: Vec<u32>
 }
 
-impl<ENV,A> Cell<ENV,A> for CellImpl<ENV,A> {
-    fn current_value<'a>(&'a self) -> &'a A {
+impl<'a,ENV,A> Cell<ENV,A> for CellImpl<'a,ENV,A> {
+    fn current_value<'b>(&'b self) -> &'b A {
         &self.value
     }
 }
 
-impl<ENV,A> CellSink<ENV,A> for CellImpl<ENV,A> {
+impl<'a,ENV,A> CellSink<ENV,A> for CellImpl<'a,ENV,A> {
     fn change_value(&mut self, value: A) {
         self.value = value;
     }
