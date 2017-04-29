@@ -3,18 +3,18 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-pub struct FrpContext<'a,ENV:'a> {
+pub struct FrpContext<ENV> {
     free_cell_id: u32,
     free_observer_id: u32,
-    cell_map: HashMap<u32,CellImpl<'a,ENV,Box<Any>>>,
+    cell_map: HashMap<u32,CellImpl<ENV,Box<Any>>>,
     observer_map: HashMap<u32,Box<Fn(&mut ENV,&Any)>>,
     cells_to_be_updated: HashSet<u32>,
-    change_notifiers: Vec<(u32,u32)>,
+    change_notifiers: Vec<Box<Fn(&mut ENV)>>,
     transaction_depth: u32
 }
 
-impl<'a,ENV> FrpContext<'a,ENV> {
-    pub fn new() -> FrpContext<'a,ENV> {
+impl<ENV: 'static> FrpContext<ENV> {
+    pub fn new() -> FrpContext<ENV> {
         FrpContext {
             free_cell_id: 0,
             free_observer_id: 0,
@@ -77,39 +77,16 @@ impl<'a,ENV> FrpContext<'a,ENV> {
                     }
                 }
                 frp_context.transaction_depth = frp_context.transaction_depth - 1;
-                loop {
-                    let change_notifier_op = frp_context.change_notifiers.pop();
-                    match change_notifier_op {
-                        Some(change_notifier) => {
-                            let (observer_id,cell_id) = change_notifier;
-                            let observer_op = frp_context.observer_map.get(&observer_id);
-                            let cell_op = frp_context.cell_map.get(&cell_id);
-                            match observer_op {
-                                Some(observer) => {
-                                    match cell_op {
-                                        Some(cell) => {
-                                            let observer2 = observer.clone();
-                                            /*
-                                            change_notifiers.push(Box::new(
-                                                |env| {
-                                                    observer2(env, cell.value.as_ref());
-                                                }
-                                            ));*/
-                                        },
-                                        None => ()
-                                    }
-                                }
-                                None => ()
-                            }
-                        },
-                        None => break
-                    }
-                }
+                change_notifiers.append(&mut frp_context.change_notifiers);
             }
         );
+        for change_notifier in change_notifiers {
+            change_notifier(env);
+        }
     }
 
-    fn update_cell(&mut self, cell_id: &u32) {
+    fn update_cell(&mut self, cell_id: &u32)
+    {
         let value;
         if let Some(cell) = self.cell_map.get(cell_id) {
             let update_fn = &cell.update_fn;
@@ -117,15 +94,22 @@ impl<'a,ENV> FrpContext<'a,ENV> {
         } else {
             return;
         }
-        let mut notifiers_to_add: Vec<u32> = Vec::new();
+        let mut notifiers_to_add: Vec<Box<Fn(&mut ENV)>> = Vec::new();
         if let Some(cell) = self.cell_map.get_mut(cell_id) {
-            for observer_id in &cell.observer_ids {
-                notifiers_to_add.push(observer_id.clone());
-            }
+            cell.value = value;
+            let cell2: *const CellImpl<ENV,Box<Any>> = unsafe { cell };
+            notifiers_to_add.push(Box::new(
+                move |env| {
+                    unsafe {
+                        let ref cell3: CellImpl<ENV,Box<Any>> = *cell2;
+                        for observer in &cell3.observers {
+                            observer(env, &cell3.value);
+                        }
+                    }
+                }
+            ));
         }
-        for notifier_to_add in notifiers_to_add {
-            self.change_notifiers.push((notifier_to_add, cell_id.clone()));
-        }
+        self.change_notifiers.append(&mut notifiers_to_add);
     }
 }
 
@@ -138,11 +122,12 @@ pub trait CellSink<ENV,A>: Cell<ENV,A> {
     where F:Fn(&mut ENV, &FnMut(&mut FrpContext<ENV>));
 }
 
-struct CellImpl<'a,ENV:'a,A:'a> {
+struct CellImpl<ENV,A> {
     id: u32,
     value: A,
     observer_ids: Vec<u32>,
-    update_fn: Box<Fn(&FrpContext<'a,ENV>)->A>,
+    observers: Vec<Box<Fn(&mut ENV,&A)>>,
+    update_fn: Box<Fn(&FrpContext<ENV>)->A>,
     dependent_cells: Vec<u32>
 }
 
