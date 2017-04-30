@@ -111,6 +111,33 @@ impl<ENV: 'static> FrpContext<ENV> {
         }
         self.change_notifiers.append(&mut notifiers_to_add);
     }
+
+    fn mark_all_decendent_cells_for_update(&mut self, cell_id: u32, visited: &mut HashSet<u32>) {
+        visited.insert(cell_id);
+        let mut dependent_cells: Vec<u32> = Vec::new();
+        match self.cell_map.get(&cell_id) {
+            Some(cell) => {
+                loop {
+                    for dependent_cell in &cell.dependent_cells {
+                        dependent_cells.push(dependent_cell.clone());
+                    }
+                }
+            },
+            None => ()
+        }
+        loop {
+            let dependent_cell_op = dependent_cells.pop();
+            match dependent_cell_op {
+                Some(dependent_cell) => {
+                    if visited.contains(&dependent_cell) {
+                        self.cells_to_be_updated.insert(dependent_cell);
+                        self.mark_all_decendent_cells_for_update(dependent_cell, visited);
+                    }
+                },
+                None => break
+            }
+        }
+    }
 }
 
 pub trait Cell<ENV,A> {
@@ -158,15 +185,7 @@ impl<ENV:'static,A:'static + Clone> CellSink<ENV,A> for CellImpl<ENV,A> {
                         if let Some(cell) = frp_context.cell_map.get_mut(&cell_id) {
                             cell.value = Box::new(value.clone()) as Box<Any>;
                         }
-                        loop {
-                            let dependent_cell_op = dependent_cells.pop();
-                            match dependent_cell_op {
-                                Some(dependent_cell) => {
-                                    frp_context.cells_to_be_updated.insert(dependent_cell);
-                                }
-                                None => break
-                            }
-                        }
+                        frp_context.mark_all_decendent_cells_for_update(cell_id, &mut HashSet::new());
                     }
                 );
             }
