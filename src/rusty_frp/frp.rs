@@ -5,9 +5,7 @@ use std::collections::HashSet;
 
 pub struct FrpContext<ENV> {
     free_cell_id: u32,
-    free_observer_id: u32,
     cell_map: HashMap<u32,CellImpl<ENV,Box<Any>>>,
-    observer_map: HashMap<u32,Box<Fn(&mut ENV,&Any)>>,
     cells_to_be_updated: HashSet<u32>,
     change_notifiers: Vec<Box<Fn(&mut ENV)>>,
     transaction_depth: u32
@@ -17,9 +15,7 @@ impl<ENV: 'static> FrpContext<ENV> {
     pub fn new() -> FrpContext<ENV> {
         FrpContext {
             free_cell_id: 0,
-            free_observer_id: 0,
             cell_map: HashMap::new(),
-            observer_map: HashMap::new(),
             cells_to_be_updated: HashSet::new(),
             change_notifiers: Vec::new(),
             transaction_depth: 0
@@ -102,7 +98,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                 move |env| {
                     unsafe {
                         let ref cell3: CellImpl<ENV,Box<Any>> = *cell2;
-                        for observer in &cell3.observers {
+                        for observer in cell3.observer_map.values() {
                             observer(env, &cell3.value);
                         }
                     }
@@ -151,19 +147,44 @@ pub trait CellSink<ENV,A>: Cell<ENV,A> {
 
 struct CellImpl<ENV,A> {
     id: u32,
-    value: Box<Any>,
-    observer_ids: Vec<u32>,
-    observers: Vec<Box<Fn(&mut ENV,&A)>>,
+    value: A,
+    free_observer_id: u32,
+    observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
     update_fn: Box<Fn(&FrpContext<ENV>)->A>,
     dependent_cells: Vec<u32>
 }
 
+impl<ENV:'static,A:'static> CellImpl<ENV,A> {
+    fn observe<F,F2>(&self, env: &mut ENV, with_frp_context: &F, observer: F2) -> Box<Fn(&mut Self)>
+    where
+    F:Fn(&mut ENV,&FnOnce(&mut FrpContext<ENV>)),
+    F2:Fn(&mut ENV,&A) + 'static {
+        let observer_id = self.free_observer_id;
+        with_frp_context(
+            env,
+            &move |frp_context| {
+                if let Some(cell) = frp_context.cell_map.get_mut(&observer_id) {
+                    cell.free_observer_id = cell.free_observer_id + 1;
+                    cell.observer_map.insert(observer_id, Box::new(
+                        move |env, value| {
+                            match value.as_ref().downcast_ref::<A>() {
+                                Some(value) => observer(env, value),
+                                None => ()
+                            }
+                        }
+                    ));
+                }
+            }
+        );
+        Box::new(move |cell| {
+            cell.observer_map.remove(&observer_id);
+        })
+    }
+}
+
 impl<ENV,A:'static> Cell<ENV,A> for CellImpl<ENV,A> {
     fn current_value<'a>(&'a self) -> &'a A {
-        match self.value.as_ref().downcast_ref::<A>() {
-            Some(value) => value,
-            None => panic!("Any type does not match Phantom Type")
-        }
+        return &self.value;
     }
 }
 
