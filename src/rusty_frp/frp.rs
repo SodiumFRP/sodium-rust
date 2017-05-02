@@ -11,6 +11,11 @@ pub struct FrpContext<ENV> {
     transaction_depth: u32
 }
 
+pub trait WithFrpContext<ENV> {
+    fn with_frp_context<F>(&self, &mut ENV, k: F)
+    where F: FnOnce(&mut FrpContext<ENV>);
+}
+
 impl<ENV: 'static> FrpContext<ENV> {
     pub fn new() -> FrpContext<ENV> {
         FrpContext {
@@ -22,20 +27,21 @@ impl<ENV: 'static> FrpContext<ENV> {
         }
     }
 
-    pub fn transaction<F,F2>(env: &mut ENV, with_frp_context: &F, k: &mut F2)
-    where F:Fn(&mut ENV, &FnMut(&mut FrpContext<ENV>)), F2: FnMut(&mut ENV, &F)
+    pub fn transaction<F,F2>(env: &mut ENV, with_frp_context: &F, k: F2)
+    where
+    F:WithFrpContext<ENV>, F2: FnOnce(&mut ENV, &F),
     {
-        with_frp_context(
+        with_frp_context.with_frp_context(
             env,
-            &|frp_context| {
+            |frp_context| {
                 frp_context.transaction_depth = frp_context.transaction_depth + 1;
             }
         );
         k(env, with_frp_context);
         let mut final_transaction_depth = 0;
-        with_frp_context(
+        with_frp_context.with_frp_context(
             env,
-            &mut |frp_context| {
+            |frp_context| {
                 frp_context.transaction_depth = frp_context.transaction_depth - 1;
                 final_transaction_depth = frp_context.transaction_depth;
             }
@@ -46,13 +52,14 @@ impl<ENV: 'static> FrpContext<ENV> {
     }
 
     fn propergate<F>(env: &mut ENV, with_frp_context: &F)
-    where F:Fn(&mut ENV, &FnMut(&mut FrpContext<ENV>))
+    where F:WithFrpContext<ENV>
     {
         let mut ts = TopologicalSort::<u32>::new();
         let mut change_notifiers: Vec<Box<Fn(&mut ENV)>> = Vec::new();
-        with_frp_context(
+        let change_notifiers2: *mut Vec<Box<Fn(&mut ENV)>> = unsafe { &mut change_notifiers };
+        with_frp_context.with_frp_context(
             env,
-            &|frp_context| {
+            move |frp_context| {
                 frp_context.transaction_depth = frp_context.transaction_depth + 1;
                 for cell_to_be_updated in &frp_context.cells_to_be_updated {
                     if let &Some(cell) = &frp_context.cell_map.get(cell_to_be_updated) {
@@ -73,7 +80,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                     }
                 }
                 frp_context.transaction_depth = frp_context.transaction_depth - 1;
-                change_notifiers.append(&mut frp_context.change_notifiers);
+                unsafe { (*change_notifiers2).append(&mut frp_context.change_notifiers) };
             }
         );
         for change_notifier in change_notifiers {
@@ -142,7 +149,7 @@ pub trait Cell<ENV,A> {
 
 pub trait CellSink<ENV,A>: Cell<ENV,A> {
     fn change_value<F>(&self, env: &mut ENV, with_frp_context: &F, value: A)
-    where F:Fn(&mut ENV, &FnMut(&mut FrpContext<ENV>));
+    where F:WithFrpContext<ENV>;
 }
 
 struct CellImpl<ENV,A> {
@@ -157,12 +164,12 @@ struct CellImpl<ENV,A> {
 impl<ENV:'static,A:'static> CellImpl<ENV,A> {
     fn observe<F,F2>(&self, env: &mut ENV, with_frp_context: &F, observer: F2) -> Box<Fn(&mut Self)>
     where
-    F:Fn(&mut ENV,&FnOnce(&mut FrpContext<ENV>)),
+    F:WithFrpContext<ENV>,
     F2:Fn(&mut ENV,&A) + 'static {
         let observer_id = self.free_observer_id;
-        with_frp_context(
+        with_frp_context.with_frp_context(
             env,
-            &move |frp_context| {
+            move |frp_context| {
                 if let Some(cell) = frp_context.cell_map.get_mut(&observer_id) {
                     cell.free_observer_id = cell.free_observer_id + 1;
                     cell.observer_map.insert(observer_id, Box::new(
@@ -190,7 +197,7 @@ impl<ENV,A:'static> Cell<ENV,A> for CellImpl<ENV,A> {
 
 impl<ENV:'static,A:'static + Clone> CellSink<ENV,A> for CellImpl<ENV,A> {
     fn change_value<F>(&self, env: &mut ENV, with_frp_context: &F, value: A)
-    where F:Fn(&mut ENV, &FnMut(&mut FrpContext<ENV>)) {
+    where F:WithFrpContext<ENV> {
         let cell_id = self.id.clone();
         let mut dependent_cells = Vec::new();
         for dependent_cell in &self.dependent_cells {
@@ -199,10 +206,10 @@ impl<ENV:'static,A:'static + Clone> CellSink<ENV,A> for CellImpl<ENV,A> {
         FrpContext::transaction(
             env,
             with_frp_context,
-            &mut |env, with_frp_context| {
-                with_frp_context(
+            move |env, with_frp_context| {
+                with_frp_context.with_frp_context(
                     env,
-                    &|frp_context| {
+                    move |frp_context| {
                         if let Some(cell) = frp_context.cell_map.get_mut(&cell_id) {
                             cell.value = Box::new(value.clone()) as Box<Any>;
                         }
