@@ -44,15 +44,17 @@ impl<ENV: 'static> FrpContext<ENV> {
                 unsafe {
                     *cell_id2 = cell_id;
                 }
-                /*
                 frp_context.cell_map.insert(
-                    cell_id,
-                    free_observer_id: 0,
-                    observer_map: HashMap::empty(),
-                    update_fn: ?,
-                    dependent_cells: Vec::new(),
-                    value: value
-                );*/
+                    cell_id.clone(),
+                    CellImpl {
+                        id: cell_id,
+                        free_observer_id: 0,
+                        observer_map: HashMap::new(),
+                        update_fn_op: None,
+                        dependent_cells: Vec::new(),
+                        value: Box::new(value) as Box<Any>
+                    }
+                );
             }
         );
         return CellSink::of(cell_id);
@@ -123,8 +125,12 @@ impl<ENV: 'static> FrpContext<ENV> {
     {
         let value;
         if let Some(cell) = self.cell_map.get(cell_id) {
-            let update_fn = &cell.update_fn;
-            value = update_fn(self);
+            match &cell.update_fn_op {
+                &Some(ref update_fn) => {
+                    value = update_fn(self);
+                },
+                &None => return
+            }
         } else {
             return;
         }
@@ -305,7 +311,7 @@ struct CellImpl<ENV,A> {
     id: u32,
     free_observer_id: u32,
     observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
-    update_fn: Box<Fn(&FrpContext<ENV>)->A>,
+    update_fn_op: Option<Box<Fn(&FrpContext<ENV>)->A>>,
     dependent_cells: Vec<u32>,
     value: A
 }
