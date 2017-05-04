@@ -29,6 +29,35 @@ impl<ENV: 'static> FrpContext<ENV> {
         }
     }
 
+    pub fn new_cell_sink<A,F>(env: &mut ENV, with_frp_context: &F, value: A) -> CellSink<ENV,A>
+    where
+    A:'static,
+    F:WithFrpContext<ENV>
+    {
+        let mut cell_id: u32 = 0;
+        let cell_id2: *mut u32 = &mut cell_id;
+        with_frp_context.with_frp_context(
+            env,
+            move |frp_context| {
+                let cell_id = frp_context.free_cell_id;
+                frp_context.free_cell_id = frp_context.free_cell_id;
+                unsafe {
+                    *cell_id2 = cell_id;
+                }
+                /*
+                frp_context.cell_map.insert(
+                    cell_id,
+                    free_observer_id: 0,
+                    observer_map: HashMap::empty(),
+                    update_fn: ?,
+                    dependent_cells: Vec::new(),
+                    value: value
+                );*/
+            }
+        );
+        return CellSink::of(cell_id);
+    }
+
     pub fn transaction<F,F2>(env: &mut ENV, with_frp_context: &F, k: F2)
     where
     F:WithFrpContext<ENV>, F2: FnOnce(&mut ENV, &F),
@@ -145,41 +174,23 @@ impl<ENV: 'static> FrpContext<ENV> {
     }
 }
 
-pub trait Cell<ENV,A> {
-    fn current_value<'a,F>(&self, env: &'a mut ENV, with_frp_context: &F) -> &'a A
-    where
-    F:WithFrpContext<ENV>;
-
-    fn observe<F,F2>(&self, env: &mut ENV, with_frp_context: &F, observer: F2) -> Box<FnOnce(&mut ENV, &F)>
-    where
-    F:WithFrpContext<ENV>,
-    F2:Fn(&mut ENV,&A) + 'static;
-}
-
-pub trait CellSink<ENV,A>: Cell<ENV,A> {
-    fn change_value<F>(&self, env: &mut ENV, with_frp_context: &F, value: A)
-    where F:WithFrpContext<ENV>;
-}
-
 #[derive(Copy,Clone)]
-struct CellRef<ENV,A> {
+pub struct Cell<ENV,A> {
     id: u32,
     env_phantom: PhantomData<ENV>,
     value_phantom: PhantomData<A>
 }
 
-impl<ENV,A> CellRef<ENV,A> {
-    fn of(id: u32) -> CellRef<ENV,A> {
-        CellRef {
+impl<ENV,A:'static> Cell<ENV,A> {
+    fn of(id: u32) -> Cell<ENV,A> {
+        Cell {
             id: id,
             env_phantom: PhantomData,
             value_phantom: PhantomData
         }
     }
-}
 
-impl<ENV,A:'static> Cell<ENV,A> for CellRef<ENV,A> {
-    fn current_value<'a,F>(&self, env: &'a mut ENV, with_frp_context: &F) -> &'a A
+    pub fn current_value<'a,F>(&self, env: &'a mut ENV, with_frp_context: &F) -> &'a A
     where
     F:WithFrpContext<ENV>
     {
@@ -208,7 +219,7 @@ impl<ENV,A:'static> Cell<ENV,A> for CellRef<ENV,A> {
         }
     }
 
-    fn observe<F,F2>(&self, env: &mut ENV, with_frp_context: &F, observer: F2) -> Box<FnOnce(&mut ENV, &F)>
+    pub fn observe<F,F2>(&self, env: &mut ENV, with_frp_context: &F, observer: F2) -> Box<FnOnce(&mut ENV, &F)>
     where
     F:WithFrpContext<ENV>,
     F2:Fn(&mut ENV,&A) + 'static
@@ -253,8 +264,23 @@ impl<ENV,A:'static> Cell<ENV,A> for CellRef<ENV,A> {
     }
 }
 
-impl<ENV:'static,A:'static> CellSink<ENV,A> for CellRef<ENV,A> {
-    fn change_value<F>(&self, env: &mut ENV, with_frp_context: &F, value: A)
+#[derive(Copy,Clone)]
+pub struct CellSink<ENV,A> {
+    id: u32,
+    env_phantom: PhantomData<ENV>,
+    value_phantom: PhantomData<A>
+}
+
+impl<ENV:'static,A:'static> CellSink<ENV,A> {
+    fn of(id: u32) -> CellSink<ENV,A> {
+        CellSink {
+            id: id,
+            env_phantom: PhantomData,
+            value_phantom: PhantomData
+        }
+    }
+
+    pub fn change_value<F>(&self, env: &mut ENV, with_frp_context: &F, value: A)
     where F:WithFrpContext<ENV> {
         let cell_id = self.id.clone();
         FrpContext::transaction(
