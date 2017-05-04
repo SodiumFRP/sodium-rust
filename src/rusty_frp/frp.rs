@@ -234,7 +234,7 @@ impl<ENV: 'static> FrpContext<ENV> {
             let dependent_cell_op = dependent_cells.pop();
             match dependent_cell_op {
                 Some(dependent_cell) => {
-                    if visited.contains(&dependent_cell) {
+                    if !visited.contains(&dependent_cell) {
                         self.cells_to_be_updated.insert(dependent_cell);
                         self.mark_all_decendent_cells_for_update(dependent_cell, visited);
                     }

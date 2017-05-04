@@ -5,3 +5,4 @@ authors = ["Clinton Selke <clinuxrulz@gmail.com>"]
 
 [dependencies]
 topological-sort = "0.0"
+log = "0.3.7"
