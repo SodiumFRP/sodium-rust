@@ -25,7 +25,7 @@ mod tests {
         let with_frp_context = WithFrpContextForEnv {};
         let cs1 = FrpContext::new_cell_sink(&mut env, &with_frp_context, 1u32);
         let c2 = FrpContext::map_cell(&mut env, &with_frp_context, &cs1, |value| { value + 1 });
-        c2.observe(&mut env, &with_frp_context, |_, value| { println!("c2 = {}", value); });
+        c2.observe(&mut env, &with_frp_context, |_, value| { debug!("c2 = {}", value); });
         cs1.change_value(&mut env, &with_frp_context, 2);
         cs1.change_value(&mut env, &with_frp_context, 3);
         cs1.change_value(&mut env, &with_frp_context, 4);

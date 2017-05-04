@@ -222,10 +222,8 @@ impl<ENV: 'static> FrpContext<ENV> {
         let mut dependent_cells: Vec<u32> = Vec::new();
         match self.cell_map.get(&cell_id) {
             Some(cell) => {
-                loop {
-                    for dependent_cell in &cell.dependent_cells {
-                        dependent_cells.push(dependent_cell.clone());
-                    }
+                for dependent_cell in &cell.dependent_cells {
+                    dependent_cells.push(dependent_cell.clone());
                 }
             },
             None => ()
