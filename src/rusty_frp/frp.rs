@@ -60,6 +60,71 @@ impl<ENV: 'static> FrpContext<ENV> {
         return CellSink::of(cell_id);
     }
 
+    pub fn map_cell<A,B,F,F2>(env: &mut ENV, with_frp_context: &F, cell: &Cell<ENV,A>, f: F2) -> Cell<ENV,B>
+    where
+    A:'static,
+    B:'static,
+    F:WithFrpContext<ENV>,
+    F2:Fn(&A)->B + 'static
+    {
+        let mut new_cell_id: u32 = 0;
+        let new_cell_id2: *mut u32 = &mut new_cell_id;
+        let other_cell_id = cell.id.clone();
+        with_frp_context.with_frp_context(
+            env,
+            move |frp_context| {
+                let new_cell_id = frp_context.free_cell_id;
+                frp_context.free_cell_id = frp_context.free_cell_id;
+                unsafe {
+                    *new_cell_id2 = new_cell_id;
+                }
+                let mut value_op: Option<B> = None;
+                if let Some(other_cell) = frp_context.cell_map.get_mut(&other_cell_id) {
+                    other_cell.dependent_cells.push(new_cell_id);
+                    match other_cell.value.as_ref().downcast_ref::<A>() {
+                        Some(other_value) => {
+                            value_op = Some(f(other_value));
+                        },
+                        None => panic!("")
+                    }
+                }
+                let update_fn;
+                {
+                    let other_cell_id2 = other_cell_id.clone();
+                    update_fn = move |frp_context: &FrpContext<ENV>| {
+                        if let Some(other_cell) = frp_context.cell_map.get(&other_cell_id2) {
+                            match other_cell.value.as_ref().downcast_ref::<A>() {
+                                Some(other_value) => {
+                                    return Box::new(f(other_value)) as Box<Any>;
+                                },
+                                None => panic!("")
+                            }
+                        } else {
+                            panic!("");
+                        }
+                    };
+                }
+                match value_op {
+                    Some(value) => {
+                        frp_context.cell_map.insert(
+                            new_cell_id.clone(),
+                            CellImpl::<ENV,Box<Any>> {
+                                id: new_cell_id,
+                                free_observer_id: 0,
+                                observer_map: HashMap::new(),
+                                update_fn_op: Some(Box::new(update_fn)),
+                                dependent_cells: Vec::new(),
+                                value: Box::new(value) as Box<Any>
+                            }
+                        );
+                    },
+                    None => ()
+                }
+            }
+        );
+        return Cell::of(new_cell_id);
+    }
+
     pub fn transaction<F,F2>(env: &mut ENV, with_frp_context: &F, k: F2)
     where
     F:WithFrpContext<ENV>, F2: FnOnce(&mut ENV, &F),
@@ -265,7 +330,7 @@ impl<ENV,A:'static> Cell<ENV,A> {
                     );
                 });
             },
-            None => Box::new(|env, with_frp_context| {})
+            None => Box::new(|_, _| {})
         }
     }
 }
