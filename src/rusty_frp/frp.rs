@@ -146,10 +146,11 @@ impl<ENV: 'static> FrpContext<ENV> {
 }
 
 pub trait Cell<ENV,A> {
+    fn current_value<'a,F>(&self, env: &'a mut ENV, with_frp_context: &F) -> &'a A
+    where
+    F:WithFrpContext<ENV>;
 
-    fn current_value<'a>(&'a self) -> &'a A;
-
-    fn observe<F,F2>(&self, env: &mut ENV, with_frp_context: &F, observer: F2) -> Box<Fn(&mut Self)>
+    fn observe<F,F2>(&self, env: &mut ENV, with_frp_context: &F, observer: F2) -> Box<FnOnce(&mut ENV, &F)>
     where
     F:WithFrpContext<ENV>,
     F2:Fn(&mut ENV,&A) + 'static;
@@ -177,8 +178,8 @@ impl<ENV,A> CellRef<ENV,A> {
     }
 }
 
-impl<ENV,A:'static> CellRef<ENV,A> {
-    fn current_value<'a,F>(self, env: &'a mut ENV, with_frp_context: &F) -> &'a A
+impl<ENV,A:'static> Cell<ENV,A> for CellRef<ENV,A> {
+    fn current_value<'a,F>(&self, env: &'a mut ENV, with_frp_context: &F) -> &'a A
     where
     F:WithFrpContext<ENV>
     {
@@ -207,7 +208,7 @@ impl<ENV,A:'static> CellRef<ENV,A> {
         }
     }
 
-    fn observe<F,F2>(self, env: &mut ENV, with_frp_context: &F, observer: F2) -> Box<FnOnce(&mut ENV, &F)>
+    fn observe<F,F2>(&self, env: &mut ENV, with_frp_context: &F, observer: F2) -> Box<FnOnce(&mut ENV, &F)>
     where
     F:WithFrpContext<ENV>,
     F2:Fn(&mut ENV,&A) + 'static
@@ -233,9 +234,9 @@ impl<ENV,A:'static> CellRef<ENV,A> {
                 }
             }
         );
+        let cell_id = self.id.clone();
         match observer_id_op {
             Some(observer_id) => {
-                let cell_id = self.id.clone();
                 return Box::new(move |env, with_frp_context| {
                     with_frp_context.with_frp_context(
                         env,
@@ -252,57 +253,10 @@ impl<ENV,A:'static> CellRef<ENV,A> {
     }
 }
 
-struct CellImpl<ENV,A> {
-    id: u32,
-    free_observer_id: u32,
-    observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
-    update_fn: Box<Fn(&FrpContext<ENV>)->A>,
-    dependent_cells: Vec<u32>,
-    value: A
-}
-
-impl<ENV,A:'static> Cell<ENV,A> for CellImpl<ENV,A> {
-
-    fn current_value<'a>(&'a self) -> &'a A {
-        return &self.value;
-    }
-
-    fn observe<F,F2>(&self, env: &mut ENV, with_frp_context: &F, observer: F2) -> Box<Fn(&mut Self)>
-    where
-    F:WithFrpContext<ENV>,
-    F2:Fn(&mut ENV,&A) + 'static
-    {
-        let observer_id = self.free_observer_id;
-        with_frp_context.with_frp_context(
-            env,
-            move |frp_context| {
-                if let Some(cell) = frp_context.cell_map.get_mut(&observer_id) {
-                    cell.free_observer_id = cell.free_observer_id + 1;
-                    cell.observer_map.insert(observer_id, Box::new(
-                        move |env, value| {
-                            match value.as_ref().downcast_ref::<A>() {
-                                Some(value) => observer(env, value),
-                                None => ()
-                            }
-                        }
-                    ));
-                }
-            }
-        );
-        Box::new(move |cell| {
-            cell.observer_map.remove(&observer_id);
-        })
-    }
-}
-
-impl<ENV:'static,A:'static + Clone> CellSink<ENV,A> for CellImpl<ENV,A> {
+impl<ENV:'static,A:'static> CellSink<ENV,A> for CellRef<ENV,A> {
     fn change_value<F>(&self, env: &mut ENV, with_frp_context: &F, value: A)
     where F:WithFrpContext<ENV> {
         let cell_id = self.id.clone();
-        let mut dependent_cells = Vec::new();
-        for dependent_cell in &self.dependent_cells {
-            dependent_cells.push(dependent_cell.clone());
-        }
         FrpContext::transaction(
             env,
             with_frp_context,
@@ -311,7 +265,7 @@ impl<ENV:'static,A:'static + Clone> CellSink<ENV,A> for CellImpl<ENV,A> {
                     env,
                     move |frp_context| {
                         if let Some(cell) = frp_context.cell_map.get_mut(&cell_id) {
-                            cell.value = Box::new(value.clone()) as Box<Any>;
+                            cell.value = Box::new(value) as Box<Any>;
                         }
                         frp_context.mark_all_decendent_cells_for_update(cell_id, &mut HashSet::new());
                     }
@@ -319,4 +273,13 @@ impl<ENV:'static,A:'static + Clone> CellSink<ENV,A> for CellImpl<ENV,A> {
             }
         );
     }
+}
+
+struct CellImpl<ENV,A> {
+    id: u32,
+    free_observer_id: u32,
+    observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
+    update_fn: Box<Fn(&FrpContext<ENV>)->A>,
+    dependent_cells: Vec<u32>,
+    value: A
 }
