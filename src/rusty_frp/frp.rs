@@ -60,7 +60,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         return CellSink::of(cell_id);
     }
 
-    pub fn map_cell<A,B,F,F2>(env: &mut ENV, with_frp_context: &F, cell: &Cell<ENV,A>, f: F2) -> Cell<ENV,B>
+    pub fn map_cell<A,B,F,F2>(env: &mut ENV, with_frp_context: &F, cell: &CellTrait<ENV,A>, f: F2) -> Cell<ENV,B>
     where
     A:'static,
     B:'static,
@@ -69,7 +69,7 @@ impl<ENV: 'static> FrpContext<ENV> {
     {
         let mut new_cell_id: u32 = 0;
         let new_cell_id2: *mut u32 = &mut new_cell_id;
-        let other_cell_id = cell.id.clone();
+        let other_cell_id = cell.id().clone();
         with_frp_context.with_frp_context(
             env,
             move |frp_context| {
@@ -245,11 +245,21 @@ impl<ENV: 'static> FrpContext<ENV> {
     }
 }
 
+pub trait CellTrait<ENV,A> {
+    fn id(&self) -> u32;
+}
+
 #[derive(Copy,Clone)]
 pub struct Cell<ENV,A> {
     id: u32,
     env_phantom: PhantomData<ENV>,
     value_phantom: PhantomData<A>
+}
+
+impl<ENV,A> CellTrait<ENV,A> for Cell<ENV,A> {
+    fn id(&self) -> u32 {
+        self.id
+    }
 }
 
 impl<ENV,A:'static> Cell<ENV,A> {
@@ -340,6 +350,12 @@ pub struct CellSink<ENV,A> {
     id: u32,
     env_phantom: PhantomData<ENV>,
     value_phantom: PhantomData<A>
+}
+
+impl<ENV,A> CellTrait<ENV,A> for CellSink<ENV,A> {
+    fn id(&self) -> u32 {
+        self.id
+    }
 }
 
 impl<ENV:'static,A:'static> CellSink<ENV,A> {
