@@ -40,7 +40,7 @@ impl<ENV: 'static> FrpContext<ENV> {
             env,
             move |frp_context| {
                 let cell_id = frp_context.free_cell_id;
-                frp_context.free_cell_id = frp_context.free_cell_id;
+                frp_context.free_cell_id = frp_context.free_cell_id + 1;
                 unsafe {
                     *cell_id2 = cell_id;
                 }
@@ -74,7 +74,7 @@ impl<ENV: 'static> FrpContext<ENV> {
             env,
             move |frp_context| {
                 let new_cell_id = frp_context.free_cell_id;
-                frp_context.free_cell_id = frp_context.free_cell_id;
+                frp_context.free_cell_id = frp_context.free_cell_id + 1;
                 unsafe {
                     *new_cell_id2 = new_cell_id;
                 }
@@ -160,11 +160,10 @@ impl<ENV: 'static> FrpContext<ENV> {
             move |frp_context| {
                 frp_context.transaction_depth = frp_context.transaction_depth + 1;
                 for cell_to_be_updated in &frp_context.cells_to_be_updated {
+                    ts.insert(cell_to_be_updated.clone());
                     if let &Some(cell) = &frp_context.cell_map.get(cell_to_be_updated) {
                         for dependent_cell in &cell.dependent_cells {
-                            if frp_context.cells_to_be_updated.contains(dependent_cell) {
-                                ts.add_dependency(cell.id, dependent_cell.clone());
-                            }
+                            ts.add_dependency(cell.id, dependent_cell.clone());
                         }
                     }
                 }
@@ -274,14 +273,17 @@ impl<ENV,A:'static> Cell<ENV,A> {
     F:WithFrpContext<ENV>
     {
         let mut value_op: Option<*const A> = None;
+        let value_op2: *mut Option<*const A> = &mut value_op;
+        let cell_id = self.id.clone();
         with_frp_context.with_frp_context(
             env,
             move |frp_context| {
-                match frp_context.cell_map.get(&self.id) {
+                match frp_context.cell_map.get(&cell_id) {
                     Some(cell) => {
                         match cell.value.as_ref().downcast_ref::<A>() {
                             Some(value) => {
-                                value_op = Some(value);
+                                let value2: *const A = value;
+                                unsafe { (*value_op2) = Some(value2); }
                             },
                             None => ()
                         }
@@ -292,7 +294,7 @@ impl<ENV,A:'static> Cell<ENV,A> {
         );
         match value_op {
             Some(value) => {
-                unsafe { &(*value) }
+                unsafe { &*value }
             },
             None => panic!("")
         }
@@ -303,6 +305,12 @@ impl<ENV,A:'static> Cell<ENV,A> {
     F:WithFrpContext<ENV>,
     F2:Fn(&mut ENV,&A) + 'static
     {
+        {
+            let env2: *mut ENV = env;
+            let value = self.current_value(unsafe { &mut *env2 }, with_frp_context);
+            let value2: *const A = value;
+            observer(unsafe { &mut *env2 }, unsafe { &*value2 });
+        }
         let mut observer_id_op: Option<u32> = None;
         let observer_id_op2: *mut Option<u32> = &mut observer_id_op;
         let cell_id = self.id.clone();
