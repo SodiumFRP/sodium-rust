@@ -29,16 +29,41 @@ impl<ENV: 'static> FrpContext<ENV> {
         }
     }
 
-    pub fn cell_loop<A,F,F2>(env: &mut ENV, with_frp_context: &F, time0_value: A, k:F2) -> Cell<ENV,A>
+    pub fn cell_loop<A,F,F2>(env: &mut ENV, with_frp_context: &F, k:F2) -> Cell<ENV,A>
     where
     A:'static + Clone, // TODO: Eliminate need for Clone.
     F:WithFrpContext<ENV> + Clone + 'static, // TODO: Eliminate need for Clone.
     F2:Fn(&mut ENV,&F,&Cell<ENV,A>)->Cell<ENV,A>
     {
-        let cell = FrpContext::new_cell_sink(env, with_frp_context, time0_value);
+        let mut cell_id: u32 = 0;
+        let cell_id2: *mut u32 = &mut cell_id;
+        with_frp_context.with_frp_context(
+            env,
+            move |frp_context| {
+                let cell_id = frp_context.free_cell_id;
+                frp_context.free_cell_id = frp_context.free_cell_id + 1;
+                unsafe { *cell_id2 = cell_id; }
+            }
+        );
+        let cell: Cell<ENV,A> = Cell::of(cell_id);
         let cell2 = k(env,with_frp_context,&Cell::of(cell.id));
-        let with_frp_context2 = with_frp_context.clone();
-        cell2.observe(env, with_frp_context, move |env,value| cell.change_value(env, &with_frp_context2, value.clone()));
+        let cell3 = cell2.clone();
+        with_frp_context.with_frp_context(
+            env,
+            move |frp_context| {
+                if let Some(cell_impl) = frp_context.cell_map.get_mut(&cell3.id) {
+                    cell_impl.id = cell.id;
+                }
+                let v_op = frp_context.cell_map.remove(&cell3.id);
+                match v_op {
+                    Some(cell_impl) => {
+                        let cell_id = cell.id.clone();
+                        frp_context.cell_map.insert(cell_id, cell_impl);
+                    }
+                    None => ()
+                }
+            }
+        );
         return cell2;
     }
 

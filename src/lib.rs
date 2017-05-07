@@ -91,12 +91,11 @@ mod tests {
             FrpContext::cell_loop(
                 &mut env,
                 &with_frp_context,
-                0u32,
                 move |env, with_frp_context, c| {
                     FrpContext::lift2_cell(
                         env,
                         with_frp_context,
-                        |a, pulse| {
+                        |a: &u32, pulse| {
                             match pulse {
                                 &Some(_) => a.clone() + 1,
                                 &None => a.clone()
