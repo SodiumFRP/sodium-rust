@@ -60,10 +60,11 @@ impl<ENV: 'static> FrpContext<ENV> {
         return CellSink::of(cell_id);
     }
 
-    pub fn map_cell<A,B,F,F2>(env: &mut ENV, with_frp_context: &F, cell: &CellTrait<ENV,A>, f: F2) -> Cell<ENV,B>
+    pub fn map_cell<A,B,CA,F,F2>(env: &mut ENV, with_frp_context: &F, cell: &CA, f: F2) -> Cell<ENV,B>
     where
     A:'static,
     B:'static,
+    CA:CellTrait<ENV,A>,
     F:WithFrpContext<ENV>,
     F2:Fn(&A)->B + 'static
     {
@@ -101,11 +102,13 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(new_cell_id);
     }
 
-    pub fn lift2_cell<A,B,C,F,F2>(env: &mut ENV, with_frp_context: &F, f: F2, cell_a: &CellTrait<ENV,A>, cell_b: &CellTrait<ENV,B>) -> Cell<ENV,C>
+    pub fn lift2_cell<A,B,C,CA,CB,F,F2>(env: &mut ENV, with_frp_context: &F, f: F2, cell_a: &CA, cell_b: &CB) -> Cell<ENV,C>
     where
     A:'static,
     B:'static,
     C:'static,
+    CA: CellTrait<ENV,A>,
+    CB: CellTrait<ENV,B>,
     F:WithFrpContext<ENV>,
     F2:Fn(&A,&B)->C + 'static
     {
@@ -158,12 +161,15 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(new_cell_id);
     }
 
-    pub fn lift3_cell<A,B,C,D,F,F2>(env: &mut ENV, with_frp_context: &F, f: F2, cell_a: &CellTrait<ENV,A>, cell_b: &CellTrait<ENV,B>, cell_c: &CellTrait<ENV,C>) -> Cell<ENV,D>
+    pub fn lift3_cell<A,B,C,D,CA,CB,CC,F,F2>(env: &mut ENV, with_frp_context: &F, f: F2, cell_a: &CA, cell_b: &CB, cell_c: &CC) -> Cell<ENV,D>
     where
     A:'static,
     B:'static,
     C:'static,
     D:'static,
+    CA:CellTrait<ENV,A>,
+    CB:CellTrait<ENV,B>,
+    CC:CellTrait<ENV,C>,
     F:WithFrpContext<ENV>,
     F2:Fn(&A,&B,&C)->D + 'static
     {
@@ -222,13 +228,17 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(new_cell_id);
     }
 
-    pub fn lift4_cell<A,B,C,D,E,F,F2>(env: &mut ENV, with_frp_context: &F, f: F2, cell_a: &CellTrait<ENV,A>, cell_b: &CellTrait<ENV,B>, cell_c: &CellTrait<ENV,C>, cell_d: &CellTrait<ENV,D>) -> Cell<ENV,E>
+    pub fn lift4_cell<A,B,C,D,E,CA,CB,CC,CD,F,F2>(env: &mut ENV, with_frp_context: &F, f: F2, cell_a: &CA, cell_b: &CB, cell_c: &CC, cell_d: &CD) -> Cell<ENV,E>
     where
     A:'static,
     B:'static,
     C:'static,
     D:'static,
     E:'static,
+    CA: CellTrait<ENV,A>,
+    CB: CellTrait<ENV,B>,
+    CC: CellTrait<ENV,C>,
+    CD: CellTrait<ENV,D>,
     F:WithFrpContext<ENV>,
     F2:Fn(&A,&B,&C,&D)->E + 'static
     {
@@ -409,13 +419,71 @@ impl<ENV: 'static> FrpContext<ENV> {
     }
 }
 
-pub trait CellTrait<ENV,A> {
+pub trait CellTrait<ENV:'static,A:'static>: Sized {
     fn id(&self) -> u32;
+
+    fn current_value<'a,F>(&self, env: &'a mut ENV, with_frp_context: &F) -> &'a A
+    where
+    F:WithFrpContext<ENV>
+    {
+        cell_current_value(self, env, with_frp_context)
+    }
+
+    fn observe<F,F2>(&self, env: &mut ENV, with_frp_context: &F, observer: F2) -> Box<FnOnce(&mut ENV, &F)>
+    where
+    F:WithFrpContext<ENV>,
+    F2:Fn(&mut ENV,&A) + 'static
+    {
+        {
+            let env2: *mut ENV = env;
+            let value = self.current_value(unsafe { &mut *env2 }, with_frp_context);
+            let value2: *const A = value;
+            observer(unsafe { &mut *env2 }, unsafe { &*value2 });
+        }
+        let mut observer_id_op: Option<u32> = None;
+        let observer_id_op2: *mut Option<u32> = &mut observer_id_op;
+        let cell_id = self.id().clone();
+        with_frp_context.with_frp_context(
+            env,
+            move |frp_context| {
+                if let Some(cell) = frp_context.cell_map.get_mut(&cell_id) {
+                    let observer_id = cell.free_observer_id;
+                    unsafe { *observer_id_op2 = Some(observer_id); }
+                    cell.free_observer_id = cell.free_observer_id + 1;
+                    cell.observer_map.insert(observer_id, Box::new(
+                        move |env, value| {
+                            match value.as_ref().downcast_ref::<A>() {
+                                Some(value) => observer(env, value),
+                                None => ()
+                            }
+                        }
+                    ));
+                }
+            }
+        );
+        let cell_id = self.id().clone();
+        match observer_id_op {
+            Some(observer_id) => {
+                return Box::new(move |env, with_frp_context| {
+                    with_frp_context.with_frp_context(
+                        env,
+                        move |frp_context| {
+                            if let Some(cell) = frp_context.cell_map.get_mut(&cell_id) {
+                                cell.observer_map.remove(&observer_id);
+                            }
+                        }
+                    );
+                });
+            },
+            None => Box::new(|_, _| {})
+        }
+    }
 }
 
 // NOTE: Not safe for API use. Internal use only!
-fn cell_current_value<ENV,A:'static,F>(cell: &CellTrait<ENV,A>, env: &mut ENV, with_frp_context: &F) -> &'static A
+fn cell_current_value<ENV:'static,A:'static,C,F>(cell: &C, env: &mut ENV, with_frp_context: &F) -> &'static A
 where
+C: CellTrait<ENV,A>,
 F:WithFrpContext<ENV>
 {
     let mut value_op: Option<*const A> = None;
@@ -436,7 +504,10 @@ F:WithFrpContext<ENV>
 }
 
 // NOTE: Not safe for API use. Internal use only!
-fn cell_current_value_via_context<ENV,A:'static>(cell: &CellTrait<ENV,A>, frp_context: &FrpContext<ENV>) -> &'static A {
+fn cell_current_value_via_context<ENV:'static,A:'static,C>(cell: &C, frp_context: &FrpContext<ENV>) -> &'static A
+where
+C: CellTrait<ENV,A>
+{
     let result: *const A;
     match frp_context.cell_map.get(&cell.id()) {
         Some(cell) => {
@@ -457,75 +528,18 @@ pub struct Cell<ENV,A> {
     value_phantom: PhantomData<A>
 }
 
-impl<ENV,A> CellTrait<ENV,A> for Cell<ENV,A> {
+impl<ENV:'static,A:'static> CellTrait<ENV,A> for Cell<ENV,A> {
     fn id(&self) -> u32 {
         self.id
     }
 }
 
-impl<ENV,A:'static> Cell<ENV,A> {
+impl<ENV,A> Cell<ENV,A> {
     fn of(id: u32) -> Cell<ENV,A> {
         Cell {
             id: id,
             env_phantom: PhantomData,
             value_phantom: PhantomData
-        }
-    }
-
-    pub fn current_value<'a,F>(&self, env: &'a mut ENV, with_frp_context: &F) -> &'a A
-    where
-    F:WithFrpContext<ENV>
-    {
-        cell_current_value(self, env, with_frp_context)
-    }
-
-    pub fn observe<F,F2>(&self, env: &mut ENV, with_frp_context: &F, observer: F2) -> Box<FnOnce(&mut ENV, &F)>
-    where
-    F:WithFrpContext<ENV>,
-    F2:Fn(&mut ENV,&A) + 'static
-    {
-        {
-            let env2: *mut ENV = env;
-            let value = self.current_value(unsafe { &mut *env2 }, with_frp_context);
-            let value2: *const A = value;
-            observer(unsafe { &mut *env2 }, unsafe { &*value2 });
-        }
-        let mut observer_id_op: Option<u32> = None;
-        let observer_id_op2: *mut Option<u32> = &mut observer_id_op;
-        let cell_id = self.id.clone();
-        with_frp_context.with_frp_context(
-            env,
-            move |frp_context| {
-                if let Some(cell) = frp_context.cell_map.get_mut(&cell_id) {
-                    let observer_id = cell.free_observer_id;
-                    unsafe { *observer_id_op2 = Some(observer_id); }
-                    cell.free_observer_id = cell.free_observer_id + 1;
-                    cell.observer_map.insert(observer_id, Box::new(
-                        move |env, value| {
-                            match value.as_ref().downcast_ref::<A>() {
-                                Some(value) => observer(env, value),
-                                None => ()
-                            }
-                        }
-                    ));
-                }
-            }
-        );
-        let cell_id = self.id.clone();
-        match observer_id_op {
-            Some(observer_id) => {
-                return Box::new(move |env, with_frp_context| {
-                    with_frp_context.with_frp_context(
-                        env,
-                        move |frp_context| {
-                            if let Some(cell) = frp_context.cell_map.get_mut(&cell_id) {
-                                cell.observer_map.remove(&observer_id);
-                            }
-                        }
-                    );
-                });
-            },
-            None => Box::new(|_, _| {})
         }
     }
 }
@@ -537,7 +551,7 @@ pub struct CellSink<ENV,A> {
     value_phantom: PhantomData<A>
 }
 
-impl<ENV,A> CellTrait<ENV,A> for CellSink<ENV,A> {
+impl<ENV:'static,A:'static> CellTrait<ENV,A> for CellSink<ENV,A> {
     fn id(&self) -> u32 {
         self.id
     }

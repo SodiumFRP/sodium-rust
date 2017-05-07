@@ -6,6 +6,7 @@ pub mod rusty_frp;
 mod tests {
     use rusty_frp::FrpContext;
     use rusty_frp::WithFrpContext;
+    use rusty_frp::CellTrait;
 
     #[test]
     fn test_via_console() {
