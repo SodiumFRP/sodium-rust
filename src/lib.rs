@@ -15,7 +15,7 @@ mod tests {
         // use: cargo test -- --nocapture
         test_map();
         test_lift2();
-        //test_cell_loop();
+        test_cell_loop();
     }
 
     fn test_map() {
@@ -91,6 +91,7 @@ mod tests {
             FrpContext::cell_loop(
                 &mut env,
                 &with_frp_context,
+                0u32,
                 move |env, with_frp_context, c| {
                     FrpContext::lift2_cell(
                         env,
