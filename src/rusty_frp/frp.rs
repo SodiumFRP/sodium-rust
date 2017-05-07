@@ -29,6 +29,19 @@ impl<ENV: 'static> FrpContext<ENV> {
         }
     }
 
+    pub fn cell_loop<A,F,F2>(env: &mut ENV, with_frp_context: &F, time0_value: A, k:F2) -> Cell<ENV,A>
+    where
+    A:'static + Clone, // TODO: Eliminate need for Clone.
+    F:WithFrpContext<ENV> + Clone + 'static, // TODO: Eliminate need for Clone.
+    F2:Fn(&mut ENV,&F,&Cell<ENV,A>)->Cell<ENV,A>
+    {
+        let cell = FrpContext::new_cell_sink(env, with_frp_context, time0_value);
+        let cell2 = k(env,with_frp_context,&Cell::of(cell.id));
+        let with_frp_context2 = with_frp_context.clone();
+        cell2.observe(env, with_frp_context, move |env,value| cell.change_value(env, &with_frp_context2, value.clone()));
+        return cell2;
+    }
+
     pub fn new_cell_sink<A,F>(env: &mut ENV, with_frp_context: &F, value: A) -> CellSink<ENV,A>
     where
     A:'static,
@@ -521,12 +534,19 @@ C: CellTrait<ENV,A>
     return unsafe { &*result };
 }
 
-#[derive(Copy,Clone)]
 pub struct Cell<ENV,A> {
     id: u32,
     env_phantom: PhantomData<ENV>,
     value_phantom: PhantomData<A>
 }
+
+impl<ENV:'static,A:'static> Clone for Cell<ENV,A> {
+    fn clone(&self) -> Self {
+        Cell::of(self.id.clone())
+    }
+}
+
+impl<ENV:'static,A:'static> Copy for Cell<ENV,A> {}
 
 impl<ENV:'static,A:'static> CellTrait<ENV,A> for Cell<ENV,A> {
     fn id(&self) -> u32 {
@@ -544,12 +564,19 @@ impl<ENV,A> Cell<ENV,A> {
     }
 }
 
-#[derive(Copy,Clone)]
 pub struct CellSink<ENV,A> {
     id: u32,
     env_phantom: PhantomData<ENV>,
     value_phantom: PhantomData<A>
 }
+
+impl<ENV:'static,A:'static> Clone for CellSink<ENV,A> {
+    fn clone(&self) -> Self {
+        CellSink::of(self.id.clone())
+    }
+}
+
+impl<ENV:'static,A:'static> Copy for CellSink<ENV,A> {}
 
 impl<ENV:'static,A:'static> CellTrait<ENV,A> for CellSink<ENV,A> {
     fn id(&self) -> u32 {
