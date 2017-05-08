@@ -110,12 +110,9 @@ mod tests {
         c.observe(&mut env, &with_frp_context, |_,value| { println!("c = {}", value); });
         // pulse 1
         cs_pulse.change_value(&mut env, &with_frp_context, Some(()));
-        cs_pulse.change_value(&mut env, &with_frp_context, None);
         // pulse 2
         cs_pulse.change_value(&mut env, &with_frp_context, Some(()));
-        cs_pulse.change_value(&mut env, &with_frp_context, None);
         // pulse 3
         cs_pulse.change_value(&mut env, &with_frp_context, Some(()));
-        cs_pulse.change_value(&mut env, &with_frp_context, None);
     }
 }

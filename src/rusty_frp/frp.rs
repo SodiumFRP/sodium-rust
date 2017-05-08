@@ -7,6 +7,7 @@ use std::marker::PhantomData;
 pub struct FrpContext<ENV> {
     free_cell_id: u32,
     cell_map: HashMap<u32,CellImpl<ENV,Box<Any>>>,
+    cell_loop_map: HashMap<u32,u32>,
     cells_to_be_updated: HashSet<u32>,
     change_notifiers: Vec<Box<Fn(&mut ENV)>>,
     transaction_depth: u32
@@ -23,6 +24,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         FrpContext {
             free_cell_id: 0,
             cell_map: HashMap::new(),
+            cell_loop_map: HashMap::new(),
             cells_to_be_updated: HashSet::new(),
             change_notifiers: Vec::new(),
             transaction_depth: 0
@@ -37,30 +39,13 @@ impl<ENV: 'static> FrpContext<ENV> {
     {
         let cell = FrpContext::new_cell_sink(env, with_frp_context, time0_value);
         let cell2 = k(env,with_frp_context,&Cell::of(cell.id));
-        let cell3 = cell.clone();
-        let cell4 = cell2.clone();
         with_frp_context.with_frp_context(
             env,
-            move |frp_context| {
-                if let Some(cell_impl) = frp_context.cell_map.get_mut(&cell4.id) {
-                    println!("POINT A");
-                    cell_impl.dependent_cells.retain(|id| id.clone() != cell3.id.clone());
-                    cell_impl.update_fn_op = Some(Box::new(move |frp_context| {
-                        println!("POINT C");
-                        Box::new(cell_current_value_via_context(&cell3, frp_context)) as Box<Any>
-                    }));
-                }
-                if let Some(cell_impl) = frp_context.cell_map.get_mut(&cell3.id) {
-                    println!("POINT B");
-                    cell_impl.dependent_cells.push(cell4.id);
-                    cell_impl.update_fn_op = Some(Box::new(move |frp_context| {
-                        println!("POINT D");
-                        Box::new(cell_current_value_via_context(&cell4, frp_context)) as Box<Any>
-                    }));
-                }
+            |frp_context| {
+                frp_context.cell_loop_map.insert(cell.id, cell2.id);
             }
         );
-        return Cell::of(cell.id);
+        return Cell::of(cell2.id);
     }
 
     pub fn new_cell_sink<A,F>(env: &mut ENV, with_frp_context: &F, value: A) -> CellSink<ENV,A>
@@ -542,6 +527,9 @@ fn cell_current_value_via_context<ENV:'static,A:'static,C>(cell: &C, frp_context
 where
 C: CellTrait<ENV,A>
 {
+    if let Some(loop_id) = frp_context.cell_loop_map.get(&cell.id()) {
+        return cell_current_value_via_context(&Cell::of(loop_id.clone()), frp_context);
+    }
     let result: *const A;
     match frp_context.cell_map.get(&cell.id()) {
         Some(cell) => {
