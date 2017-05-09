@@ -33,8 +33,8 @@ impl<ENV: 'static> FrpContext<ENV> {
 
     pub fn cell_loop<A,F,F2>(env: &mut ENV, with_frp_context: &F, time0_value: A, k:F2) -> Cell<ENV,A>
     where
-    A:'static + Clone, // TODO: Eliminate need for Clone.
-    F:WithFrpContext<ENV> + Clone + 'static, // TODO: Eliminate need for Clone.
+    A:'static,
+    F:WithFrpContext<ENV>,
     F2:Fn(&mut ENV,&F,&Cell<ENV,A>)->Cell<ENV,A>
     {
         let cell = FrpContext::new_cell_sink(env, with_frp_context, time0_value);
