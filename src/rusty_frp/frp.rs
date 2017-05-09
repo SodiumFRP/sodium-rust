@@ -10,6 +10,10 @@ pub struct FrpContext<ENV> {
     cell_loop_map: HashMap<u32,u32>,
     cells_to_be_updated: HashSet<u32>,
     change_notifiers: Vec<Box<Fn(&mut ENV)>>,
+
+    // when executing inside cell_switch, this will hold that cell's id
+    inside_cell_switch_id_op: Option<u32>,
+
     transaction_depth: u32
 }
 
@@ -27,6 +31,7 @@ impl<ENV: 'static> FrpContext<ENV> {
             cell_loop_map: HashMap::new(),
             cells_to_be_updated: HashSet::new(),
             change_notifiers: Vec::new(),
+            inside_cell_switch_id_op: None,
             transaction_depth: 0
         }
     }
@@ -63,14 +68,14 @@ impl<ENV: 'static> FrpContext<ENV> {
                 unsafe {
                     *cell_id2 = cell_id;
                 }
-                frp_context.cell_map.insert(
-                    cell_id.clone(),
+                frp_context.insert_cell(
                     CellImpl {
                         id: cell_id,
                         free_observer_id: 0,
                         observer_map: HashMap::new(),
                         update_fn_op: None,
                         dependent_cells: Vec::new(),
+                        child_cells: Vec::new(),
                         value: Box::new(value) as Box<Any>
                     }
                 );
@@ -105,14 +110,14 @@ impl<ENV: 'static> FrpContext<ENV> {
                 let update_fn = move |frp_context: &FrpContext<ENV>| {
                     Box::new(f(cell_current_value_via_context(&cell, frp_context))) as Box<Any>
                 };
-                frp_context.cell_map.insert(
-                    new_cell_id.clone(),
+                frp_context.insert_cell(
                     CellImpl::<ENV,Box<Any>> {
                         id: new_cell_id,
                         free_observer_id: 0,
                         observer_map: HashMap::new(),
                         update_fn_op: Some(Box::new(update_fn)),
                         dependent_cells: Vec::new(),
+                        child_cells: Vec::new(),
                         value: Box::new(initial_value) as Box<Any>
                     }
                 );
@@ -164,14 +169,14 @@ impl<ENV: 'static> FrpContext<ENV> {
                         cell_current_value_via_context(&cell_b, frp_context)
                     )) as Box<Any>
                 };
-                frp_context.cell_map.insert(
-                    new_cell_id.clone(),
+                frp_context.insert_cell(
                     CellImpl::<ENV,Box<Any>> {
                         id: new_cell_id,
                         free_observer_id: 0,
                         observer_map: HashMap::new(),
                         update_fn_op: Some(Box::new(update_fn)),
                         dependent_cells: Vec::new(),
+                        child_cells: Vec::new(),
                         value: Box::new(initial_value) as Box<Any>
                     }
                 );
@@ -231,14 +236,14 @@ impl<ENV: 'static> FrpContext<ENV> {
                         cell_current_value_via_context(&cell_c, frp_context)
                     )) as Box<Any>
                 };
-                frp_context.cell_map.insert(
-                    new_cell_id.clone(),
+                frp_context.insert_cell(
                     CellImpl::<ENV,Box<Any>> {
                         id: new_cell_id,
                         free_observer_id: 0,
                         observer_map: HashMap::new(),
                         update_fn_op: Some(Box::new(update_fn)),
                         dependent_cells: Vec::new(),
+                        child_cells: Vec::new(),
                         value: Box::new(initial_value) as Box<Any>
                     }
                 );
@@ -306,14 +311,14 @@ impl<ENV: 'static> FrpContext<ENV> {
                         cell_current_value_via_context(&cell_d, frp_context)
                     )) as Box<Any>
                 };
-                frp_context.cell_map.insert(
-                    new_cell_id.clone(),
+                frp_context.insert_cell(
                     CellImpl::<ENV,Box<Any>> {
                         id: new_cell_id,
                         free_observer_id: 0,
                         observer_map: HashMap::new(),
                         update_fn_op: Some(Box::new(update_fn)),
                         dependent_cells: Vec::new(),
+                        child_cells: Vec::new(),
                         value: Box::new(initial_value) as Box<Any>
                     }
                 );
@@ -379,6 +384,28 @@ impl<ENV: 'static> FrpContext<ENV> {
         for change_notifier in change_notifiers {
             change_notifier(env);
         }
+    }
+
+    fn insert_cell(&mut self, cell: CellImpl<ENV,Box<Any>>) {
+        let cell_id = cell.id.clone();
+        self.cell_map.insert(cell_id, cell);
+        let inside_cell_switch_id_op = self.inside_cell_switch_id_op.clone();
+        if let Some(inside_cell_switch_id) = inside_cell_switch_id_op {
+            if let Some(inside_cell_switch) = self.cell_map.get_mut(&inside_cell_switch_id) {
+                inside_cell_switch.child_cells.push(cell_id);
+            }
+        }
+    }
+
+    fn free_cell(&mut self, cell_id: &u32) {
+        let mut child_cells: Vec<u32> = Vec::new();
+        if let Some(cell) = self.cell_map.get_mut(cell_id) {
+            child_cells.append(&mut cell.child_cells);
+        }
+        for child_cell in child_cells.drain(..) {
+            self.cell_map.remove(&child_cell);
+        }
+        self.cell_map.remove(cell_id);
     }
 
     fn update_cell(&mut self, cell_id: &u32)
@@ -629,5 +656,9 @@ struct CellImpl<ENV,A> {
     observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
     update_fn_op: Option<Box<Fn(&FrpContext<ENV>)->A>>,
     dependent_cells: Vec<u32>,
+
+    // When a cell gets freed, these child cells get freed also. It gets used in cell_switch(...).
+    child_cells: Vec<u32>,
+
     value: A
 }
