@@ -53,11 +53,12 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(cell2.id);
     }
 
+    // Incomplete!
     pub fn cell_switch<F,A,B,F2,CA,CCA>(env: &mut ENV, with_frp_context: &F, cell_a: &CA, switch_fn: F2) -> Cell<ENV,B>
     where
     F:WithFrpContext<ENV>,
     A:'static,
-    B:'static,
+    B:'static + Clone, // <- TODO: Eliminate need for Clone
     CA:CellTrait<ENV,A> + 'static,
     F2:Fn(&mut ENV, &F, &A)->Cell<ENV,B>
     {
@@ -96,27 +97,31 @@ impl<ENV: 'static> FrpContext<ENV> {
                     cell_a.dependent_cells.push(cell_switch_id);
                 }
                 let initial_child_cell_value = cell_current_value_via_context(&initial_child_cell, frp_context);
-                /* TODO: Fix this, frp_context needs to be mutable here!
+                let mut last_inside_cell_id: u32 = initial_child_cell.id().clone();
+                /*
                 let update_fn = Box::new(
-                    |frp_context: &FrpContext<ENV>| {
+                    move |frp_context: &mut FrpContext<ENV>| {
+                        frp_context.free_cell(&last_inside_cell_id);
                         let old_inside_cell_switch_id_op = frp_context.inside_cell_switch_id_op.clone();
                         frp_context.inside_cell_switch_id_op = Some(cell_switch_id);
+                        let value = cell_current_value_via_context(cell_a, frp_context);
+                        // TODO: update_fn needs mutable access to the ENV for long_life_switch_fn
+                        //let next_child_cell = long_life_switch_fn()
                         frp_context.inside_cell_switch_id_op = old_inside_cell_switch_id_op;
+                        Box::new(initial_child_cell_value.clone()) as Box<Any>
                     }
                 );*/
-                /*
-                struct CellImpl<ENV,A> {
-                    id: u32,
-                    free_observer_id: u32,
-                    observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
-                    update_fn_op: Option<Box<Fn(&FrpContext<ENV>)->A>>,
-                    dependent_cells: Vec<u32>,
-
-                    // When a cell gets freed, these child cells get freed also. It gets used in cell_switch(...).
-                    child_cells: Vec<u32>,
-
-                    value: A
-                }*/
+                frp_context.insert_cell(
+                    CellImpl {
+                        id: cell_switch_id,
+                        free_observer_id: 0,
+                        observer_map: HashMap::new(),
+                        update_fn_op: None,//Some(update_fn),
+                        dependent_cells: Vec::new(),
+                        child_cells: Vec::new(),
+                        value: Box::new(initial_child_cell_value.clone()) as Box<Any>
+                    }
+                );
             }
         );
         Cell::of(cell_switch_id)
@@ -481,13 +486,12 @@ impl<ENV: 'static> FrpContext<ENV> {
     {
         let value;
         {
-            let update_fn2: *const Fn(&mut FrpContext<ENV>)->Box<Any>;
-            if let Some(cell) = self.cell_map.get(cell_id) {
-                match &cell.update_fn_op {
-                    &Some(ref update_fn) => {
-                        update_fn2 = update_fn.as_ref();
-                    },
-                    &None => return
+            let update_fn2: *mut FnMut(&mut FrpContext<ENV>)->Box<Any>;
+            if let Some(cell) = self.cell_map.get_mut(cell_id) {
+                if let Some(ref mut update_fn) = cell.update_fn_op {
+                    update_fn2 = update_fn.as_mut();
+                } else {
+                    return;
                 }
             } else {
                 return;
@@ -727,7 +731,7 @@ struct CellImpl<ENV,A> {
     id: u32,
     free_observer_id: u32,
     observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
-    update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)->A>>,
+    update_fn_op: Option<Box<FnMut(&mut FrpContext<ENV>)->A>>,
     dependent_cells: Vec<u32>,
 
     // When a cell gets freed, these child cells get freed also. It gets used in cell_switch(...).
