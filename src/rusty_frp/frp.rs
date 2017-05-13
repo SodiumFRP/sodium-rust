@@ -528,6 +528,23 @@ impl<ENV: 'static> FrpContext<ENV> {
         for change_notifier in change_notifiers {
             change_notifier(env);
         }
+        with_frp_context.with_frp_context(
+            env,
+            move |frp_context| {
+                let cells_to_be_updated = frp_context.cells_to_be_updated.clone();
+                for cell_to_be_updated in cells_to_be_updated {
+                    if let Some(cell) = frp_context.cell_map.get_mut(&cell_to_be_updated) {
+                        match &cell.reset_value_after_propergate_op {
+                            &Some(ref reset_value_after_propergate) => {
+                                reset_value_after_propergate(&mut cell.value);
+                            },
+                            &None => ()
+                        }
+                    }
+                }
+                frp_context.cells_to_be_updated.clear();
+            }
+        );
     }
 
     fn insert_cell<A: Any + 'static>(&mut self, cell: CellImpl<ENV,A>) {
