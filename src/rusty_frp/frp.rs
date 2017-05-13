@@ -867,6 +867,13 @@ impl<ENV:'static,A:'static> StreamSink<ENV,A> {
             value_phantom: PhantomData
         }
     }
+
+    pub fn send<F>(&self, env: &mut ENV, with_frp_context: &F, value: A)
+    where
+    F:WithFrpContext<ENV>
+    {
+        CellSink::of(self.id).change_value(env, with_frp_context, Some(value));
+    }
 }
 
 
