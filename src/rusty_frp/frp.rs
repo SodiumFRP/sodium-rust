@@ -185,6 +185,45 @@ impl<ENV: 'static> FrpContext<ENV> {
         return CellSink::of(cell_id);
     }
 
+    pub fn map_stream<A,B,SA,F,F2>(env: &mut ENV, with_frp_context: &F, sa: &SA, f: F2) -> Stream<ENV,B>
+    where
+    A:'static,
+    B:Any + 'static,
+    SA:StreamTrait<ENV,A>,
+    F:WithFrpContext<ENV>,
+    F2:Fn(&A)->B + 'static
+    {
+        let f2 = Box::new(f);
+        let c = FrpContext::map_cell(
+            env,
+            with_frp_context,
+            &sa.as_cell(),
+            move |a| {
+                match a {
+                    &Some(ref a2) => Some(f2(&a2)),
+                    &None => None
+                }
+            }
+        );
+        let cell_id = c.id.clone();
+        with_frp_context.with_frp_context(
+            env,
+            |frp_context| {
+                if let Some(cell) = frp_context.cell_map.get_mut(&cell_id) {
+                    cell.reset_value_after_propergate_op = Some(Box::new(|a| {
+                        match a.downcast_mut::<Option<A>>() {
+                            Some(a2) => {
+                                *a2 = None;
+                            },
+                            None => ()
+                        }
+                    }));
+                }
+            }
+        );
+        Stream::of(cell_id)
+    }
+
     pub fn map_cell<A,B,CA,F,F2>(env: &mut ENV, with_frp_context: &F, cell: &CA, f: F2) -> Cell<ENV,B>
     where
     A:'static,
@@ -582,6 +621,14 @@ impl<ENV: 'static> FrpContext<ENV> {
     }
 }
 
+pub trait StreamTrait<ENV:'static,A:'static>: Sized {
+    fn id(&self) -> u32;
+
+    fn as_cell(&self) -> Cell<ENV,Option<A>> {
+        Cell::of(self.id())
+    }
+}
+
 pub trait CellTrait<ENV:'static,A:'static>: Sized {
     fn id(&self) -> u32;
 
@@ -781,9 +828,11 @@ impl<ENV:'static,A:'static> Stream<ENV,A> {
             value_phantom: PhantomData
         }
     }
+}
 
-    fn as_cell(&self) -> Cell<ENV,Option<A>> {
-        Cell::of(self.id)
+impl<ENV:'static,A:'static> StreamTrait<ENV,A> for Stream<ENV,A> {
+    fn id(&self) -> u32 {
+        return self.id.clone();
     }
 }
 
@@ -801,9 +850,12 @@ impl<ENV:'static,A:'static> StreamSink<ENV,A> {
             value_phantom: PhantomData
         }
     }
+}
 
-    fn as_cell_sink(&self) -> CellSink<ENV,Option<A>> {
-        CellSink::of(self.id)
+
+impl<ENV:'static,A:'static> StreamTrait<ENV,A> for StreamSink<ENV,A> {
+    fn id(&self) -> u32 {
+        return self.id.clone();
     }
 }
 

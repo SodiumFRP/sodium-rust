@@ -13,13 +13,13 @@ mod tests {
     #[test]
     fn test_via_console() {
         // use: cargo test -- --nocapture
-        test_map();
+        test_cell_map();
         test_lift2();
         test_cell_loop();
     }
 
-    fn test_map() {
-        println!("test_map");
+    fn test_cell_map() {
+        println!("test_cell_map");
         struct Env {
             frp_context: FrpContext<Env>
         }
