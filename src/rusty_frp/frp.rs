@@ -118,6 +118,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         observer_map: HashMap::new(),
                         update_fn_op: None,//Some(update_fn),
                         dependent_cells: Vec::new(),
+                        reset_value_after_propergate_op: None,
                         child_cells: Vec::new(),
                         value: Box::new(initial_child_cell_value.clone())
                     }
@@ -149,6 +150,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         observer_map: HashMap::new(),
                         update_fn_op: None,
                         dependent_cells: Vec::new(),
+                        reset_value_after_propergate_op: None,
                         child_cells: Vec::new(),
                         value: Box::new(value)
                     }
@@ -191,6 +193,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         observer_map: HashMap::new(),
                         update_fn_op: Some(Box::new(update_fn)),
                         dependent_cells: Vec::new(),
+                        reset_value_after_propergate_op: None,
                         child_cells: Vec::new(),
                         value: Box::new(initial_value)
                     }
@@ -250,6 +253,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         observer_map: HashMap::new(),
                         update_fn_op: Some(Box::new(update_fn)),
                         dependent_cells: Vec::new(),
+                        reset_value_after_propergate_op: None,
                         child_cells: Vec::new(),
                         value: Box::new(initial_value)
                     }
@@ -317,6 +321,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         observer_map: HashMap::new(),
                         update_fn_op: Some(Box::new(update_fn)),
                         dependent_cells: Vec::new(),
+                        reset_value_after_propergate_op: None,
                         child_cells: Vec::new(),
                         value: Box::new(initial_value)
                     }
@@ -392,6 +397,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         observer_map: HashMap::new(),
                         update_fn_op: Some(Box::new(update_fn)),
                         dependent_cells: Vec::new(),
+                        reset_value_after_propergate_op: None,
                         child_cells: Vec::new(),
                         value: Box::new(initial_value)
                     }
@@ -783,6 +789,8 @@ struct CellImpl<ENV,A:?Sized> {
     update_fn_op: Option<Box<FnMut(&mut FrpContext<ENV>, &mut A)>>,
     dependent_cells: Vec<u32>,
 
+    reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
+
     // When a cell gets freed, these child cells get freed also. It gets used in cell_switch(...).
     child_cells: Vec<u32>,
 
@@ -821,12 +829,31 @@ impl<ENV:'static,A:?Sized> CellImpl<ENV,A> {
                 update_fn_op = None;
             }
         }
+        let reset_value_after_propergate_op: Option<Box<Fn(&mut Any)>>;
+        match self.reset_value_after_propergate_op {
+            Some(reset_value_after_propergate) => {
+                reset_value_after_propergate_op = Some(
+                    Box::new(move |a: &mut Any| {
+                       match a.downcast_mut::<A>() {
+                           Some(a2) => {
+                               reset_value_after_propergate(a2);
+                           },
+                           None => ()
+                       };
+                   })
+                );
+            },
+            None => {
+                reset_value_after_propergate_op = None;
+            }
+        }
         CellImpl {
             id: self.id,
             free_observer_id: self.free_observer_id,
             observer_map: observer_map,
             update_fn_op: update_fn_op,
             dependent_cells: self.dependent_cells,
+            reset_value_after_propergate_op: reset_value_after_propergate_op,
             child_cells: self.child_cells,
             value: self.value as Box<Any>
         }
