@@ -736,6 +736,46 @@ impl<ENV:'static,A:'static> CellSink<ENV,A> {
     }
 }
 
+pub struct Stream<ENV,A> {
+    id: u32,
+    env_phantom: PhantomData<ENV>,
+    value_phantom: PhantomData<A>
+}
+
+impl<ENV:'static,A:'static> Stream<ENV,A> {
+    fn of(id: u32) -> Stream<ENV,A> {
+        Stream {
+            id: id,
+            env_phantom: PhantomData,
+            value_phantom: PhantomData
+        }
+    }
+
+    fn as_cell(&self) -> Cell<ENV,Option<A>> {
+        Cell::of(self.id)
+    }
+}
+
+pub struct StreamSink<ENV,A> {
+    id: u32,
+    env_phantom: PhantomData<ENV>,
+    value_phantom: PhantomData<A>
+}
+
+impl<ENV:'static,A:'static> StreamSink<ENV,A> {
+    fn of(id: u32) -> StreamSink<ENV,A> {
+        StreamSink {
+            id: id,
+            env_phantom: PhantomData,
+            value_phantom: PhantomData
+        }
+    }
+
+    fn as_cell_sink(&self) -> CellSink<ENV,Option<A>> {
+        CellSink::of(self.id)
+    }
+}
+
 struct CellImpl<ENV,A:?Sized> {
     id: u32,
     free_observer_id: u32,
