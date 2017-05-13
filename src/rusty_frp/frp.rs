@@ -128,6 +128,31 @@ impl<ENV: 'static> FrpContext<ENV> {
         Cell::of(cell_switch_id)
     }
 
+    pub fn new_stream_sink<A,F>(env: &mut ENV, with_frp_context: &F) -> StreamSink<ENV,A>
+    where
+    A:'static,
+    F:WithFrpContext<ENV>
+    {
+        let cs: CellSink<ENV,Option<A>> = FrpContext::new_cell_sink(env, with_frp_context, None);
+        let stream_id = cs.id.clone();
+        with_frp_context.with_frp_context(
+            env,
+            |frp_context| {
+                if let Some(cell) = frp_context.cell_map.get_mut(&stream_id) {
+                    cell.reset_value_after_propergate_op = Some(Box::new(|a| {
+                        match a.downcast_mut::<Option<A>>() {
+                            Some(a2) => {
+                                *a2 = None;
+                            },
+                            None => ()
+                        }
+                    }));
+                }
+            }
+        );
+        StreamSink::of(cs.id)
+    }
+
     pub fn new_cell_sink<A,F>(env: &mut ENV, with_frp_context: &F, value: A) -> CellSink<ENV,A>
     where
     A:'static,
