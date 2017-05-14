@@ -8,12 +8,14 @@ mod tests {
     use rusty_frp::CellSink;
     use rusty_frp::CellTrait;
     use rusty_frp::FrpContext;
+    use rusty_frp::StreamTrait;
     use rusty_frp::WithFrpContext;
 
     #[test]
     fn test_via_console() {
         // use: cargo test -- --nocapture
         test_cell_map();
+        //test_stream_map();
         test_lift2();
         test_cell_loop();
     }
@@ -38,6 +40,28 @@ mod tests {
         cs1.change_value(&mut env, &with_frp_context, 2);
         cs1.change_value(&mut env, &with_frp_context, 3);
         cs1.change_value(&mut env, &with_frp_context, 4);
+    }
+
+    fn test_stream_map() {
+        println!("test_stream_map");
+        struct Env {
+            frp_context: FrpContext<Env>
+        }
+        let mut env = Env { frp_context: FrpContext::new() };
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<F,R>(&self, env: &mut Env, k: F) -> R
+            where F: FnOnce(&mut FrpContext<Env>) -> R {
+                k(&mut env.frp_context)
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let ss1 = FrpContext::new_stream_sink(&mut env, &with_frp_context);
+        let s2 = FrpContext::map_stream(&mut env, &with_frp_context, &ss1, |value| { value + 1 });
+        s2.observe(&mut env, &with_frp_context, |_, value| { println!("c2 = {}", value); });
+        ss1.send(&mut env, &with_frp_context, 2);
+        ss1.send(&mut env, &with_frp_context, 3);
+        ss1.send(&mut env, &with_frp_context, 4);
     }
 
     fn test_lift2() {

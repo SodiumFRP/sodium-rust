@@ -644,6 +644,24 @@ pub trait StreamTrait<ENV:'static,A:'static>: Sized {
     fn as_cell(&self) -> Cell<ENV,Option<A>> {
         Cell::of(self.id())
     }
+
+    fn observe<F,F2>(&self, env: &mut ENV, with_frp_context: &F, observer: F2) -> Box<FnOnce(&mut ENV, &F)>
+    where
+    F:WithFrpContext<ENV>,
+    F2:Fn(&mut ENV,&A) + 'static
+    {
+        let observer2 = Box::new(observer);
+        Cell::of(self.id()).observe(
+            env,
+            with_frp_context,
+            move |env, a| {
+                match a {
+                    &Some(a2) => observer2(env, a2),
+                    &None => ()
+                }
+            }
+        )
+    }
 }
 
 pub trait CellTrait<ENV:'static,A:'static>: Sized {
