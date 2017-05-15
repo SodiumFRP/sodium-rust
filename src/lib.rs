@@ -14,10 +14,32 @@ mod tests {
     #[test]
     fn test_via_console() {
         // use: cargo test -- --nocapture
+        test_cell_sink();
         test_cell_map();
         test_stream_map();
         test_lift2();
         test_cell_loop();
+    }
+
+    fn test_cell_sink() {
+        println!("test_cell_sink");
+        struct Env {
+            frp_context: FrpContext<Env>
+        }
+        let mut env = Env { frp_context: FrpContext::new() };
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<F,R>(&self, env: &mut Env, k: F) -> R
+            where F: FnOnce(&mut FrpContext<Env>) -> R {
+                k(&mut env.frp_context)
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let cs1 = FrpContext::new_cell_sink(&mut env, &with_frp_context, 1u32);
+        cs1.observe(&mut env, &with_frp_context, |_, value| { println!("cs1 = {}", value); });
+        cs1.change_value(&mut env, &with_frp_context, 2);
+        cs1.change_value(&mut env, &with_frp_context, 3);
+        cs1.change_value(&mut env, &with_frp_context, 4);
     }
 
     fn test_cell_map() {

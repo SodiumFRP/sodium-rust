@@ -615,8 +615,10 @@ impl<ENV: 'static> FrpContext<ENV> {
     }
 
     fn mark_all_decendent_cells_for_update(&mut self, cell_id: u32, visited: &mut HashSet<u32>) {
+        self.cells_to_be_updated.insert(cell_id);
         visited.insert(cell_id);
         let mut dependent_cells: Vec<u32> = Vec::new();
+        dependent_cells.push(cell_id);
         match self.cell_map.get(&cell_id) {
             Some(cell) => {
                 for dependent_cell in &cell.dependent_cells {
@@ -630,7 +632,6 @@ impl<ENV: 'static> FrpContext<ENV> {
             match dependent_cell_op {
                 Some(dependent_cell) => {
                     if !visited.contains(&dependent_cell) {
-                        self.cells_to_be_updated.insert(dependent_cell);
                         self.mark_all_decendent_cells_for_update(dependent_cell, visited);
                     }
                 },
