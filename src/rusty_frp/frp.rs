@@ -118,6 +118,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         observer_map: HashMap::new(),
                         update_fn_op: None,//Some(update_fn),
                         dependent_cells: Vec::new(),
+                        depends_on_cells: Vec::new(),
                         reset_value_after_propergate_op: None,
                         child_cells: Vec::new(),
                         value: Box::new(initial_child_cell_value.clone())
@@ -146,6 +147,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         observer_map: HashMap::new(),
                         update_fn_op: None,
                         dependent_cells: Vec::new(),
+                        depends_on_cells: Vec::new(),
                         reset_value_after_propergate_op: Some(Box::new(
                             |a| {
                                 *a = None;
@@ -177,6 +179,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         observer_map: HashMap::new(),
                         update_fn_op: None,
                         dependent_cells: Vec::new(),
+                        depends_on_cells: Vec::new(),
                         reset_value_after_propergate_op: None,
                         child_cells: Vec::new(),
                         value: Box::new(value)
@@ -259,6 +262,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         observer_map: HashMap::new(),
                         update_fn_op: Some(Box::new(update_fn)),
                         dependent_cells: Vec::new(),
+                        depends_on_cells: vec!(cell.id.clone()),
                         reset_value_after_propergate_op: None,
                         child_cells: Vec::new(),
                         value: Box::new(initial_value)
@@ -319,6 +323,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         observer_map: HashMap::new(),
                         update_fn_op: Some(Box::new(update_fn)),
                         dependent_cells: Vec::new(),
+                        depends_on_cells: vec!(cell_a.id.clone(), cell_b.id.clone()),
                         reset_value_after_propergate_op: None,
                         child_cells: Vec::new(),
                         value: Box::new(initial_value)
@@ -387,6 +392,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         observer_map: HashMap::new(),
                         update_fn_op: Some(Box::new(update_fn)),
                         dependent_cells: Vec::new(),
+                        depends_on_cells: vec!(cell_a.id.clone(), cell_b.id.clone(), cell_c.id.clone()),
                         reset_value_after_propergate_op: None,
                         child_cells: Vec::new(),
                         value: Box::new(initial_value)
@@ -463,6 +469,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         observer_map: HashMap::new(),
                         update_fn_op: Some(Box::new(update_fn)),
                         dependent_cells: Vec::new(),
+                        depends_on_cells: vec!(cell_a.id.clone(), cell_b.id.clone(), cell_c.id.clone(), cell_d.id.clone()),
                         reset_value_after_propergate_op: None,
                         child_cells: Vec::new(),
                         value: Box::new(initial_value)
@@ -562,9 +569,18 @@ impl<ENV: 'static> FrpContext<ENV> {
     }
 
     fn free_cell(&mut self, cell_id: &u32) {
+        let mut depends_on_cells: Vec<u32> = Vec::new();
         let mut child_cells: Vec<u32> = Vec::new();
         if let Some(cell) = self.cell_map.get_mut(cell_id) {
+            for depends_on_cell in &cell.depends_on_cells {
+                depends_on_cells.push(depends_on_cell.clone());
+            }
             child_cells.append(&mut cell.child_cells);
+        }
+        for depends_on_cell in depends_on_cells {
+            if let Some(cell) = self.cell_map.get_mut(cell_id) {
+                cell.dependent_cells.retain(|id| { id != cell_id });
+            }
         }
         for child_cell in child_cells.drain(..) {
             self.cell_map.remove(&child_cell);
@@ -911,6 +927,7 @@ struct CellImpl<ENV,A:?Sized> {
     observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
     update_fn_op: Option<Box<FnMut(&mut FrpContext<ENV>, &mut A)>>,
     dependent_cells: Vec<u32>,
+    depends_on_cells: Vec<u32>,
 
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
 
@@ -976,6 +993,7 @@ impl<ENV:'static,A:?Sized> CellImpl<ENV,A> {
             observer_map: observer_map,
             update_fn_op: update_fn_op,
             dependent_cells: self.dependent_cells,
+            depends_on_cells: self.depends_on_cells,
             reset_value_after_propergate_op: reset_value_after_propergate_op,
             child_cells: self.child_cells,
             value: self.value as Box<Any>
