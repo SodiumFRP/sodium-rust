@@ -133,24 +133,31 @@ impl<ENV: 'static> FrpContext<ENV> {
     A:'static,
     F:WithFrpContext<ENV>
     {
-        let cs: CellSink<ENV,Option<A>> = FrpContext::new_cell_sink(env, with_frp_context, None);
-        let stream_id = cs.id.clone();
         with_frp_context.with_frp_context(
             env,
-            |frp_context| {
-                if let Some(cell) = frp_context.cell_map.get_mut(&stream_id) {
-                    cell.reset_value_after_propergate_op = Some(Box::new(|a| {
-                        match a.downcast_mut::<Option<A>>() {
-                            Some(a2) => {
-                                *a2 = None;
-                            },
-                            None => ()
-                        }
-                    }));
-                }
+            move |frp_context| {
+                let cell_id = frp_context.free_cell_id;
+                frp_context.free_cell_id = frp_context.free_cell_id + 1;
+                let initial_value: Option<A> = None;
+                frp_context.insert_cell(
+                    CellImpl {
+                        id: cell_id,
+                        free_observer_id: 0,
+                        observer_map: HashMap::new(),
+                        update_fn_op: None,
+                        dependent_cells: Vec::new(),
+                        reset_value_after_propergate_op: Some(Box::new(
+                            |a| {
+                                *a = None;
+                            }
+                        )),
+                        child_cells: Vec::new(),
+                        value: Box::new(initial_value) as Box<Option<A>>
+                    }
+                );
+                StreamSink::of(cell_id)
             }
-        );
-        StreamSink::of(cs.id)
+        )
     }
 
     pub fn new_cell_sink<A,F>(env: &mut ENV, with_frp_context: &F, value: A) -> CellSink<ENV,A>
@@ -158,16 +165,11 @@ impl<ENV: 'static> FrpContext<ENV> {
     A:'static,
     F:WithFrpContext<ENV>
     {
-        let mut cell_id: u32 = 0;
-        let cell_id2: *mut u32 = &mut cell_id;
         with_frp_context.with_frp_context(
             env,
             move |frp_context| {
                 let cell_id = frp_context.free_cell_id;
                 frp_context.free_cell_id = frp_context.free_cell_id + 1;
-                unsafe {
-                    *cell_id2 = cell_id;
-                }
                 frp_context.insert_cell(
                     CellImpl {
                         id: cell_id,
@@ -180,9 +182,9 @@ impl<ENV: 'static> FrpContext<ENV> {
                         value: Box::new(value)
                     }
                 );
+                CellSink::of(cell_id)
             }
-        );
-        return CellSink::of(cell_id);
+        )
     }
 
     pub fn map_stream<A,B,SA,F,F2>(env: &mut ENV, with_frp_context: &F, sa: &SA, f: F2) -> Stream<ENV,B>
@@ -651,12 +653,13 @@ pub trait StreamTrait<ENV:'static,A:'static>: Sized {
     F2:Fn(&mut ENV,&A) + 'static
     {
         let observer2 = Box::new(observer);
-        Cell::of(self.id()).observe(
+        let c: Cell<ENV,Option<A>> = Cell::of(self.id());
+        c.observe(
             env,
             with_frp_context,
             move |env, a| {
                 match a {
-                    &Some(a2) => observer2(env, a2),
+                    &Some(ref a2) => observer2(env, &a2),
                     &None => ()
                 }
             }
@@ -761,7 +764,7 @@ C: CellTrait<ENV,A>
         Some(cell) => {
             match cell.value.as_ref().downcast_ref::<A>() {
                 Some(value) => result = value,
-                None => panic!("")
+                None => panic!("paniced on id: {}", cell.id)
             }
         },
         None => panic!("")

@@ -15,7 +15,7 @@ mod tests {
     fn test_via_console() {
         // use: cargo test -- --nocapture
         test_cell_map();
-        //test_stream_map();
+        test_stream_map();
         test_lift2();
         test_cell_loop();
     }
