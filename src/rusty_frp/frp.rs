@@ -53,6 +53,31 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(cell2.id);
     }
 
+    fn cell_switch_helper<F,A,CCA>(env: &mut ENV, with_frp_context: &F, cell_thunk_cell_a: &CCA) -> Cell<ENV,Cell<ENV,A>>
+    where
+    F:WithFrpContext<ENV> + 'static,
+    A:'static,
+    CCA:CellTrait<ENV,Box<Fn(&mut ENV,&F)->Cell<ENV,A>>>
+    {
+        let initial_value_thunk = cell_current_value(cell_thunk_cell_a, env, with_frp_context);
+        let ca: CellSink<ENV,Option<A>> = FrpContext::new_cell_sink(env, with_frp_context, None);
+        with_frp_context.with_frp_context(
+            env,
+            |frp_context| {
+                frp_context.inside_cell_switch_id_op = Some(ca.id.clone());
+            }
+        );
+        let initial_value = initial_value_thunk(env, with_frp_context);
+        with_frp_context.with_frp_context(
+            env,
+            |frp_context| {
+                frp_context.inside_cell_switch_id_op = None;
+            }
+        );
+        unimplemented!();
+    }
+
+    /*
     // Incomplete!
     pub fn cell_switch<F,A,B,F2,CA,CCA>(env: &mut ENV, with_frp_context: &F, cell_a: &CA, switch_fn: F2) -> Cell<ENV,B>
     where
@@ -128,6 +153,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         );
         Cell::of(cell_switch_id)
     }
+    */
 
     pub fn new_stream_sink<A,F>(env: &mut ENV, with_frp_context: &F) -> StreamSink<ENV,A>
     where
