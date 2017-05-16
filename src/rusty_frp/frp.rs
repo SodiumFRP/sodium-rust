@@ -252,7 +252,8 @@ impl<ENV: 'static> FrpContext<ENV> {
         if let Some(cell_impl) = frp_context.cell_map.get_mut(&cell.id) {
             cell_impl.dependent_cells.push(new_cell_id);
         }
-        let update_fn = move |frp_context: &mut FrpContext<ENV>, result: &mut B| {
+        let update_fn = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, result: &mut B| {
+            let frp_context = with_frp_context.with_frp_context(env);
             *result = f(cell_current_value_via_context(&cell, frp_context));
         };
         frp_context.insert_cell(
@@ -301,7 +302,8 @@ impl<ENV: 'static> FrpContext<ENV> {
         if let Some(cell_b_impl) = frp_context.cell_map.get_mut(&cell_b.id) {
             cell_b_impl.dependent_cells.push(new_cell_id);
         }
-        let update_fn = move |frp_context: &mut FrpContext<ENV>, result: &mut C| {
+        let update_fn = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, result: &mut C| {
+            let frp_context = with_frp_context.with_frp_context(env);
             *result = f(
                 cell_current_value_via_context(&cell_a, frp_context),
                 cell_current_value_via_context(&cell_b, frp_context)
@@ -360,7 +362,8 @@ impl<ENV: 'static> FrpContext<ENV> {
         if let Some(cell_c_impl) = frp_context.cell_map.get_mut(&cell_c.id) {
             cell_c_impl.dependent_cells.push(new_cell_id);
         }
-        let update_fn = move |frp_context: &mut FrpContext<ENV>, result: &mut D| {
+        let update_fn = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, result: &mut D| {
+            let frp_context = with_frp_context.with_frp_context(env);
             *result = f(
                 cell_current_value_via_context(&cell_a, frp_context),
                 cell_current_value_via_context(&cell_b, frp_context),
@@ -427,7 +430,8 @@ impl<ENV: 'static> FrpContext<ENV> {
         if let Some(cell_d_impl) = frp_context.cell_map.get_mut(&cell_d.id) {
             cell_d_impl.dependent_cells.push(new_cell_id);
         }
-        let update_fn = move |frp_context: &mut FrpContext<ENV>, result: &mut E| {
+        let update_fn = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, result: &mut E| {
+            let frp_context = with_frp_context.with_frp_context(env);
             *result = f(
                 cell_current_value_via_context(&cell_a, frp_context),
                 cell_current_value_via_context(&cell_b, frp_context),
@@ -489,15 +493,18 @@ impl<ENV: 'static> FrpContext<ENV> {
                     }
                 }
             }
-            loop {
-                let next_op = ts.pop();
-                match next_op {
-                    Some(cell_id) => {
-                        frp_context.update_cell(&cell_id);
-                    },
-                    None => break
-                }
+        }
+        loop {
+            let next_op = ts.pop();
+            match next_op {
+                Some(cell_id) => {
+                    FrpContext::update_cell(env, with_frp_context, &cell_id);
+                },
+                None => break
             }
+        }
+        {
+            let frp_context = with_frp_context.with_frp_context(env);
             frp_context.transaction_depth = frp_context.transaction_depth - 1;
             unsafe { (*change_notifiers2).append(&mut frp_context.change_notifiers) };
         }
@@ -553,33 +560,40 @@ impl<ENV: 'static> FrpContext<ENV> {
         self.cell_map.remove(cell_id);
     }
 
-    fn update_cell(&mut self, cell_id: &u32)
+    fn update_cell(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, cell_id: &u32)
     {
         let mut notifiers_to_add: Vec<Box<Fn(&mut ENV)>> = Vec::new();
-        let mut update_fn_op: Option<*mut FnMut(&mut FrpContext<ENV>, &mut Any)> = None;
-        if let Some(cell) = self.cell_map.get_mut(cell_id) {
-            match &mut cell.update_fn_op {
-                &mut Some(ref mut update_fn) => {
-                    update_fn_op = Some(update_fn.as_mut());
-                },
-                &mut None => ()
+        let mut update_fn_op: Option<*mut FnMut(&mut ENV, &WithFrpContext<ENV>, &mut Any)> = None;
+        {
+            let frp_context = with_frp_context.with_frp_context(env);
+            if let Some(cell) = frp_context.cell_map.get_mut(cell_id) {
+                match &mut cell.update_fn_op {
+                    &mut Some(ref mut update_fn) => {
+                        update_fn_op = Some(update_fn.as_mut());
+                    },
+                    &mut None => ()
+                }
             }
         }
         match update_fn_op {
             Some(x) => {
-                let update_fn: &mut FnMut(&mut FrpContext<ENV>, &mut Any);
+                let update_fn: &mut FnMut(&mut ENV, &WithFrpContext<ENV>, &mut Any);
                 update_fn = unsafe { &mut *x };
                 let value: *mut Any;
-                if let Some(cell) = self.cell_map.get_mut(cell_id) {
-                    value = cell.value.as_mut();
-                } else {
-                    return;
+                {
+                    let frp_context = with_frp_context.with_frp_context(env);
+                    if let Some(cell) = frp_context.cell_map.get_mut(cell_id) {
+                        value = cell.value.as_mut();
+                    } else {
+                        return;
+                    }
                 }
-                update_fn(self, unsafe { &mut *value });
+                update_fn(env, with_frp_context, unsafe { &mut *value });
             },
             None => ()
         }
-        if let Some(cell) = self.cell_map.get_mut(cell_id) {
+        let frp_context = with_frp_context.with_frp_context(env);
+        if let Some(cell) = frp_context.cell_map.get_mut(cell_id) {
             let cell2: *const CellImpl<ENV,Any> = cell;
             notifiers_to_add.push(Box::new(
                 move |env| {
@@ -592,7 +606,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                 }
             ));
         }
-        self.change_notifiers.append(&mut notifiers_to_add);
+        frp_context.change_notifiers.append(&mut notifiers_to_add);
     }
 
     fn mark_all_decendent_cells_for_update(&mut self, cell_id: u32, visited: &mut HashSet<u32>) {
@@ -878,7 +892,7 @@ struct CellImpl<ENV,A:?Sized> {
     id: u32,
     free_observer_id: u32,
     observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
-    update_fn_op: Option<Box<FnMut(&mut FrpContext<ENV>, &mut A)>>,
+    update_fn_op: Option<Box<FnMut(&mut ENV, &WithFrpContext<ENV>, &mut A)>>,
     dependent_cells: Vec<u32>,
     depends_on_cells: Vec<u32>,
 
@@ -906,17 +920,16 @@ impl<ENV:'static,A:?Sized> CellImpl<ENV,A> {
             ));
         }
         let old_update_fn_op = self.update_fn_op;
-        let mut update_fn_op: Option<Box<for<'r,'r2> FnMut(&'r mut FrpContext<ENV>, &'r2 mut Any) + 'static>>;
+        let mut update_fn_op: Option<Box<FnMut(&mut ENV, &WithFrpContext<ENV>, &mut Any) + 'static>>;
         match old_update_fn_op {
             Some(mut update_fn) => {
-                update_fn_op = Some(
-                    Box::new(move |frp_context, a: &mut Any| {
-                        match a.downcast_mut::<A>() {
-                            Some(a2) => update_fn.as_mut()(frp_context, a2),
-                            None => ()
-                        }
-                    })
-                )
+                let update_fn2 = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, a: &mut Any| {
+                    match a.downcast_mut::<A>() {
+                        Some(a2) => update_fn.as_mut()(env, with_frp_context, a2),
+                        None => ()
+                    }
+                };
+                update_fn_op = Some(Box::new(update_fn2));
             },
             None => {
                 update_fn_op = None;
