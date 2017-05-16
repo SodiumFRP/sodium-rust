@@ -50,14 +50,13 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(cell2.id);
     }
 
-    fn cell_switch_helper<F,A,CCA>(env: &mut ENV, with_frp_context: &F, cell_thunk_cell_a: &CCA) -> Cell<ENV,Cell<ENV,A>>
+    fn cell_switch<F,A,CCA>(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, cell_thunk_cell_a: &CCA) -> Cell<ENV,A>
     where
-    F:WithFrpContext<ENV> + 'static,
     A:'static,
-    CCA:CellTrait<ENV,Box<Fn(&mut ENV,&F)->Cell<ENV,A>>>
+    CCA:CellTrait<ENV,Box<Fn(&mut ENV,&WithFrpContext<ENV>)->Cell<ENV,A>>>
     {
         let initial_value_thunk = cell_current_value(cell_thunk_cell_a, env, with_frp_context);
-        let ca: CellSink<ENV,Option<A>> = FrpContext::new_cell_sink(env, with_frp_context, None);
+        let ca: CellSink<ENV,Cell<ENV,A>> = FrpContext::new_cell_sink(env, with_frp_context, Cell::of(0));
         {
             let frp_context = with_frp_context.with_frp_context(env);
             frp_context.inside_cell_switch_id_op = Some(ca.id.clone());
@@ -66,87 +65,28 @@ impl<ENV: 'static> FrpContext<ENV> {
         {
             let frp_context = with_frp_context.with_frp_context(env);
             frp_context.inside_cell_switch_id_op = None;
+            if let Some(cell) = frp_context.cell_map.get_mut(&cell_thunk_cell_a.id()) {
+                cell.dependent_cells.push(ca.id());
+            }
+            if let Some(cell) = frp_context.cell_map.get_mut(&ca.id) {
+                let cell_thunk_cell_a2 = Cell::of(cell_thunk_cell_a.id());
+                let update_fn = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, result: &mut Any| {
+                    let thunk: &Box<Fn(&mut ENV,&WithFrpContext<ENV>)->Cell<ENV,A>> = cell_current_value(&cell_thunk_cell_a2, env, with_frp_context);
+                    // TODO: Free previous child graph here
+                    match result.downcast_mut::<Cell<ENV,A>>() {
+                        Some(result2) => {
+                            *result2 = thunk(env, with_frp_context);
+                        },
+                        None => ()
+                    }
+                };
+                cell.value = Box::new(initial_value) as Box<Any>;
+                cell.depends_on_cells.push(cell_thunk_cell_a.id());
+                cell.update_fn_op = Some(Box::new(update_fn));
+            }
         }
-        unimplemented!();
+        Cell::of(ca.id())
     }
-
-    /*
-    // Incomplete!
-    pub fn cell_switch<F,A,B,F2,CA,CCA>(env: &mut ENV, with_frp_context: &F, cell_a: &CA, switch_fn: F2) -> Cell<ENV,B>
-    where
-    F:WithFrpContext<ENV>,
-    A:'static,
-    B:'static + Clone, // <- TODO: Eliminate need for Clone
-    CA:CellTrait<ENV,A> + 'static,
-    F2:Fn(&mut ENV, &F, &A)->Cell<ENV,B>
-    {
-        let mut initial_value_op: Option<*const A> = None;
-        let initial_value_op2: *mut Option<*const A> = &mut initial_value_op;
-        let long_life_switch_fn = Box::new(switch_fn);
-        let cell_switch_id = with_frp_context.with_frp_context(
-            env,
-            move |frp_context| {
-                let cell_switch_id = frp_context.free_cell_id;
-                frp_context.free_cell_id = frp_context.free_cell_id + 1;
-                let initial_value = cell_current_value_via_context(cell_a, frp_context);
-                unsafe { *initial_value_op2 = Some(initial_value); };
-                frp_context.inside_cell_switch_id_op = Some(cell_switch_id);
-                cell_switch_id
-            }
-        );
-        let initial_value: &A = match initial_value_op {
-            Some(value) => unsafe { &*value },
-            None => panic!("")
-        };
-        let old_inside_cell_switch_id_op = with_frp_context.with_frp_context(
-            env,
-            |frp_context| {
-                let old_inside_cell_switch_id_op = frp_context.inside_cell_switch_id_op;
-                frp_context.inside_cell_switch_id_op = Some(cell_switch_id);
-                old_inside_cell_switch_id_op
-            }
-        );
-        let initial_child_cell = long_life_switch_fn(env, with_frp_context, initial_value);
-        with_frp_context.with_frp_context(
-            env,
-            move |frp_context| {
-                frp_context.inside_cell_switch_id_op = old_inside_cell_switch_id_op;
-                if let Some(cell_a) = frp_context.cell_map.get_mut(&cell_a.id()) {
-                    cell_a.dependent_cells.push(cell_switch_id);
-                }
-                let initial_child_cell_value = cell_current_value_via_context(&initial_child_cell, frp_context);
-                let mut last_inside_cell_id: u32 = initial_child_cell.id().clone();
-                /*
-                let update_fn = Box::new(
-                    move |frp_context: &mut FrpContext<ENV>| {
-                        frp_context.free_cell(&last_inside_cell_id);
-                        let old_inside_cell_switch_id_op = frp_context.inside_cell_switch_id_op.clone();
-                        frp_context.inside_cell_switch_id_op = Some(cell_switch_id);
-                        let value = cell_current_value_via_context(cell_a, frp_context);
-                        // TODO: update_fn needs mutable access to the ENV for long_life_switch_fn
-                        //let next_child_cell = long_life_switch_fn()
-                        frp_context.inside_cell_switch_id_op = old_inside_cell_switch_id_op;
-                        Box::new(initial_child_cell_value.clone()) as Box<Any>
-                    }
-                );*/
-                frp_context.insert_cell(
-                    CellImpl {
-                        id: cell_switch_id,
-                        free_observer_id: 0,
-                        observer_map: HashMap::new(),
-                        update_fn_op: None,//Some(update_fn),
-                        dependent_cells: Vec::new(),
-                        depends_on_cells: Vec::new(),
-                        reset_value_after_propergate_op: None,
-                        child_cells: Vec::new(),
-                        value: Box::new(initial_child_cell_value.clone())
-                    }
-                );
-            }
-        );
-        Cell::of(cell_switch_id)
-    }
-    */
 
     pub fn new_stream_sink<A,F>(env: &mut ENV, with_frp_context: &F) -> StreamSink<ENV,A>
     where
@@ -177,10 +117,9 @@ impl<ENV: 'static> FrpContext<ENV> {
         StreamSink::of(cell_id)
     }
 
-    pub fn new_cell_sink<A,F>(env: &mut ENV, with_frp_context: &F, value: A) -> CellSink<ENV,A>
+    pub fn new_cell_sink<A>(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, value: A) -> CellSink<ENV,A>
     where
-    A:'static,
-    F:WithFrpContext<ENV>
+    A:'static
     {
         let frp_context = with_frp_context.with_frp_context(env);
         let cell_id = frp_context.free_cell_id;
@@ -719,10 +658,9 @@ pub trait CellTrait<ENV:'static,A:'static>: Sized {
 }
 
 // NOTE: Not safe for API use. Internal use only!
-fn cell_current_value<ENV:'static,A:'static,C,F>(cell: &C, env: &mut ENV, with_frp_context: &F) -> &'static A
+fn cell_current_value<ENV:'static,A:'static,C>(cell: &C, env: &mut ENV, with_frp_context: &WithFrpContext<ENV>) -> &'static A
 where
-C: CellTrait<ENV,A>,
-F:WithFrpContext<ENV>
+C: CellTrait<ENV,A>
 {
     let mut value_op: Option<*const A> = None;
     let value_op2: *mut Option<*const A> = &mut value_op;
