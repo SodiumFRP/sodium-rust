@@ -29,9 +29,8 @@ mod tests {
         let mut env = Env { frp_context: FrpContext::new() };
         struct WithFrpContextForEnv {}
         impl WithFrpContext<Env> for WithFrpContextForEnv {
-            fn with_frp_context<F,R>(&self, env: &mut Env, k: F) -> R
-            where F: FnOnce(&mut FrpContext<Env>) -> R {
-                k(&mut env.frp_context)
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
             }
         }
         let with_frp_context = WithFrpContextForEnv {};
@@ -50,9 +49,8 @@ mod tests {
         let mut env = Env { frp_context: FrpContext::new() };
         struct WithFrpContextForEnv {}
         impl WithFrpContext<Env> for WithFrpContextForEnv {
-            fn with_frp_context<F,R>(&self, env: &mut Env, k: F) -> R
-            where F: FnOnce(&mut FrpContext<Env>) -> R {
-                k(&mut env.frp_context)
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
             }
         }
         let with_frp_context = WithFrpContextForEnv {};
@@ -72,9 +70,8 @@ mod tests {
         let mut env = Env { frp_context: FrpContext::new() };
         struct WithFrpContextForEnv {}
         impl WithFrpContext<Env> for WithFrpContextForEnv {
-            fn with_frp_context<F,R>(&self, env: &mut Env, k: F) -> R
-            where F: FnOnce(&mut FrpContext<Env>) -> R {
-                k(&mut env.frp_context)
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
             }
         }
         let with_frp_context = WithFrpContextForEnv {};
@@ -94,9 +91,8 @@ mod tests {
         let mut env = Env { frp_context: FrpContext::new() };
         struct WithFrpContextForEnv {}
         impl WithFrpContext<Env> for WithFrpContextForEnv {
-            fn with_frp_context<F,R>(&self, env: &mut Env, k: F) -> R
-            where F: FnOnce(&mut FrpContext<Env>) -> R {
-                k(&mut env.frp_context)
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
             }
         }
         let with_frp_context = WithFrpContextForEnv {};
@@ -125,9 +121,8 @@ mod tests {
         #[derive(Copy,Clone)]
         struct WithFrpContextForEnv {}
         impl WithFrpContext<Env> for WithFrpContextForEnv {
-            fn with_frp_context<F,R>(&self, env: &mut Env, k: F) -> R
-            where F: FnOnce(&mut FrpContext<Env>) -> R {
-                k(&mut env.frp_context)
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
             }
         }
         let with_frp_context = WithFrpContextForEnv {};
