@@ -223,6 +223,29 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(new_cell_id);
     }
 
+    pub fn snapshot<A,B,C,SA,CB,F>(&mut self, f: F, sa: &SA, cb: &CB) -> Stream<ENV,C>
+    where
+    A: 'static,
+    B: 'static,
+    C: 'static,
+    F: Fn(&A,&B)->C + 'static,
+    SA: StreamTrait<ENV,A>,
+    CB: CellTrait<ENV,B>
+    {
+        let c: Cell<ENV,Option<C>> = self.lift2_cell(
+            move |a_op, b| {
+                match a_op {
+                    &Some(ref a) => Some(f(a,b)),
+                    &None => None
+                }
+            },
+            &sa.as_cell(),
+            cb
+        );
+        let s: Stream<ENV,C> = Stream::of(c.id());
+        s
+    }
+
     pub fn lift2_cell<A,B,C,CA,CB,F>(&mut self, f: F, cell_a: &CA, cell_b: &CB) -> Cell<ENV,C>
     where
     A:'static,
