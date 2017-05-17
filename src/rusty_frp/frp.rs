@@ -41,7 +41,11 @@ impl<ENV: 'static> FrpContext<ENV> {
     F:WithFrpContext<ENV>,
     F2:Fn(&mut ENV,&F,&Cell<ENV,A>)->Cell<ENV,A>
     {
-        let cell = FrpContext::new_cell_sink(env, with_frp_context, time0_value);
+        let cell;
+        {
+            let frp_context = with_frp_context.with_frp_context(env);
+            cell = frp_context.new_cell_sink(time0_value);
+        }
         let cell2 = k(env,with_frp_context,&Cell::of(cell.id));
         {
             let frp_context = with_frp_context.with_frp_context(env);
@@ -56,9 +60,10 @@ impl<ENV: 'static> FrpContext<ENV> {
     CCA:CellTrait<ENV,Box<Fn(&mut ENV,&WithFrpContext<ENV>)->Cell<ENV,A>>>
     {
         let initial_value_thunk = cell_current_value(cell_thunk_cell_a, env, with_frp_context);
-        let ca: CellSink<ENV,Cell<ENV,A>> = FrpContext::new_cell_sink(env, with_frp_context, Cell::of(0));
+        let ca: CellSink<ENV,Cell<ENV,A>>;
         {
             let frp_context = with_frp_context.with_frp_context(env);
+            ca = frp_context.new_cell_sink(Cell::of(0));
             frp_context.inside_cell_switch_id_op = Some(ca.id.clone());
         }
         let initial_value = initial_value_thunk(env, with_frp_context);
@@ -104,16 +109,14 @@ impl<ENV: 'static> FrpContext<ENV> {
         Cell::of(ca.id())
     }
 
-    pub fn new_stream_sink<A,F>(env: &mut ENV, with_frp_context: &F) -> StreamSink<ENV,A>
+    pub fn new_stream_sink<A>(&mut self) -> StreamSink<ENV,A>
     where
-    A:'static,
-    F:WithFrpContext<ENV>
+    A:'static
     {
-        let frp_context = with_frp_context.with_frp_context(env);
-        let cell_id = frp_context.free_cell_id;
-        frp_context.free_cell_id = frp_context.free_cell_id + 1;
+        let cell_id = self.free_cell_id;
+        self.free_cell_id = self.free_cell_id + 1;
         let initial_value: Option<A> = None;
-        frp_context.insert_cell(
+        self.insert_cell(
             CellImpl {
                 id: cell_id,
                 free_observer_id: 0,
@@ -133,14 +136,13 @@ impl<ENV: 'static> FrpContext<ENV> {
         StreamSink::of(cell_id)
     }
 
-    pub fn new_cell_sink<A>(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, value: A) -> CellSink<ENV,A>
+    pub fn new_cell_sink<A>(&mut self, value: A) -> CellSink<ENV,A>
     where
     A:'static
     {
-        let frp_context = with_frp_context.with_frp_context(env);
-        let cell_id = frp_context.free_cell_id;
-        frp_context.free_cell_id = frp_context.free_cell_id + 1;
-        frp_context.insert_cell(
+        let cell_id = self.free_cell_id;
+        self.free_cell_id = self.free_cell_id + 1;
+        self.insert_cell(
             CellImpl {
                 id: cell_id,
                 free_observer_id: 0,
@@ -156,18 +158,15 @@ impl<ENV: 'static> FrpContext<ENV> {
         CellSink::of(cell_id)
     }
 
-    pub fn map_stream<A,B,SA,F,F2>(env: &mut ENV, with_frp_context: &F, sa: &SA, f: F2) -> Stream<ENV,B>
+    pub fn map_stream<A,B,SA,F>(&mut self, sa: &SA, f: F) -> Stream<ENV,B>
     where
     A:'static,
     B:Any + 'static,
     SA:StreamTrait<ENV,A>,
-    F:WithFrpContext<ENV>,
-    F2:Fn(&A)->B + 'static
+    F:Fn(&A)->B + 'static
     {
         let f2 = Box::new(f);
-        let c = FrpContext::map_cell(
-            env,
-            with_frp_context,
+        let c = self.map_cell(
             &sa.as_cell(),
             move |a| {
                 match a {
@@ -177,8 +176,7 @@ impl<ENV: 'static> FrpContext<ENV> {
             }
         );
         let cell_id = c.id.clone();
-        let frp_context = with_frp_context.with_frp_context(env);
-        if let Some(cell) = frp_context.cell_map.get_mut(&cell_id) {
+        if let Some(cell) = self.cell_map.get_mut(&cell_id) {
             cell.reset_value_after_propergate_op = Some(Box::new(|a| {
                 match a.downcast_mut::<Option<A>>() {
                     Some(a2) => {
@@ -191,27 +189,25 @@ impl<ENV: 'static> FrpContext<ENV> {
         Stream::of(cell_id)
     }
 
-    pub fn map_cell<A,B,CA,F,F2>(env: &mut ENV, with_frp_context: &F, cell: &CA, f: F2) -> Cell<ENV,B>
+    pub fn map_cell<A,B,CA,F>(&mut self, cell: &CA, f: F) -> Cell<ENV,B>
     where
     A:'static,
     B:Any + 'static,
     CA:CellTrait<ENV,A>,
-    F:WithFrpContext<ENV>,
-    F2:Fn(&A)->B + 'static
+    F:Fn(&A)->B + 'static
     {
-        let initial_value = f(cell_current_value(cell, env, with_frp_context));
+        let initial_value = f(cell_current_value_via_context(cell, self));
         let cell = Cell::of(cell.id().clone());
-        let frp_context = with_frp_context.with_frp_context(env);
-        let new_cell_id = frp_context.free_cell_id;
-        frp_context.free_cell_id = frp_context.free_cell_id + 1;
-        if let Some(cell_impl) = frp_context.cell_map.get_mut(&cell.id) {
+        let new_cell_id = self.free_cell_id;
+        self.free_cell_id = self.free_cell_id + 1;
+        if let Some(cell_impl) = self.cell_map.get_mut(&cell.id) {
             cell_impl.dependent_cells.push(new_cell_id);
         }
         let update_fn = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, result: &mut B| {
             let frp_context = with_frp_context.with_frp_context(env);
             *result = f(cell_current_value_via_context(&cell, frp_context));
         };
-        frp_context.insert_cell(
+        self.insert_cell(
             CellImpl {
                 id: new_cell_id,
                 free_observer_id: 0,
@@ -227,34 +223,32 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(new_cell_id);
     }
 
-    pub fn lift2_cell<A,B,C,CA,CB,F,F2>(env: &mut ENV, with_frp_context: &F, f: F2, cell_a: &CA, cell_b: &CB) -> Cell<ENV,C>
+    pub fn lift2_cell<A,B,C,CA,CB,F>(&mut self, f: F, cell_a: &CA, cell_b: &CB) -> Cell<ENV,C>
     where
     A:'static,
     B:'static,
     C:'static,
     CA: CellTrait<ENV,A>,
     CB: CellTrait<ENV,B>,
-    F:WithFrpContext<ENV>,
-    F2:Fn(&A,&B)->C + 'static
+    F:Fn(&A,&B)->C + 'static
     {
         let cell_a = Cell::of(cell_a.id().clone());
         let cell_b = Cell::of(cell_b.id().clone());
         let initial_value;
         {
-            let value_a = cell_current_value(&cell_a, env, with_frp_context);
-            let value_b = cell_current_value(&cell_b, env, with_frp_context);
+            let value_a = cell_current_value_via_context(&cell_a, self);
+            let value_b = cell_current_value_via_context(&cell_b, self);
             initial_value =
                 f(
                     value_a, value_b
                 );
         }
-        let frp_context = with_frp_context.with_frp_context(env);
-        let new_cell_id = frp_context.free_cell_id;
-        frp_context.free_cell_id = frp_context.free_cell_id + 1;
-        if let Some(cell_a_impl) = frp_context.cell_map.get_mut(&cell_a.id) {
+        let new_cell_id = self.free_cell_id;
+        self.free_cell_id = self.free_cell_id + 1;
+        if let Some(cell_a_impl) = self.cell_map.get_mut(&cell_a.id) {
             cell_a_impl.dependent_cells.push(new_cell_id);
         }
-        if let Some(cell_b_impl) = frp_context.cell_map.get_mut(&cell_b.id) {
+        if let Some(cell_b_impl) = self.cell_map.get_mut(&cell_b.id) {
             cell_b_impl.dependent_cells.push(new_cell_id);
         }
         let update_fn = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, result: &mut C| {
@@ -264,7 +258,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                 cell_current_value_via_context(&cell_b, frp_context)
             );
         };
-        frp_context.insert_cell(
+        self.insert_cell(
             CellImpl {
                 id: new_cell_id,
                 free_observer_id: 0,
@@ -280,7 +274,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(new_cell_id);
     }
 
-    pub fn lift3_cell<A,B,C,D,CA,CB,CC,F,F2>(env: &mut ENV, with_frp_context: &F, f: F2, cell_a: &CA, cell_b: &CB, cell_c: &CC) -> Cell<ENV,D>
+    pub fn lift3_cell<A,B,C,D,CA,CB,CC,F>(&mut self, f: F, cell_a: &CA, cell_b: &CB, cell_c: &CC) -> Cell<ENV,D>
     where
     A:'static,
     B:'static,
@@ -289,32 +283,30 @@ impl<ENV: 'static> FrpContext<ENV> {
     CA:CellTrait<ENV,A>,
     CB:CellTrait<ENV,B>,
     CC:CellTrait<ENV,C>,
-    F:WithFrpContext<ENV>,
-    F2:Fn(&A,&B,&C)->D + 'static
+    F:Fn(&A,&B,&C)->D + 'static
     {
         let cell_a = Cell::of(cell_a.id().clone());
         let cell_b = Cell::of(cell_b.id().clone());
         let cell_c = Cell::of(cell_c.id().clone());
         let initial_value;
         {
-            let value_a = cell_current_value(&cell_a, env, with_frp_context);
-            let value_b = cell_current_value(&cell_b, env, with_frp_context);
-            let value_c = cell_current_value(&cell_c, env, with_frp_context);
+            let value_a = cell_current_value_via_context(&cell_a, self);
+            let value_b = cell_current_value_via_context(&cell_b, self);
+            let value_c = cell_current_value_via_context(&cell_c, self);
             initial_value =
                 f(
                     value_a, value_b, value_c
                 );
         }
-        let frp_context = with_frp_context.with_frp_context(env);
-        let new_cell_id = frp_context.free_cell_id;
-        frp_context.free_cell_id = frp_context.free_cell_id + 1;
-        if let Some(cell_a_impl) = frp_context.cell_map.get_mut(&cell_a.id) {
+        let new_cell_id = self.free_cell_id;
+        self.free_cell_id = self.free_cell_id + 1;
+        if let Some(cell_a_impl) = self.cell_map.get_mut(&cell_a.id) {
             cell_a_impl.dependent_cells.push(new_cell_id);
         }
-        if let Some(cell_b_impl) = frp_context.cell_map.get_mut(&cell_b.id) {
+        if let Some(cell_b_impl) = self.cell_map.get_mut(&cell_b.id) {
             cell_b_impl.dependent_cells.push(new_cell_id);
         }
-        if let Some(cell_c_impl) = frp_context.cell_map.get_mut(&cell_c.id) {
+        if let Some(cell_c_impl) = self.cell_map.get_mut(&cell_c.id) {
             cell_c_impl.dependent_cells.push(new_cell_id);
         }
         let update_fn = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, result: &mut D| {
@@ -325,7 +317,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                 cell_current_value_via_context(&cell_c, frp_context)
             )
         };
-        frp_context.insert_cell(
+        self.insert_cell(
             CellImpl {
                 id: new_cell_id,
                 free_observer_id: 0,
@@ -341,7 +333,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(new_cell_id);
     }
 
-    pub fn lift4_cell<A,B,C,D,E,CA,CB,CC,CD,F,F2>(env: &mut ENV, with_frp_context: &F, f: F2, cell_a: &CA, cell_b: &CB, cell_c: &CC, cell_d: &CD) -> Cell<ENV,E>
+    pub fn lift4_cell<A,B,C,D,E,CA,CB,CC,CD,F>(&mut self, f: F, cell_a: &CA, cell_b: &CB, cell_c: &CC, cell_d: &CD) -> Cell<ENV,E>
     where
     A:'static,
     B:'static,
@@ -352,8 +344,7 @@ impl<ENV: 'static> FrpContext<ENV> {
     CB: CellTrait<ENV,B>,
     CC: CellTrait<ENV,C>,
     CD: CellTrait<ENV,D>,
-    F:WithFrpContext<ENV>,
-    F2:Fn(&A,&B,&C,&D)->E + 'static
+    F:Fn(&A,&B,&C,&D)->E + 'static
     {
         let cell_a = Cell::of(cell_a.id().clone());
         let cell_b = Cell::of(cell_b.id().clone());
@@ -361,28 +352,27 @@ impl<ENV: 'static> FrpContext<ENV> {
         let cell_d = Cell::of(cell_d.id().clone());
         let initial_value;
         {
-            let value_a = cell_current_value(&cell_a, env, with_frp_context);
-            let value_b = cell_current_value(&cell_b, env, with_frp_context);
-            let value_c = cell_current_value(&cell_c, env, with_frp_context);
-            let value_d = cell_current_value(&cell_d, env, with_frp_context);
+            let value_a = cell_current_value_via_context(&cell_a, self);
+            let value_b = cell_current_value_via_context(&cell_b, self);
+            let value_c = cell_current_value_via_context(&cell_c, self);
+            let value_d = cell_current_value_via_context(&cell_d, self);
             initial_value =
                 f(
                     value_a, value_b, value_c, value_d
                 );
         }
-        let frp_context = with_frp_context.with_frp_context(env);
-        let new_cell_id = frp_context.free_cell_id;
-        frp_context.free_cell_id = frp_context.free_cell_id + 1;
-        if let Some(cell_a_impl) = frp_context.cell_map.get_mut(&cell_a.id) {
+        let new_cell_id = self.free_cell_id;
+        self.free_cell_id = self.free_cell_id + 1;
+        if let Some(cell_a_impl) = self.cell_map.get_mut(&cell_a.id) {
             cell_a_impl.dependent_cells.push(new_cell_id);
         }
-        if let Some(cell_b_impl) = frp_context.cell_map.get_mut(&cell_b.id) {
+        if let Some(cell_b_impl) = self.cell_map.get_mut(&cell_b.id) {
             cell_b_impl.dependent_cells.push(new_cell_id);
         }
-        if let Some(cell_c_impl) = frp_context.cell_map.get_mut(&cell_c.id) {
+        if let Some(cell_c_impl) = self.cell_map.get_mut(&cell_c.id) {
             cell_c_impl.dependent_cells.push(new_cell_id);
         }
-        if let Some(cell_d_impl) = frp_context.cell_map.get_mut(&cell_d.id) {
+        if let Some(cell_d_impl) = self.cell_map.get_mut(&cell_d.id) {
             cell_d_impl.dependent_cells.push(new_cell_id);
         }
         let update_fn = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, result: &mut E| {
@@ -394,7 +384,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                 cell_current_value_via_context(&cell_d, frp_context)
             );
         };
-        frp_context.insert_cell(
+        self.insert_cell(
             CellImpl {
                 id: new_cell_id,
                 free_observer_id: 0,
