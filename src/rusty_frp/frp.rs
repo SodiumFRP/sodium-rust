@@ -246,6 +246,36 @@ impl<ENV: 'static> FrpContext<ENV> {
         s
     }
 
+    pub fn merge<A,SA,F>(&mut self, sa1: &SA, sa2: &SA, f: F) -> Stream<ENV,A>
+    where
+    A: 'static + Clone, // <-- Clone is unfortunate here
+    SA: StreamTrait<ENV,A>,
+    F: Fn(&A,&A)->A + 'static
+    {
+        let c: Cell<ENV,Option<A>> = self.lift2_cell(
+            move |a1_op, a2_op| {
+                match a1_op {
+                    &Some(ref a1) => {
+                        match a2_op {
+                            &Some(ref a2) => Some(f(a1,a2)),
+                            &None => Some(a1.clone())
+                        }
+                    },
+                    &None => {
+                        match a2_op {
+                            &Some(ref a2) => Some(a2.clone()),
+                            &None => None
+                        }
+                    }
+                }
+            },
+            &sa1.as_cell(),
+            &sa2.as_cell()
+        );
+        let s: Stream<ENV,A> = Stream::of(c.id());
+        s
+    }
+
     pub fn lift2_cell<A,B,C,CA,CB,F>(&mut self, f: F, cell_a: &CA, cell_b: &CB) -> Cell<ENV,C>
     where
     A:'static,
