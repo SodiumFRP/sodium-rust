@@ -80,7 +80,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                         None => ()
                     }
                 };
-                cell.value = Box::new(initial_value) as Box<Any>;
+                cell.value = Value::AnotherCell(Cell::of(initial_value.id()));
                 cell.depends_on_cells.push(cell_thunk_cell_a.id());
                 cell.update_fn_op = Some(Box::new(update_fn));
             }
@@ -111,7 +111,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                     }
                 )),
                 child_cells: Vec::new(),
-                value: Box::new(initial_value) as Box<Option<A>>
+                value: Value::Direct(Box::new(initial_value) as Box<Option<A>>)
             }
         );
         StreamSink::of(cell_id)
@@ -134,7 +134,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                 depends_on_cells: Vec::new(),
                 reset_value_after_propergate_op: None,
                 child_cells: Vec::new(),
-                value: Box::new(value)
+                value: Value::Direct(Box::new(value))
             }
         );
         CellSink::of(cell_id)
@@ -205,7 +205,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                 depends_on_cells: vec!(cell.id.clone()),
                 reset_value_after_propergate_op: None,
                 child_cells: Vec::new(),
-                value: Box::new(initial_value)
+                value: Value::Direct(Box::new(initial_value))
             }
         );
         return Cell::of(new_cell_id);
@@ -258,7 +258,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                 depends_on_cells: vec!(cell_a.id.clone(), cell_b.id.clone()),
                 reset_value_after_propergate_op: None,
                 child_cells: Vec::new(),
-                value: Box::new(initial_value)
+                value: Value::Direct(Box::new(initial_value))
             }
         );
         return Cell::of(new_cell_id);
@@ -319,7 +319,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                 depends_on_cells: vec!(cell_a.id.clone(), cell_b.id.clone(), cell_c.id.clone()),
                 reset_value_after_propergate_op: None,
                 child_cells: Vec::new(),
-                value: Box::new(initial_value)
+                value: Value::Direct(Box::new(initial_value))
             }
         );
         return Cell::of(new_cell_id);
@@ -388,7 +388,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                 depends_on_cells: vec!(cell_a.id.clone(), cell_b.id.clone(), cell_c.id.clone(), cell_d.id.clone()),
                 reset_value_after_propergate_op: None,
                 child_cells: Vec::new(),
-                value: Box::new(initial_value)
+                value: Value::Direct(Box::new(initial_value))
             }
         );
         return Cell::of(new_cell_id);
@@ -522,7 +522,12 @@ impl<ENV: 'static> FrpContext<ENV> {
                 {
                     let frp_context = with_frp_context.with_frp_context(env);
                     if let Some(cell) = frp_context.cell_map.get_mut(cell_id) {
-                        value = cell.value.as_mut();
+                        match &mut cell.value {
+                            &mut Value::Direct(ref mut x) => {
+                                value = x.as_mut();
+                            },
+                            &mut Value::AnotherCell(_) => return
+                        }
                     } else {
                         return;
                     }
@@ -539,7 +544,12 @@ impl<ENV: 'static> FrpContext<ENV> {
                     unsafe {
                         let ref cell3: CellImpl<ENV,Any> = *cell2;
                         for observer in cell3.observer_map.values() {
-                            observer(env, cell3.value.as_ref());
+                            match &cell3.value {
+                                &Value::Direct(ref x) => {
+                                    observer(env, x.as_ref());
+                                },
+                                &Value::AnotherCell(_) => ()
+                            }
                         }
                     }
                 }
@@ -688,9 +698,17 @@ C: CellTrait<ENV,A>
     let result: *const A;
     match frp_context.cell_map.get(&cell.id()) {
         Some(cell) => {
-            match cell.value.as_ref().downcast_ref::<A>() {
-                Some(value) => result = value,
-                None => panic!("paniced on id: {}", cell.id)
+            match &cell.value {
+                &Value::Direct(ref x) => {
+                    match x.as_ref().downcast_ref::<A>() {
+                        Some(value) => result = value,
+                        None => panic!("paniced on id: {}", cell.id)
+                    }
+                },
+                &Value::AnotherCell(ref x) => {
+                    let cell2: Cell<ENV,A> = Cell::of(x.id.clone());
+                    result = cell_current_value_via_context(&cell2, frp_context);
+                }
             }
         },
         None => panic!("")
@@ -698,7 +716,7 @@ C: CellTrait<ENV,A>
     return unsafe { &*result };
 }
 
-pub struct Cell<ENV,A> {
+pub struct Cell<ENV,A:?Sized> {
     id: u32,
     env_phantom: PhantomData<ENV>,
     value_phantom: PhantomData<A>
@@ -718,7 +736,7 @@ impl<ENV:'static,A:'static> CellTrait<ENV,A> for Cell<ENV,A> {
     }
 }
 
-impl<ENV,A> Cell<ENV,A> {
+impl<ENV,A:?Sized> Cell<ENV,A> {
     fn of(id: u32) -> Cell<ENV,A> {
         Cell {
             id: id,
@@ -728,7 +746,7 @@ impl<ENV,A> Cell<ENV,A> {
     }
 }
 
-pub struct CellSink<ENV,A> {
+pub struct CellSink<ENV,A:?Sized> {
     id: u32,
     env_phantom: PhantomData<ENV>,
     value_phantom: PhantomData<A>
@@ -766,7 +784,7 @@ impl<ENV:'static,A:'static> CellSink<ENV,A> {
             move |env, with_frp_context| {
                 let frp_context = with_frp_context.with_frp_context(env);
                 if let Some(cell) = frp_context.cell_map.get_mut(&cell_id) {
-                    cell.value = Box::new(value) as Box<Any>;
+                    cell.value = Value::Direct(Box::new(value) as Box<Any>);
                 }
                 frp_context.mark_all_decendent_cells_for_update(cell_id, &mut HashSet::new());
             }
@@ -839,7 +857,12 @@ struct CellImpl<ENV,A:?Sized> {
     // When a cell gets freed, these child cells get freed also. It gets used in cell_switch(...).
     child_cells: Vec<u32>,
 
-    value: Box<A>
+    value: Value<ENV,A>
+}
+
+enum Value<ENV,A:?Sized> {
+    Direct(Box<A>),
+    AnotherCell(Cell<ENV,A>)
 }
 
 impl<ENV:'static,A:?Sized> CellImpl<ENV,A> {
@@ -891,6 +914,13 @@ impl<ENV:'static,A:?Sized> CellImpl<ENV,A> {
                 reset_value_after_propergate_op = None;
             }
         }
+        let value = match self.value {
+            Value::Direct(x) => Value::Direct(x as Box<Any>),
+            Value::AnotherCell(x) => {
+                let cell: Cell<ENV,Any> = Cell::of(x.id);
+                Value::AnotherCell(cell)
+            }
+        };
         CellImpl {
             id: self.id,
             free_observer_id: self.free_observer_id,
@@ -900,7 +930,7 @@ impl<ENV:'static,A:?Sized> CellImpl<ENV,A> {
             depends_on_cells: self.depends_on_cells,
             reset_value_after_propergate_op: reset_value_after_propergate_op,
             child_cells: self.child_cells,
-            value: self.value as Box<Any>
+            value: value
         }
     }
 }
