@@ -69,15 +69,31 @@ impl<ENV: 'static> FrpContext<ENV> {
                 cell.dependent_cells.push(ca.id());
             }
             if let Some(cell) = frp_context.cell_map.get_mut(&ca.id) {
+                let ca2: Cell<ENV,Cell<ENV,A>> = Cell::of(ca.id());
                 let cell_thunk_cell_a2 = Cell::of(cell_thunk_cell_a.id());
                 let update_fn = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, result: &mut Any| {
                     let thunk: &Box<Fn(&mut ENV,&WithFrpContext<ENV>)->Cell<ENV,A>> = cell_current_value(&cell_thunk_cell_a2, env, with_frp_context);
-                    // TODO: Free previous child graph here
-                    match result.downcast_mut::<Cell<ENV,A>>() {
-                        Some(result2) => {
-                            *result2 = thunk(env, with_frp_context);
-                        },
-                        None => ()
+                    let value = thunk(env, with_frp_context);
+                    {
+                        let mut old_cell_id_op: Option<u32> = None;
+                        let frp_context = with_frp_context.with_frp_context(env);
+                        if let Some(cell) = frp_context.cell_map.get(&ca2.id) {
+                            old_cell_id_op = match &cell.value {
+                                &Value::Direct(_) => None,
+                                &Value::AnotherCell(ref x) => Some(x.id.clone())
+                            };
+                        }
+                        match old_cell_id_op {
+                            Some(old_cell_id) => {
+                                frp_context.free_cell(&old_cell_id);
+                            },
+                            None => ()
+                        }
+                    }
+                    let frp_context = with_frp_context.with_frp_context(env);
+                    if let Some(cell) = frp_context.cell_map.get_mut(&ca2.id) {
+                        let cell2: Cell<ENV,Any> = Cell::of(value.id());
+                        cell.value = Value::AnotherCell(cell2);
                     }
                 };
                 cell.value = Value::AnotherCell(Cell::of(initial_value.id()));
