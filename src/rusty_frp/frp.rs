@@ -35,6 +35,11 @@ impl<ENV: 'static> FrpContext<ENV> {
         }
     }
 
+    pub fn never<A: 'static>(&mut self) -> Stream<ENV,A> {
+        let ss: StreamSink<ENV,A> = self.new_stream_sink();
+        Stream::of(ss.id)
+    }
+
     pub fn cell_loop<A,F,F2>(env: &mut ENV, with_frp_context: &F, time0_value: A, k:F2) -> Cell<ENV,A>
     where
     A:'static,
