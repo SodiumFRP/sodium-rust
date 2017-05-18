@@ -248,7 +248,7 @@ impl<ENV: 'static> FrpContext<ENV> {
 
     pub fn merge<A,SA,F>(&mut self, sa1: &SA, sa2: &SA, f: F) -> Stream<ENV,A>
     where
-    A: 'static + Clone, // <-- Clone is unfortunate here
+    A: 'static + Clone, // <-- Clone is unfortunate here (But can be avoided using Value::AnotherCell trick)
     SA: StreamTrait<ENV,A>,
     F: Fn(&A,&A)->A + 'static
     {
@@ -274,6 +274,29 @@ impl<ENV: 'static> FrpContext<ENV> {
         );
         let s: Stream<ENV,A> = Stream::of(c.id());
         s
+    }
+
+    pub fn filter<A,SA,F>(&mut self, f: F, sa: &SA) -> Stream<ENV,A>
+    where
+    A: 'static + Clone,
+    SA: StreamTrait<ENV,A>,
+    F: Fn(&A)->bool + 'static
+    {
+        self.map_cell(
+            &sa.as_cell(),
+            move |a_op| {
+                match a_op {
+                    &Some(ref a) => {
+                        if f(a) {
+                            Some(a.clone())
+                        } else {
+                            None
+                        }
+                    },
+                    &None => None
+                }
+            }
+        ).as_stream()
     }
 
     pub fn lift2_cell<A,B,C,CA,CB,F>(&mut self, f: F, cell_a: &CA, cell_b: &CB) -> Cell<ENV,C>
@@ -792,6 +815,12 @@ impl<ENV:'static,A:'static> Copy for Cell<ENV,A> {}
 impl<ENV:'static,A:'static> CellTrait<ENV,A> for Cell<ENV,A> {
     fn id(&self) -> u32 {
         self.id
+    }
+}
+
+impl<ENV:'static,A:'static> Cell<ENV,Option<A>> {
+    fn as_stream(&self) -> Stream<ENV,A> {
+        Stream::of(self.id)
     }
 }
 
