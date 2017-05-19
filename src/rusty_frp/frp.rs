@@ -88,21 +88,25 @@ impl<ENV: 'static> FrpContext<ENV> {
                 let cell_thunk_cell_a2 = Cell::of(cell_thunk_cell_a.id());
                 let update_fn = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, result: &mut Any| {
                     let thunk: &Box<Fn(&mut ENV,&WithFrpContext<ENV>)->Cell<ENV,A>> = cell_current_value(&cell_thunk_cell_a2, env, with_frp_context);
+                    {
+                        let frp_context = with_frp_context.with_frp_context(env);
+                        frp_context.inside_cell_switch_id_op = Some(ca2.id.clone());
+                    }
                     let value = thunk(env, with_frp_context);
                     {
-                        let mut old_cell_id_op: Option<u32> = None;
                         let frp_context = with_frp_context.with_frp_context(env);
+                        frp_context.inside_cell_switch_id_op = None;
+                    }
+                    {
+                        let frp_context = with_frp_context.with_frp_context(env);
+                        let mut child_cells: Vec<u32> = Vec::new();
                         if let Some(cell) = frp_context.cell_map.get(&ca2.id) {
-                            old_cell_id_op = match &cell.value {
-                                &Value::Direct(_) => None,
-                                &Value::AnotherCell(ref x) => Some(x.id.clone())
-                            };
+                            for child_cell in &cell.child_cells {
+                                child_cells.push(child_cell.clone());
+                            }
                         }
-                        match old_cell_id_op {
-                            Some(old_cell_id) => {
-                                frp_context.free_cell(&old_cell_id);
-                            },
-                            None => ()
+                        for child_cell in child_cells {
+                            frp_context.free_cell(&child_cell);
                         }
                     }
                     let frp_context = with_frp_context.with_frp_context(env);
