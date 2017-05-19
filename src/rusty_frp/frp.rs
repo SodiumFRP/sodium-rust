@@ -45,22 +45,37 @@ impl<ENV: 'static> FrpContext<ENV> {
         Cell::of(cs.id)
     }
 
-    pub fn loop_c<A,F,F2>(env: &mut ENV, with_frp_context: &F, time0_value: A, k:F2) -> Cell<ENV,A>
+    pub fn hold<A,SA>(&mut self, a: A, sa: &SA) -> Cell<ENV,A>
+    where
+    A:'static + Clone,
+    SA:StreamTrait<ENV,A>
+    {
+        let sa2 = Stream::of(sa.id());
+        self.loop_c(
+            a,
+            move |frp_context, ca| {
+                frp_context.lift2_c(
+                    |old_a: &A, new_a_op: &Option<A>| {
+                        match new_a_op {
+                            &Some(ref new_a) => new_a.clone(),
+                            &None => old_a.clone()
+                        }
+                    },
+                    ca,
+                    &sa2.as_cell()
+                )
+            }
+        )
+    }
+
+    pub fn loop_c<A,F>(&mut self, time0_value: A, k:F) -> Cell<ENV,A>
     where
     A:'static,
-    F:WithFrpContext<ENV>,
-    F2:Fn(&mut ENV,&F,&Cell<ENV,A>)->Cell<ENV,A>
+    F:Fn(&mut FrpContext<ENV>,&Cell<ENV,A>)->Cell<ENV,A>
     {
-        let cell;
-        {
-            let frp_context = with_frp_context.with_frp_context(env);
-            cell = frp_context.new_cell_sink(time0_value);
-        }
-        let cell2 = k(env,with_frp_context,&Cell::of(cell.id));
-        {
-            let frp_context = with_frp_context.with_frp_context(env);
-            frp_context.cell_loop_map.insert(cell.id, cell2.id);
-        }
+        let cell = self.new_cell_sink(time0_value);
+        let cell2 = k(self,&Cell::of(cell.id));
+        self.cell_loop_map.insert(cell.id, cell2.id);
         return Cell::of(cell2.id);
     }
 

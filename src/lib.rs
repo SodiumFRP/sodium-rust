@@ -127,12 +127,10 @@ mod tests {
         let cs_pulse: CellSink<Env,Option<()>> = env.frp_context.new_cell_sink(None);
         let c_pulse = cs_pulse.clone();
         let c: Cell<Env,u32> =
-            FrpContext::loop_c(
-                &mut env,
-                &with_frp_context,
+            env.frp_context.loop_c(
                 0u32,
-                move |env, with_frp_context, c| {
-                    env.frp_context.lift2_c(
+                move |frp_context, c| {
+                    frp_context.lift2_c(
                         |a: &u32, pulse| {
                             match pulse {
                                 &Some(_) => a.clone() + 1,
