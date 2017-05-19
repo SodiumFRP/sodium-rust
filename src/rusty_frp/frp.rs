@@ -350,6 +350,20 @@ impl<ENV: 'static> FrpContext<ENV> {
         ).as_stream()
     }
 
+    pub fn apply<A,B,CAB,CA>(&mut self, cab: &CAB, ca: &CA) -> Cell<ENV,B>
+    where
+    A:'static,
+    B:'static,
+    CAB:CellTrait<ENV,Box<Fn(&A)->B + 'static>>,
+    CA:CellTrait<ENV,A>
+    {
+        self.lift2_c(
+            |ab, a| { ab(a) },
+            cab,
+            ca
+        )
+    }
+
     pub fn lift2_c<A,B,C,CA,CB,F>(&mut self, f: F, cell_a: &CA, cell_b: &CB) -> Cell<ENV,C>
     where
     A:'static,
