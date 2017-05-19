@@ -67,7 +67,7 @@ impl<ENV: 'static> FrpContext<ENV> {
     fn cell_switch<F,A,CCA>(&mut self, cell_thunk_cell_a: &CCA) -> Cell<ENV,A>
     where
     A:'static,
-    CCA:CellTrait<ENV,Box<Fn(&FrpContext<ENV>)->Cell<ENV,A>>>
+    CCA:CellTrait<ENV,Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,A>>>
     {
         let initial_value_thunk = cell_current_value_via_context(cell_thunk_cell_a, self);
         let ca: CellSink<ENV,Cell<ENV,A>>;
