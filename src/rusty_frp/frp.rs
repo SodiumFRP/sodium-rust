@@ -64,35 +64,33 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(cell2.id);
     }
 
-    fn cell_switch<F,A,CCA>(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, cell_thunk_cell_a: &CCA) -> Cell<ENV,A>
+    fn cell_switch<F,A,CCA>(&mut self, cell_thunk_cell_a: &CCA) -> Cell<ENV,A>
     where
     A:'static,
-    CCA:CellTrait<ENV,Box<Fn(&mut ENV,&WithFrpContext<ENV>)->Cell<ENV,A>>>
+    CCA:CellTrait<ENV,Box<Fn(&FrpContext<ENV>)->Cell<ENV,A>>>
     {
-        let initial_value_thunk = cell_current_value(cell_thunk_cell_a, env, with_frp_context);
+        let initial_value_thunk = cell_current_value_via_context(cell_thunk_cell_a, self);
         let ca: CellSink<ENV,Cell<ENV,A>>;
         {
-            let frp_context = with_frp_context.with_frp_context(env);
-            ca = frp_context.new_cell_sink(Cell::of(0));
-            frp_context.inside_cell_switch_id_op = Some(ca.id.clone());
+            ca = self.new_cell_sink(Cell::of(0));
+            self.inside_cell_switch_id_op = Some(ca.id.clone());
         }
-        let initial_value = initial_value_thunk(env, with_frp_context);
+        let initial_value = initial_value_thunk(self);
         {
-            let frp_context = with_frp_context.with_frp_context(env);
-            frp_context.inside_cell_switch_id_op = None;
-            if let Some(cell) = frp_context.cell_map.get_mut(&cell_thunk_cell_a.id()) {
+            self.inside_cell_switch_id_op = None;
+            if let Some(cell) = self.cell_map.get_mut(&cell_thunk_cell_a.id()) {
                 cell.dependent_cells.push(ca.id());
             }
-            if let Some(cell) = frp_context.cell_map.get_mut(&ca.id) {
+            if let Some(cell) = self.cell_map.get_mut(&ca.id) {
                 let ca2: Cell<ENV,Cell<ENV,A>> = Cell::of(ca.id());
                 let cell_thunk_cell_a2 = Cell::of(cell_thunk_cell_a.id());
                 let update_fn = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, result: &mut Any| {
-                    let thunk: &Box<Fn(&mut ENV,&WithFrpContext<ENV>)->Cell<ENV,A>> = cell_current_value(&cell_thunk_cell_a2, env, with_frp_context);
+                    let thunk: &Box<Fn(&FrpContext<ENV>)->Cell<ENV,A>> = cell_current_value(&cell_thunk_cell_a2, env, with_frp_context);
                     {
                         let frp_context = with_frp_context.with_frp_context(env);
                         frp_context.inside_cell_switch_id_op = Some(ca2.id.clone());
                     }
-                    let value = thunk(env, with_frp_context);
+                    let value = thunk(with_frp_context.with_frp_context(env));
                     {
                         let frp_context = with_frp_context.with_frp_context(env);
                         frp_context.inside_cell_switch_id_op = None;
@@ -110,6 +108,26 @@ impl<ENV: 'static> FrpContext<ENV> {
                         }
                     }
                     let frp_context = with_frp_context.with_frp_context(env);
+                    let mut inner_c_old_op: Option<u32> = None;
+                    if let Some(cell) = frp_context.cell_map.get_mut(&ca2.id) {
+                        match &cell.value {
+                            &Value::Direct(_) => (),
+                            &Value::AnotherCell(ref inner_c_old) => {
+                                inner_c_old_op = Some(inner_c_old.id.clone());
+                            }
+                        }
+                    }
+                    match inner_c_old_op {
+                        Some(inner_c_old) => {
+                            if let Some(cell) = frp_context.cell_map.get_mut(&inner_c_old) {
+                                cell.dependent_cells.retain(|c| { c.clone() != ca2.id.clone() });
+                            }
+                        },
+                        None => ()
+                    }
+                    if let Some(cell) = frp_context.cell_map.get_mut(&value.id()) {
+                        cell.dependent_cells.push(ca2.id());
+                    }
                     if let Some(cell) = frp_context.cell_map.get_mut(&ca2.id) {
                         let cell2: Cell<ENV,Any> = Cell::of(value.id());
                         cell.value = Value::AnotherCell(cell2);
