@@ -199,6 +199,19 @@ impl<ENV: 'static> FrpContext<ENV> {
         return sa;
     }
 
+    pub fn updates<A,CA>(&mut self, ca: &CA) -> Stream<ENV,A>
+    where
+    A:'static + Clone,
+    CA:CellTrait<ENV,A>
+    {
+        let sa = self.value(ca);
+        if let Some(cell) = self.cell_map.get_mut(&sa.id) {
+            let none: Option<A> = None;
+            cell.value = Value::Direct(Box::new(none) as Box<Any>);
+        }
+        return sa;
+    }
+
     pub fn new_stream_sink<A>(&mut self) -> StreamSink<ENV,A>
     where
     A:'static
