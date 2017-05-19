@@ -175,6 +175,30 @@ impl<ENV: 'static> FrpContext<ENV> {
         Cell::of(ca.id())
     }
 
+    pub fn updates<A,CA>(&mut self, ca: &CA) -> Stream<ENV,A>
+    where
+    A:'static + Clone,
+    CA:CellTrait<ENV,A>
+    {
+        let sa = self.map_c(
+            ca,
+            |a| { Some(a.clone()) }
+        ).as_stream();
+        if let Some(cell) = self.cell_map.get_mut(&sa.id) {
+            cell.reset_value_after_propergate_op = Some(Box::new(
+                |a| {
+                    match a.downcast_mut::<Option<A>>() {
+                        Some(a2) => {
+                            *a2 = None;
+                        },
+                        None => ()
+                    }
+                }
+            ));
+        }
+        return sa;
+    }
+
     pub fn new_stream_sink<A>(&mut self) -> StreamSink<ENV,A>
     where
     A:'static
