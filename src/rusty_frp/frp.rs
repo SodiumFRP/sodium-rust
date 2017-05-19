@@ -45,7 +45,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         Cell::of(cs.id)
     }
 
-    pub fn cell_loop<A,F,F2>(env: &mut ENV, with_frp_context: &F, time0_value: A, k:F2) -> Cell<ENV,A>
+    pub fn loop_c<A,F,F2>(env: &mut ENV, with_frp_context: &F, time0_value: A, k:F2) -> Cell<ENV,A>
     where
     A:'static,
     F:WithFrpContext<ENV>,
@@ -64,7 +64,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(cell2.id);
     }
 
-    fn cell_switch<F,A,CCA>(&mut self, cell_thunk_cell_a: &CCA) -> Cell<ENV,A>
+    pub fn switch_c<F,A,CCA>(&mut self, cell_thunk_cell_a: &CCA) -> Cell<ENV,A>
     where
     A:'static,
     CCA:CellTrait<ENV,Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,A>>>
@@ -190,7 +190,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         CellSink::of(cell_id)
     }
 
-    pub fn map_stream<A,B,SA,F>(&mut self, sa: &SA, f: F) -> Stream<ENV,B>
+    pub fn map_s<A,B,SA,F>(&mut self, sa: &SA, f: F) -> Stream<ENV,B>
     where
     A:'static,
     B:Any + 'static,
@@ -198,7 +198,7 @@ impl<ENV: 'static> FrpContext<ENV> {
     F:Fn(&A)->B + 'static
     {
         let f2 = Box::new(f);
-        let c = self.map_cell(
+        let c = self.map_c(
             &sa.as_cell(),
             move |a| {
                 match a {
@@ -221,7 +221,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         Stream::of(cell_id)
     }
 
-    pub fn map_cell<A,B,CA,F>(&mut self, cell: &CA, f: F) -> Cell<ENV,B>
+    pub fn map_c<A,B,CA,F>(&mut self, cell: &CA, f: F) -> Cell<ENV,B>
     where
     A:'static,
     B:Any + 'static,
@@ -264,7 +264,7 @@ impl<ENV: 'static> FrpContext<ENV> {
     SA: StreamTrait<ENV,A>,
     CB: CellTrait<ENV,B>
     {
-        let c: Cell<ENV,Option<C>> = self.lift2_cell(
+        let c: Cell<ENV,Option<C>> = self.lift2_c(
             move |a_op, b| {
                 match a_op {
                     &Some(ref a) => Some(f(a,b)),
@@ -284,7 +284,7 @@ impl<ENV: 'static> FrpContext<ENV> {
     SA: StreamTrait<ENV,A>,
     F: Fn(&A,&A)->A + 'static
     {
-        let c: Cell<ENV,Option<A>> = self.lift2_cell(
+        let c: Cell<ENV,Option<A>> = self.lift2_c(
             move |a1_op, a2_op| {
                 match a1_op {
                     &Some(ref a1) => {
@@ -314,7 +314,7 @@ impl<ENV: 'static> FrpContext<ENV> {
     SA: StreamTrait<ENV,A>,
     F: Fn(&A)->bool + 'static
     {
-        self.map_cell(
+        self.map_c(
             &sa.as_cell(),
             move |a_op| {
                 match a_op {
@@ -331,7 +331,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         ).as_stream()
     }
 
-    pub fn lift2_cell<A,B,C,CA,CB,F>(&mut self, f: F, cell_a: &CA, cell_b: &CB) -> Cell<ENV,C>
+    pub fn lift2_c<A,B,C,CA,CB,F>(&mut self, f: F, cell_a: &CA, cell_b: &CB) -> Cell<ENV,C>
     where
     A:'static,
     B:'static,
@@ -382,7 +382,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(new_cell_id);
     }
 
-    pub fn lift3_cell<A,B,C,D,CA,CB,CC,F>(&mut self, f: F, cell_a: &CA, cell_b: &CB, cell_c: &CC) -> Cell<ENV,D>
+    pub fn lift3_c<A,B,C,D,CA,CB,CC,F>(&mut self, f: F, cell_a: &CA, cell_b: &CB, cell_c: &CC) -> Cell<ENV,D>
     where
     A:'static,
     B:'static,
@@ -441,7 +441,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(new_cell_id);
     }
 
-    pub fn lift4_cell<A,B,C,D,E,CA,CB,CC,CD,F>(&mut self, f: F, cell_a: &CA, cell_b: &CB, cell_c: &CC, cell_d: &CD) -> Cell<ENV,E>
+    pub fn lift4_c<A,B,C,D,E,CA,CB,CC,CD,F>(&mut self, f: F, cell_a: &CA, cell_b: &CB, cell_c: &CC, cell_d: &CD) -> Cell<ENV,E>
     where
     A:'static,
     B:'static,

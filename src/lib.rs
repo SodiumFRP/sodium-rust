@@ -55,7 +55,7 @@ mod tests {
         }
         let with_frp_context = WithFrpContextForEnv {};
         let cs1 = env.frp_context.new_cell_sink(1u32);
-        let c2 = env.frp_context.map_cell(&cs1, |value| { value + 1 });
+        let c2 = env.frp_context.map_c(&cs1, |value| { value + 1 });
         c2.observe(&mut env, &with_frp_context, |_, value| { println!("c2 = {}", value); });
         cs1.change_value(&mut env, &with_frp_context, 2);
         cs1.change_value(&mut env, &with_frp_context, 3);
@@ -76,7 +76,7 @@ mod tests {
         }
         let with_frp_context = WithFrpContextForEnv {};
         let ss1 = env.frp_context.new_stream_sink();
-        let s2 = env.frp_context.map_stream(&ss1, |value| { value + 1 });
+        let s2 = env.frp_context.map_s(&ss1, |value| { value + 1 });
         s2.observe(&mut env, &with_frp_context, |_, value| { println!("c2 = {}", value); });
         ss1.send(&mut env, &with_frp_context, 2);
         ss1.send(&mut env, &with_frp_context, 3);
@@ -99,7 +99,7 @@ mod tests {
         let cs1 = env.frp_context.new_cell_sink(1u32);
         let cs2 = env.frp_context.new_cell_sink(1u32);
         let c3 =
-            env.frp_context.lift2_cell(
+            env.frp_context.lift2_c(
                 |a, b| a + b,
                 &cs1,
                 &cs2
@@ -127,12 +127,12 @@ mod tests {
         let cs_pulse: CellSink<Env,Option<()>> = env.frp_context.new_cell_sink(None);
         let c_pulse = cs_pulse.clone();
         let c: Cell<Env,u32> =
-            FrpContext::cell_loop(
+            FrpContext::loop_c(
                 &mut env,
                 &with_frp_context,
                 0u32,
                 move |env, with_frp_context, c| {
-                    env.frp_context.lift2_cell(
+                    env.frp_context.lift2_c(
                         |a: &u32, pulse| {
                             match pulse {
                                 &Some(_) => a.clone() + 1,
