@@ -175,7 +175,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         Cell::of(ca.id())
     }
 
-    pub fn updates<A,CA>(&mut self, ca: &CA) -> Stream<ENV,A>
+    pub fn value<A,CA>(&mut self, ca: &CA) -> Stream<ENV,A>
     where
     A:'static + Clone,
     CA:CellTrait<ENV,A>
