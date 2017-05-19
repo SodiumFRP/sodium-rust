@@ -64,7 +64,26 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(cell2.id);
     }
 
-    pub fn switch_c<F,A,CCA>(&mut self, cell_thunk_cell_a: &CCA) -> Cell<ENV,A>
+    pub fn switch_s<F,A,CSA>(&mut self, cell_thunk_stream_a: &CSA) -> Stream<ENV,A>
+    where
+    A:'static,
+    F:Fn(&mut FrpContext<ENV>)->Stream<ENV,A> + 'static + Clone,
+    CSA:CellTrait<ENV,Box<F>>
+    {
+        let cell_thunk_cell_a: Cell<ENV,Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,Option<A>> + 'static>> = self.map_c(
+            cell_thunk_stream_a,
+            |k| {
+                let k3 = k.clone();
+                let k2: Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,Option<A>> + 'static> = Box::new(move |frp_context| {
+                    k3(frp_context).as_cell()
+                });
+                k2
+            }
+        );
+        self.switch_c(&cell_thunk_cell_a).as_stream()
+    }
+
+    pub fn switch_c<A,CCA>(&mut self, cell_thunk_cell_a: &CCA) -> Cell<ENV,A>
     where
     A:'static,
     CCA:CellTrait<ENV,Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,A>>>
