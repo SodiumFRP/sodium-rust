@@ -366,7 +366,7 @@ test("coalesce", () => {
         s.send(&mut env, &with_frp_context, 9);
         assert_eq!(vec![2, 9], env.out);
     }
-    
+
 /*
 test("filterNotNull", () => {
     const s = new StreamSink<string>(),
@@ -491,7 +491,37 @@ test("hold", () => {
     kill();
     assertEquals([2, 9], out);
 });
+*/
 
+    #[test]
+    fn snapshot() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<String>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let c: CellSink<Env,u32> = env.frp_context.new_cell_sink(0);
+        let s: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
+        let s2 = env.frp_context.snapshot(|x, y| format!("{} {}", x, y), &s, &c);
+        s2.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
+        s.send(&mut env, &with_frp_context, 100);
+        c.change_value(&mut env, &with_frp_context, 2);
+        s.send(&mut env, &with_frp_context, 200);
+        c.change_value(&mut env, &with_frp_context, 9);
+        c.change_value(&mut env, &with_frp_context, 1);
+        s.send(&mut env, &with_frp_context, 300);
+        assert_eq!(vec![String::from("100 0"), String::from("200 2"), String::from("300 1")], env.out);
+    }
+
+/*
 test("snapshot", () => {
     const c = new CellSink<number>(0),
         s = new StreamSink<number>(),
@@ -507,7 +537,9 @@ test("snapshot", () => {
     kill();
     assertEquals(["100 0", "200 2", "300 1"], out);
 });
+*/
 
+/*
 test("values", () => {
     const c = new CellSink<number>(9),
         out : number[] = [],
