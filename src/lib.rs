@@ -341,19 +341,33 @@ test("coalesce", () => {
     kill();
     assertEquals([2, 48], out);
 });
+*/
 
-test("filter", () => {
-    const s = new StreamSink<number>(),
-        out : number[] = [],
-        kill = s.filter(a => a < 10)
-                .listen(a => out.push(a));
-    s.send(2);
-    s.send(16);
-    s.send(9);
-    kill();
-    assertEquals([2, 9], out);
-});
-
+    #[test]
+    fn filter() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<u32>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let s: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
+        let s2 = env.frp_context.filter(|a| a.clone() < 10, &s);
+        s2.observe(&mut env, &with_frp_context, |env, value| env.out.push(value.clone()));
+        s.send(&mut env, &with_frp_context, 2);
+        s.send(&mut env, &with_frp_context, 16);
+        s.send(&mut env, &with_frp_context, 9);
+        assert_eq!(vec![2, 9], env.out);
+    }
+    
+/*
 test("filterNotNull", () => {
     const s = new StreamSink<string>(),
         out : string[] = [],
