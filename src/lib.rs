@@ -264,20 +264,34 @@ test("mapTo", () => {
     kill();
     assertEquals(["fusebox", "fusebox"], out);
 });
+*/
 
-test("mergeNonSimultaneous", () => {
-    const s1 = new StreamSink<number>(),
-        s2 = new StreamSink<number>(),
-        out : number[] = [];
-    const kill = s2.orElse(s1)
-                 .listen(a => out.push(a));
-    s1.send(7);
-    s2.send(9);
-    s1.send(8);
-    kill();
-    assertEquals([7,9,8], out);
-});
+    #[test]
+    fn merge_non_simultaneous() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<u32>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let s1: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
+        let s2: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
+        let s3 = env.frp_context.or_else(&s2, &s1);
+        s3.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
+        s1.send(&mut env, &with_frp_context, 7);
+        s2.send(&mut env, &with_frp_context, 9);
+        s1.send(&mut env, &with_frp_context, 8);
+        assert_eq!(vec!(7,9,8), env.out);
+    }
 
+/*
 test("mergeSimultaneous", () => {
     const s1 = new StreamSink<number>((l : number, r : number) => { return r; }),
         s2 = new StreamSink<number>((l : number, r : number) => { return r; }),
