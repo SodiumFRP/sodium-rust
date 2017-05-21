@@ -664,7 +664,14 @@ impl<ENV: 'static> FrpContext<ENV> {
                 if let Some(cell) = frp_context.cell_map.get_mut(&cell_to_be_updated) {
                     match &cell.reset_value_after_propergate_op {
                         &Some(ref reset_value_after_propergate) => {
-                            reset_value_after_propergate(&mut cell.value);
+                            match &mut cell.value {
+                                &mut Value::Direct(ref mut v) => {
+                                    let v2 = v.as_mut();
+                                    let v3: *mut Any = v2;
+                                    reset_value_after_propergate(unsafe { &mut *v3 });
+                                }
+                                &mut Value::AnotherCell(_) => ()
+                            }
                         },
                         &None => ()
                     }
@@ -1118,7 +1125,9 @@ impl<ENV:'static,A:?Sized> CellImpl<ENV,A> {
                            Some(a2) => {
                                reset_value_after_propergate(a2);
                            },
-                           None => ()
+                           None => {
+                               println!("reset failed");
+                           }
                        };
                    })
                 );
