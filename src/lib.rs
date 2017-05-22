@@ -473,22 +473,6 @@ test("loopStream", () => {
     }
 
 /*
-test("gate", () => {
-    const s = new StreamSink<string>(),
-        pred = new CellSink<boolean>(true),
-        out : string[] = [],
-        kill = s.gate(pred).listen(a => out.push(a));
-    s.send("H");
-    pred.send(false);
-    s.send('O');
-    pred.send(true);
-    s.send('I');
-    kill();
-    assertEquals(["H", "I"], out);
-});
-*/
-
-/*
 test("collect", () => {
     const ea = new StreamSink<number>(),
         out : number[] = [],
