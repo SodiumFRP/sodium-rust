@@ -354,7 +354,7 @@ impl<ENV: 'static> FrpContext<ENV> {
     A: 'static + Clone, // <-- Clone is unfortunate here (But can be avoided using Value::AnotherCell trick)
     SA: StreamTrait<ENV,A>
     {
-        self.merge(sa1, sa2, |a1, a2| a2.clone())
+        self.merge(sa1, sa2, |a1, a2| a1.clone())
     }
 
     pub fn merge<A,SA,F>(&mut self, sa1: &SA, sa2: &SA, f: F) -> Stream<ENV,A>
