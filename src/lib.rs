@@ -398,33 +398,33 @@ test("coalesce", () => {
         assert_eq!(vec![2, 9], env.out);
     }
 
+    #[test]
+    fn merge2() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<u32>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let sa: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
+        let sb_1 = env.frp_context.map_s(&sa, |x| x.clone() / 10);
+        let sb = env.frp_context.filter(|x| x.clone() != 0, &sb_1);
+        let sc_1 = env.frp_context.map_s(&sa, |x| x.clone() % 10);
+        let sc = env.frp_context.merge(&sc_1, &sb, |x, y| x.clone() + y.clone());
+        sc.observe(&mut env, &with_frp_context, |env, value| env.out.push(value.clone()));
+        sa.send(&mut env, &with_frp_context, 2);
+        sa.send(&mut env, &with_frp_context, 52);
+        assert_eq!(vec![2, 7], env.out);
+    }
+
 /*
-test("filterNotNull", () => {
-    const s = new StreamSink<string>(),
-        out : string[] = [],
-        kill = s.filterNotNull()
-                .listen(a => out.push(a));
-    s.send("tomato");
-    s.send(null);
-    s.send("peach");
-    kill();
-    assertEquals(["tomato", "peach"], out);
-});
-
-test("merge2", () => {
-    const sa = new StreamSink<number>(),
-        sb = sa.map(x => Math.floor(x / 10))
-                   .filter(x => x != 0),
-        sc = sa.map(x => x % 10).merge(sb,
-            (x,y) => x+y),
-        out : number[] = [],
-        kill = sc.listen(a => out.push(a));
-    sa.send(2);
-    sa.send(52);
-    kill();
-    assertEquals([2, 7], out);
-});
-
 test("loopStream", () => {
     const sa = new StreamSink<number>(),
         sc = Transaction.run(() => {
@@ -566,24 +566,6 @@ test("hold", () => {
         s.send(&mut env, &with_frp_context, 300);
         assert_eq!(vec![String::from("100 0"), String::from("200 2"), String::from("300 1")], env.out);
     }
-
-/*
-test("snapshot", () => {
-    const c = new CellSink<number>(0),
-        s = new StreamSink<number>(),
-        out : string[] = [],
-        kill = s.snapshot(c, (x, y) => x + " " + y)
-                .listen(a => out.push(a));
-    s.send(100);
-    c.send(2);
-    s.send(200);
-    c.send(9);
-    c.send(1);
-    s.send(300);
-    kill();
-    assertEquals(["100 0", "200 2", "300 1"], out);
-});
-*/
 
 /*
 test("values", () => {
