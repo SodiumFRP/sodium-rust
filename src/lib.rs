@@ -358,41 +358,6 @@ test("mapTo", () => {
         assert_eq!(vec![60,9,90,90,90], env.out);
     }
 /*
-test("mergeSimultaneous", () => {
-    const s1 = new StreamSink<number>((l : number, r : number) => { return r; }),
-        s2 = new StreamSink<number>((l : number, r : number) => { return r; }),
-        out : number[] = [],
-        kill = s2.orElse(s1)
-                 .listen(a => out.push(a));
-    Transaction.run<void>(() => {
-        s1.send(7);
-        s2.send(60);
-    });
-    Transaction.run<void>(() => {
-            s1.send(9);
-        });
-    Transaction.run<void>(() => {
-        s1.send(7);
-        s1.send(60);
-        s2.send(8);
-        s2.send(90);
-    });
-    Transaction.run<void>(() => {
-        s2.send(8);
-        s2.send(90);
-        s1.send(7);
-        s1.send(60);
-    });
-    Transaction.run<void>(() => {
-        s2.send(8);
-        s1.send(7);
-        s2.send(90);
-        s1.send(60);
-    });
-    kill();
-    assertEquals([60,9,90,90,90], out);
-});
-
 test("coalesce", () => {
     const s = new StreamSink<number>((a, b) => a+b),
         out : number[] = [],
