@@ -443,7 +443,36 @@ test("loopStream", () => {
     kill();
     assertEquals([2, 7], out);
 });
+*/
 
+    #[test]
+    fn gate() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<String>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let s: StreamSink<Env,String> = env.frp_context.new_stream_sink();
+        let pred = env.frp_context.new_cell_sink(true);
+        let s2 = env.frp_context.gate(&s, &pred);
+        s2.observe(&mut env, &with_frp_context, |env, value| env.out.push(value.clone()));
+        s.send(&mut env, &with_frp_context, String::from("H"));
+        pred.change_value(&mut env, &with_frp_context, false);
+        s.send(&mut env, &with_frp_context, String::from("O"));
+        pred.change_value(&mut env, &with_frp_context, true);
+        s.send(&mut env, &with_frp_context, String::from("I"));
+        assert_eq!(vec![String::from("H"), String::from("I")], env.out);
+    }
+
+/*
 test("gate", () => {
     const s = new StreamSink<string>(),
         pred = new CellSink<boolean>(true),
@@ -457,7 +486,9 @@ test("gate", () => {
     kill();
     assertEquals(["H", "I"], out);
 });
+*/
 
+/*
 test("collect", () => {
     const ea = new StreamSink<number>(),
         out : number[] = [],

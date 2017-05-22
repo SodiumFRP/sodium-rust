@@ -387,6 +387,27 @@ impl<ENV: 'static> FrpContext<ENV> {
         s
     }
 
+    pub fn gate<A,SA,C>(&mut self, sa: &SA, c_pred: &C) -> Stream<ENV,A>
+    where
+    A: 'static + Clone,
+    SA: StreamTrait<ENV,A>,
+    C: CellTrait<ENV,bool>
+    {
+        let s1 = self.snapshot(
+            |a, pred| (a.clone(), pred.clone()),
+            sa,
+            c_pred
+        );
+        let s2 = self.filter(
+            |&(ref a, ref pred)| pred.clone(),
+            &s1
+        );
+        self.map_s(
+            &s2,
+            |&(ref a, ref pred)| a.clone()
+        )
+    }
+
     pub fn filter<A,SA,F>(&mut self, f: F, sa: &SA) -> Stream<ENV,A>
     where
     A: 'static + Clone,
