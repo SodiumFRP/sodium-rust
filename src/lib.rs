@@ -291,6 +291,72 @@ test("mapTo", () => {
         assert_eq!(vec!(7,9,8), env.out);
     }
 
+    #[test]
+    fn merge_simultaneous() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<u32>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let s1: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
+        let s2: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
+        let s3 = env.frp_context.or_else(&s2, &s1);
+        s3.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
+        FrpContext::transaction(
+            &mut env,
+            &with_frp_context,
+            |env, with_frp_context| {
+                s1.send(env, with_frp_context, 7);
+                s2.send(env, with_frp_context, 60);
+            }
+        );
+        FrpContext::transaction(
+            &mut env,
+            &with_frp_context,
+            |env, with_frp_context| {
+                s1.send(env, with_frp_context, 9);
+            }
+        );
+        FrpContext::transaction(
+            &mut env,
+            &with_frp_context,
+            |env, with_frp_context| {
+                s1.send(env, with_frp_context, 7);
+                s1.send(env, with_frp_context, 60);
+                s2.send(env, with_frp_context, 8);
+                s2.send(env, with_frp_context, 90);
+            }
+        );
+        FrpContext::transaction(
+            &mut env,
+            &with_frp_context,
+            |env, with_frp_context| {
+                s2.send(env, with_frp_context, 8);
+                s2.send(env, with_frp_context, 90);
+                s1.send(env, with_frp_context, 7);
+                s1.send(env, with_frp_context, 60);
+            }
+        );
+        FrpContext::transaction(
+            &mut env,
+            &with_frp_context,
+            |env, with_frp_context| {
+                s2.send(env, with_frp_context, 8);
+                s1.send(env, with_frp_context, 7);
+                s2.send(env, with_frp_context, 90);
+                s1.send(env, with_frp_context, 60);
+            }
+        );
+        assert_eq!(vec![60,9,90,90,90], env.out);
+    }
 /*
 test("mergeSimultaneous", () => {
     const s1 = new StreamSink<number>((l : number, r : number) => { return r; }),

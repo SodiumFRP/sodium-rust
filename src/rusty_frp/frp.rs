@@ -601,9 +601,9 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(new_cell_id);
     }
 
-    pub fn transaction<F,F2>(env: &mut ENV, with_frp_context: &F, k: F2)
+    pub fn transaction<F>(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, k: F)
     where
-    F:WithFrpContext<ENV>, F2: FnOnce(&mut ENV, &F),
+    F: FnOnce(&mut ENV, &WithFrpContext<ENV>),
     {
         {
             let frp_context = with_frp_context.with_frp_context(env);
@@ -621,8 +621,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         }
     }
 
-    fn propergate<F>(env: &mut ENV, with_frp_context: &F)
-    where F:WithFrpContext<ENV>
+    fn propergate(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>)
     {
         let mut ts = TopologicalSort::<u32>::new();
         let mut change_notifiers: Vec<Box<Fn(&mut ENV)>> = Vec::new();
@@ -995,8 +994,8 @@ impl<ENV:'static,A:'static> CellSink<ENV,A> {
         }
     }
 
-    pub fn change_value<F>(&self, env: &mut ENV, with_frp_context: &F, value: A)
-    where F:WithFrpContext<ENV> {
+    pub fn change_value(&self, env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, value: A)
+    {
         let cell_id = self.id.clone();
         FrpContext::transaction(
             env,
@@ -1049,9 +1048,7 @@ impl<ENV:'static,A:'static> StreamSink<ENV,A> {
         }
     }
 
-    pub fn send<F>(&self, env: &mut ENV, with_frp_context: &F, value: A)
-    where
-    F:WithFrpContext<ENV>
+    pub fn send(&self, env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, value: A)
     {
         CellSink::of(self.id).change_value(env, with_frp_context, Some(value));
     }
