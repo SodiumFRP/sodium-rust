@@ -525,19 +525,31 @@ test("defer", () => {
     kill();
     assertEquals(["C","B","A"], out);
 });
-
-test("hold", () => {
-    const s = new StreamSink<number>(),
-        c = s.hold(0),
-        out : number[] = [],
-        kill = Operational.updates(c)
-              .listen(a => out.push(a));
-    s.send(2);
-    s.send(9);
-    kill();
-    assertEquals([2, 9], out);
-});
 */
+
+    #[test]
+    fn hold() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<u32>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let s: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
+        let c = env.frp_context.hold(0, &s);
+        let s2 = env.frp_context.updates(&c);
+        s2.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
+        s.send(&mut env, &with_frp_context, 2);
+        s.send(&mut env, &with_frp_context, 9);
+        assert_eq!(vec![2, 9], env.out);
+    }
 
     #[test]
     fn snapshot() {
@@ -567,17 +579,28 @@ test("hold", () => {
         assert_eq!(vec![String::from("100 0"), String::from("200 2"), String::from("300 1")], env.out);
     }
 
+    #[test]
+    fn values() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<u32>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let c: CellSink<Env,u32> = env.frp_context.new_cell_sink(9);
+        c.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
+        c.change_value(&mut env, &with_frp_context, 2);
+        c.change_value(&mut env, &with_frp_context, 7);
+        assert_eq!(vec![9, 2, 7], env.out);
+    }
 /*
-test("values", () => {
-    const c = new CellSink<number>(9),
-        out : number[] = [],
-        kill = c.listen(a => out.push(a));
-    c.send(2);
-    c.send(7);
-    kill();
-    assertEquals([9, 2, 7], out);
-});
-
 test("constantCell", () => {
     const c = new Cell<number>(12),
         out : number[] = [],
