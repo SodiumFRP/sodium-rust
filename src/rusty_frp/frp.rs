@@ -408,6 +408,31 @@ impl<ENV: 'static> FrpContext<ENV> {
         )
     }
 
+    pub fn filter_some<A,SA_OP>(&mut self, sa_op: &SA_OP) -> Stream<ENV,A>
+    where
+    A: 'static + Clone,
+    SA_OP: StreamTrait<ENV,Option<A>>,
+    {
+        let s = self.filter(
+            |a_op| {
+                match a_op {
+                    &Some(_) => true,
+                    &None => false
+                }
+            },
+            sa_op
+        );
+        self.map_s(
+            &s,
+            |a_op| {
+                match a_op {
+                    &Some(ref a) => a.clone(),
+                    &None => panic!("")
+                }
+            }
+        )
+    }
+
     pub fn filter<A,SA,F>(&mut self, f: F, sa: &SA) -> Stream<ENV,A>
     where
     A: 'static + Clone,

@@ -694,49 +694,73 @@ test("holdIsDelayed", () => {
     kill();
     assertEquals(["2 0", "3 2"], out);
 });
+*/
 
-class SC {
-    constructor(a : string, b : string, sw : string) {
-        this.a = a;
-        this.b = b;
-        this.sw = sw;
+    #[test]
+    fn switch_c() {
+        struct SC {
+            a: Option<String>,
+            b: Option<String>,
+            sw: Option<String>
+        }
+        impl SC {
+            fn of(a: Option<String>, b: Option<String>, sw: Option<String>) -> SC {
+                SC {
+                    a: a,
+                    b: b,
+                    sw: sw
+                }
+            }
+        }
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<String>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let ssc: StreamSink<Env,SC> = env.frp_context.new_stream_sink();
+        let ca_1 = env.frp_context.map_s(&ssc, |s| s.a.clone());
+        let ca_2 = env.frp_context.filter_some(&ca_1);
+        let ca = env.frp_context.hold(String::from("A"), &ca_2);
+        let cb_1 = env.frp_context.map_s(&ssc, |s| s.b.clone());
+        let cb_2 = env.frp_context.filter_some(&cb_1);
+        let cb = env.frp_context.hold(String::from("a"), &cb_2);
+        let csw_str_1 = env.frp_context.map_s(&ssc, |s| s.sw.clone());
+        let csw_str_2 = env.frp_context.filter_some(&csw_str_1);
+        let csw_str = env.frp_context.hold(String::from("ca"), &csw_str_2);
+        let csw: Cell<Env,Cell<Env,String>> = env.frp_context.map_c(&csw_str, move |s| if s == "ca" { ca } else { cb });
+        let co_1 = env.frp_context.map_c(
+            &csw,
+            move |x| {
+                let k: Box<Fn(&mut FrpContext<Env>)->Cell<Env,String>>;
+                let x2 = x.clone();
+                k = Box::new(move |_| { x2 });
+                return k;
+            }
+        );
+        let co = env.frp_context.switch_c(&co_1);
+        co.observe(&mut env, &with_frp_context, |env, value| env.out.push(value.clone()));
+        ssc.send(&mut env, &with_frp_context, SC::of(Some(String::from("B")), Some(String::from("b")), None));
+        ssc.send(&mut env, &with_frp_context, SC::of(Some(String::from("C")), Some(String::from("c")), Some(String::from("cb"))));
+        ssc.send(&mut env, &with_frp_context, SC::of(Some(String::from("D")), Some(String::from("d")), None));
+        ssc.send(&mut env, &with_frp_context, SC::of(Some(String::from("E")), Some(String::from("e")), Some(String::from("ca"))));
+        ssc.send(&mut env, &with_frp_context, SC::of(Some(String::from("F")), Some(String::from("f")), None));
+        ssc.send(&mut env, &with_frp_context, SC::of(None, None, Some(String::from("cb"))));
+        ssc.send(&mut env, &with_frp_context, SC::of(None, None, Some(String::from("ca"))));
+        ssc.send(&mut env, &with_frp_context, SC::of(Some(String::from("G")), Some(String::from("g")), Some(String::from("cb"))));
+        ssc.send(&mut env, &with_frp_context, SC::of(Some(String::from("H")), Some(String::from("h")), Some(String::from("ca"))));
+        ssc.send(&mut env, &with_frp_context, SC::of(Some(String::from("I")), Some(String::from("i")), Some(String::from("ca"))));
+        assert_eq!(vec![String::from("A"), String::from("B"), String::from("c"), String::from("d"), String::from("E"), String::from("F"), String::from("f"), String::from("F"), String::from("g"), String::from("H"), String::from("I")], env.out);
     }
 
-    a : string;
-    b : string;
-    sw : string;
-}
-
-test("switchC", () => {
-    const ssc = new StreamSink<SC>(),
-        // Split each field out of SC so we can update multiple cells in a
-        // single transaction.
-        ca = ssc.map(s => s.a).filterNotNull().hold("A"),
-        cb = ssc.map(s => s.b).filterNotNull().hold("a"),
-        csw_str = ssc.map(s => s.sw).filterNotNull().hold("ca"),
-        // ****
-        // NOTE! Because this lambda contains references to Sodium objects, we
-        // must declare them explicitly using lambda1() so that Sodium knows
-        // about the dependency, otherwise it can't manage the memory.
-        // ****
-        csw = csw_str.map(lambda1(s => s == "ca" ? ca : cb, [ca, cb])),
-        co = Cell.switchC(csw),
-        out : string[] = [],
-        kill = co.listen(c => out.push(c));
-    ssc.send(new SC("B", "b", null));
-    ssc.send(new SC("C", "c", "cb"));
-    ssc.send(new SC("D", "d", null));
-    ssc.send(new SC("E", "e", "ca"));
-    ssc.send(new SC("F", "f", null));
-    ssc.send(new SC(null, null, "cb"));
-    ssc.send(new SC(null, null, "ca"));
-    ssc.send(new SC("G", "g", "cb"));
-    ssc.send(new SC("H", "h", "ca"));
-    ssc.send(new SC("I", "i", "ca"));
-    kill();
-    assertEquals(["A", "B", "c", "d", "E", "F", "f", "F", "g", "H", "I"], out);
-});
-
+/*
 class SS {
     constructor(a : string, b : string, sw : string) {
         this.a = a;
