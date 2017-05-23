@@ -109,6 +109,9 @@ impl<ENV: 'static> FrpContext<ENV> {
             ca = self.new_cell_sink(Cell::of(0));
             self.inside_cell_switch_id_op = Some(ca.id.clone());
         }
+        if let Some(cell) = self.cell_map.get_mut(&cell_thunk_cell_a.id()) {
+            cell.dependent_cells.push(ca.id.clone());
+        }
         let initial_value = initial_value_thunk(self);
         {
             self.inside_cell_switch_id_op = None;
