@@ -104,78 +104,82 @@ impl<ENV: 'static> FrpContext<ENV> {
     CCA:CellTrait<ENV,Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,A>>>
     {
         let initial_value_thunk = cell_current_value_via_context(cell_thunk_cell_a, self);
-        let ca: CellSink<ENV,Cell<ENV,A>>;
+        let outer_cell_id = cell_thunk_cell_a.id().clone();
+        let new_cell_id = self.free_cell_id;
+        self.free_cell_id = self.free_cell_id + 1;
         {
-            ca = self.new_cell_sink(Cell::of(0));
-            self.inside_cell_switch_id_op = Some(ca.id.clone());
+            let tmp: Cell<ENV,A> = Cell::of(0);
+            let x: CellImpl<ENV,A> = CellImpl {
+                id: new_cell_id,
+                free_observer_id: 0,
+                observer_map: HashMap::new(),
+                update_fn_op: None,
+                dependent_cells: Vec::new(),
+                depends_on_cells: vec![outer_cell_id.clone()],
+                reset_value_after_propergate_op: None,
+                child_cells: Vec::new(),
+                value: Value::AnotherCell(tmp)
+            };
+            self.insert_cell(x);
         }
-        if let Some(cell) = self.cell_map.get_mut(&cell_thunk_cell_a.id()) {
-            cell.dependent_cells.push(ca.id.clone());
+        self.inside_cell_switch_id_op = Some(new_cell_id.clone());
+        let initial_inner_cell = initial_value_thunk(self);
+        let initial_inner_cell_id = initial_inner_cell.id().clone();
+        self.inside_cell_switch_id_op = None;
+        if let Some(cell) = self.cell_map.get_mut(&new_cell_id) {
+            cell.dependent_cells.push(initial_inner_cell_id.clone());
+            cell.value = Value::AnotherCell(Cell::of(initial_inner_cell_id.clone()));
         }
-        let initial_value = initial_value_thunk(self);
+        if let Some(cell) = self.cell_map.get_mut(&outer_cell_id) {
+            cell.dependent_cells.push(new_cell_id);
+        }
+        if let Some(cell) = self.cell_map.get_mut(&initial_inner_cell_id) {
+            cell.dependent_cells.push(new_cell_id);
+        }
+        let update_fn: Box<FnMut(&mut ENV, &WithFrpContext<ENV>, &mut Any) + 'static>;
         {
-            self.inside_cell_switch_id_op = None;
-            if let Some(cell) = self.cell_map.get_mut(&cell_thunk_cell_a.id()) {
-                cell.dependent_cells.push(ca.id());
-            }
-            if let Some(cell) = self.cell_map.get_mut(&ca.id) {
-                let ca2: Cell<ENV,Cell<ENV,A>> = Cell::of(ca.id());
-                let cell_thunk_cell_a2 = Cell::of(cell_thunk_cell_a.id());
-                let update_fn = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, result: &mut Any| {
-                    let thunk: &Box<Fn(&FrpContext<ENV>)->Cell<ENV,A>> = cell_current_value(&cell_thunk_cell_a2, env, with_frp_context);
-                    {
-                        let frp_context = with_frp_context.with_frp_context(env);
-                        frp_context.inside_cell_switch_id_op = Some(ca2.id.clone());
-                    }
-                    let value = thunk(with_frp_context.with_frp_context(env));
-                    {
-                        let frp_context = with_frp_context.with_frp_context(env);
-                        frp_context.inside_cell_switch_id_op = None;
-                    }
-                    {
-                        let frp_context = with_frp_context.with_frp_context(env);
-                        let mut child_cells: Vec<u32> = Vec::new();
-                        if let Some(cell) = frp_context.cell_map.get(&ca2.id) {
-                            for child_cell in &cell.child_cells {
-                                child_cells.push(child_cell.clone());
-                            }
-                        }
-                        for child_cell in child_cells {
-                            frp_context.free_cell(&child_cell);
-                        }
-                    }
+            let new_cell_id = new_cell_id.clone();
+            let cell_thunk_cell_a: Cell<ENV,Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,A>>> = Cell::of(cell_thunk_cell_a.id());
+            update_fn = Box::new(
+                move |env, with_frp_context, value| {
                     let frp_context = with_frp_context.with_frp_context(env);
-                    let mut inner_c_old_op: Option<u32> = None;
-                    if let Some(cell) = frp_context.cell_map.get_mut(&ca2.id) {
+                    let mut child_cells: Vec<u32> = Vec::new();
+                    let mut disconnect_from_inner_id_op = None;
+                    if let Some(cell) = frp_context.cell_map.get_mut(&new_cell_id) {
+                        child_cells.append(&mut cell.child_cells);
                         match &cell.value {
-                            &Value::Direct(_) => (),
-                            &Value::AnotherCell(ref inner_c_old) => {
-                                inner_c_old_op = Some(inner_c_old.id.clone());
+                            &Value::Direct(_) => {},
+                            &Value::AnotherCell(ref c) => {
+                                disconnect_from_inner_id_op = Some(c.id.clone());
                             }
                         }
                     }
-                    match inner_c_old_op {
-                        Some(inner_c_old) => {
-                            if let Some(cell) = frp_context.cell_map.get_mut(&inner_c_old) {
-                                cell.dependent_cells.retain(|c| { c.clone() != ca2.id.clone() });
+                    match disconnect_from_inner_id_op {
+                        Some(disconnect_from_inner_id) => {
+                            if let Some(cell) = frp_context.cell_map.get_mut(&disconnect_from_inner_id) {
+                                cell.dependent_cells.retain(|id| id.clone() != new_cell_id.clone());
                             }
                         },
                         None => ()
                     }
-                    if let Some(cell) = frp_context.cell_map.get_mut(&value.id()) {
-                        cell.dependent_cells.push(ca2.id());
+                    for child_cell in child_cells {
+                        frp_context.free_cell(&child_cell);
                     }
-                    if let Some(cell) = frp_context.cell_map.get_mut(&ca2.id) {
-                        let cell2: Cell<ENV,Any> = Cell::of(value.id());
-                        cell.value = Value::AnotherCell(cell2);
+                    let value_thunk = cell_current_value_via_context(&cell_thunk_cell_a, frp_context);
+                    frp_context.inside_cell_switch_id_op = Some(new_cell_id.clone());
+                    let inner_cell = value_thunk(frp_context);
+                    let inner_cell_id = inner_cell.id().clone();
+                    frp_context.inside_cell_switch_id_op = None;
+                    if let Some(cell) = frp_context.cell_map.get_mut(&inner_cell_id) {
+                        cell.dependent_cells.push(new_cell_id);
                     }
-                };
-                cell.value = Value::AnotherCell(Cell::of(initial_value.id()));
-                cell.depends_on_cells.push(cell_thunk_cell_a.id());
-                cell.update_fn_op = Some(Box::new(update_fn));
-            }
+                }
+            );
         }
-        Cell::of(ca.id())
+        if let Some(cell) = self.cell_map.get_mut(&new_cell_id) {
+            cell.update_fn_op = Some(update_fn);
+        }
+        Cell::of(new_cell_id)
     }
 
     pub fn value<A,CA>(&mut self, ca: &CA) -> Stream<ENV,A>
