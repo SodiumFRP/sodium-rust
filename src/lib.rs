@@ -12,6 +12,7 @@ mod tests {
     use rusty_frp::StreamTrait;
     use rusty_frp::WithFrpContext;
 
+    /*
     #[test]
     fn test_via_console() {
         // use: cargo test -- --nocapture
@@ -21,6 +22,7 @@ mod tests {
         test_lift2();
         test_cell_loop();
     }
+    */
 
     fn test_cell_sink() {
         println!("test_cell_sink");

@@ -173,6 +173,9 @@ impl<ENV: 'static> FrpContext<ENV> {
                     if let Some(cell) = frp_context.cell_map.get_mut(&inner_cell_id) {
                         cell.dependent_cells.push(new_cell_id);
                     }
+                    if let Some(cell) = frp_context.cell_map.get_mut(&new_cell_id) {
+                        cell.value = Value::AnotherCell(Cell::of(inner_cell_id));
+                    }
                 }
             );
         }
