@@ -79,18 +79,17 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(cell2.id);
     }
 
-    pub fn switch_s<F,A,CSA>(&mut self, cell_thunk_stream_a: &CSA) -> Stream<ENV,A>
+    pub fn switch_s<A,CSA>(&mut self, cell_thunk_stream_a: &CSA) -> Stream<ENV,A>
     where
     A:'static,
-    F:Fn(&mut FrpContext<ENV>)->Stream<ENV,A> + 'static + Clone,
-    CSA:CellTrait<ENV,Box<F>>
+    CSA:CellTrait<ENV,Box<Fn(&mut FrpContext<ENV>)->Stream<ENV,A>>>
     {
         let cell_thunk_cell_a: Cell<ENV,Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,Option<A>> + 'static>> = self.map_c(
             cell_thunk_stream_a,
             |k| {
-                let k3 = k.clone();
+                let k3: *const Box<Fn(&mut FrpContext<ENV>)->Stream<ENV,A>> = k;
                 let k2: Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,Option<A>> + 'static> = Box::new(move |frp_context| {
-                    k3(frp_context).as_cell()
+                    unsafe { (*k3)(frp_context).as_cell() }
                 });
                 k2
             }
@@ -1106,6 +1105,14 @@ impl<ENV:'static,A:'static> Stream<ENV,A> {
     }
 }
 
+impl<ENV:'static,A:'static> Clone for Stream<ENV,A> {
+    fn clone(&self) -> Self {
+        Stream::of(self.id.clone())
+    }
+}
+
+impl<ENV:'static,A:'static> Copy for Stream<ENV,A> {}
+
 impl<ENV:'static,A:'static> StreamTrait<ENV,A> for Stream<ENV,A> {
     fn id(&self) -> u32 {
         return self.id.clone();
@@ -1117,6 +1124,14 @@ pub struct StreamSink<ENV,A> {
     env_phantom: PhantomData<ENV>,
     value_phantom: PhantomData<A>
 }
+
+impl<ENV:'static,A:'static> Clone for StreamSink<ENV,A> {
+    fn clone(&self) -> Self {
+        StreamSink::of(self.id.clone())
+    }
+}
+
+impl<ENV:'static,A:'static> Copy for StreamSink<ENV,A> {}
 
 impl<ENV:'static,A:'static> StreamSink<ENV,A> {
     fn of(id: u32) -> StreamSink<ENV,A> {
