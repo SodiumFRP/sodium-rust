@@ -127,7 +127,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         let initial_inner_cell_id = initial_inner_cell.id().clone();
         self.inside_cell_switch_id_op = None;
         if let Some(cell) = self.cell_map.get_mut(&new_cell_id) {
-            cell.dependent_cells.push(initial_inner_cell_id.clone());
+            cell.depends_on_cells.push(initial_inner_cell_id.clone());
             cell.value = Value::AnotherCell(Cell::of(initial_inner_cell_id.clone()));
         }
         if let Some(cell) = self.cell_map.get_mut(&outer_cell_id) {
@@ -701,7 +701,12 @@ impl<ENV: 'static> FrpContext<ENV> {
                 Some(cell_id) => {
                     FrpContext::update_cell(env, with_frp_context, &cell_id);
                 },
-                None => break
+                None => {
+                    if ts.len() != 0 {
+                        panic!("cyclic dependency");
+                    }
+                    break;
+                }
             }
         }
         {
@@ -1160,7 +1165,9 @@ impl<ENV:'static,A:?Sized> CellImpl<ENV,A> {
                 let update_fn2 = move |env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, a: &mut Any| {
                     match a.downcast_mut::<A>() {
                         Some(a2) => update_fn.as_mut()(env, with_frp_context, a2),
-                        None => ()
+                        None => {
+                            panic!("failed downcast");
+                        }
                     }
                 };
                 update_fn_op = Some(Box::new(update_fn2));
