@@ -142,7 +142,6 @@ impl<ENV: 'static> FrpContext<ENV> {
             let cell_thunk_cell_a: Cell<ENV,Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,A>>> = Cell::of(cell_thunk_cell_a.id());
             update_fn = Box::new(
                 move |env, with_frp_context, value| {
-                    println!("switch_c update fn");
                     let frp_context = with_frp_context.with_frp_context(env);
                     let mut child_cells: Vec<u32> = Vec::new();
                     let mut disconnect_from_inner_id_op = None;
@@ -807,6 +806,14 @@ impl<ENV: 'static> FrpContext<ENV> {
             None => ()
         }
         let frp_context = with_frp_context.with_frp_context(env);
+        let value: *const Any;
+        {
+            let value_op = frp_context.unsafe_cell_value_as_ref_mut(cell_id.clone());
+            match value_op {
+                Some(x) => value = x,
+                None => return
+            }
+        }
         if let Some(cell) = frp_context.cell_map.get_mut(cell_id) {
             let cell2: *const CellImpl<ENV,Any> = cell;
             notifiers_to_add.push(Box::new(
@@ -814,12 +821,7 @@ impl<ENV: 'static> FrpContext<ENV> {
                     unsafe {
                         let ref cell3: CellImpl<ENV,Any> = *cell2;
                         for observer in cell3.observer_map.values() {
-                            match &cell3.value {
-                                &Value::Direct(ref x) => {
-                                    observer(env, x.as_ref());
-                                },
-                                &Value::AnotherCell(_) => ()
-                            }
+                            observer(env, unsafe { &*value });
                         }
                     }
                 }
