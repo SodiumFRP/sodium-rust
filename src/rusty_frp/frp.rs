@@ -142,6 +142,7 @@ impl<ENV: 'static> FrpContext<ENV> {
             let cell_thunk_cell_a: Cell<ENV,Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,A>>> = Cell::of(cell_thunk_cell_a.id());
             update_fn = Box::new(
                 move |env, with_frp_context, value| {
+                    println!("switch_c update fn");
                     let frp_context = with_frp_context.with_frp_context(env);
                     let mut child_cells: Vec<u32> = Vec::new();
                     let mut disconnect_from_inner_id_op = None;
@@ -795,15 +796,10 @@ impl<ENV: 'static> FrpContext<ENV> {
                 let value: *mut Any;
                 {
                     let frp_context = with_frp_context.with_frp_context(env);
-                    if let Some(cell) = frp_context.cell_map.get_mut(cell_id) {
-                        match &mut cell.value {
-                            &mut Value::Direct(ref mut x) => {
-                                value = x.as_mut();
-                            },
-                            &mut Value::AnotherCell(_) => return
-                        }
-                    } else {
-                        return;
+                    let value_op = frp_context.unsafe_cell_value_as_ref_mut(cell_id.clone());
+                    match value_op {
+                        Some(x) => value = x,
+                        None => return
                     }
                 }
                 update_fn(env, with_frp_context, unsafe { &mut *value });
@@ -830,6 +826,26 @@ impl<ENV: 'static> FrpContext<ENV> {
             ));
         }
         frp_context.change_notifiers.append(&mut notifiers_to_add);
+    }
+
+    fn unsafe_cell_value_as_ref_mut<'r>(&'r mut self, cell_id: u32) -> Option<&'r mut Any> {
+        let mut next_cell_id = cell_id;
+        let self2: *mut Self = self;
+        loop {
+            match (unsafe { (*self2).cell_map.get_mut(&next_cell_id) }) {
+                Some(cell) => {
+                    match &mut cell.value {
+                        &mut Value::Direct(ref mut x) => {
+                            return Some(x.as_mut());
+                        },
+                        &mut Value::AnotherCell(ref c) => {
+                            next_cell_id = c.id.clone();
+                        }
+                    }
+                },
+                None => return None
+            }
+        }
     }
 
     fn mark_all_decendent_cells_for_update(&mut self, cell_id: u32, visited: &mut HashSet<u32>) {
