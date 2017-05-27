@@ -656,15 +656,15 @@ impl<ENV: 'static> FrpContext<ENV> {
         return Cell::of(new_cell_id);
     }
 
-    pub fn transaction<F>(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, k: F)
+    pub fn transaction<F,R>(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, k: F) -> R
     where
-    F: FnOnce(&mut ENV, &WithFrpContext<ENV>),
+    F: FnOnce(&mut ENV, &WithFrpContext<ENV>) -> R,
     {
         {
             let frp_context = with_frp_context.with_frp_context(env);
             frp_context.transaction_depth = frp_context.transaction_depth + 1;
         }
-        k(env, with_frp_context);
+        let result = k(env, with_frp_context);
         let final_transaction_depth;
         {
             let frp_context = with_frp_context.with_frp_context(env);
@@ -674,6 +674,7 @@ impl<ENV: 'static> FrpContext<ENV> {
         if final_transaction_depth == 0 {
             FrpContext::propergate(env, with_frp_context);
         }
+        return result;
     }
 
     fn propergate(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>)

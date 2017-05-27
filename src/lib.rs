@@ -685,31 +685,89 @@ test("mapCLateListen", () => {
         assert_eq!(vec![String::from("1 5"), String::from("12 5"), String::from("12 6")], env.out);
     }
 
+    #[test]
+    fn lift() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<String>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let a = env.frp_context.new_cell_sink(1);
+        let b = env.frp_context.new_cell_sink(5);
+        let c = env.frp_context.lift2_c(|aa, bb| format!("{} {}", aa, bb), &a, &b);
+        c.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
+        a.change_value(&mut env, &with_frp_context, 12);
+        b.change_value(&mut env, &with_frp_context, 6);
+        assert_eq!(vec![String::from("1 5"), String::from("12 5"), String::from("12 6")], env.out);
+    }
+
+    #[test]
+    fn lift_glitch() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<String>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let a = env.frp_context.new_cell_sink(1);
+        let a3 = env.frp_context.map_c(&a, |x| x.clone() * 3);
+        let a5 = env.frp_context.map_c(&a, |x| x.clone() * 5);
+        let b = env.frp_context.lift2_c(|x, y| format!("{} {}", x, y), &a3, &a5);
+        b.observe(&mut env, &with_frp_context, |env, value| env.out.push(value.clone()));
+        a.change_value(&mut env, &with_frp_context, 2);
+        assert_eq!(vec![String::from("3 5"), String::from("6 10")], env.out);
+    }
+
+    #[test]
+    fn lift_from_simultaneous() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<u32>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let (b1, b2) = FrpContext::transaction(
+            &mut env,
+            &with_frp_context,
+            |env, with_frp_context| {
+                let b1: CellSink<Env,u32>;
+                let b2: CellSink<Env,u32>;
+                {
+                    let frp_context = with_frp_context.with_frp_context(env);
+                    b1 = frp_context.new_cell_sink(3);
+                    b2 = frp_context.new_cell_sink(5);
+                }
+                b2.change_value(env, with_frp_context, 7);
+                (b1, b2)
+            }
+        );
+        let c = env.frp_context.lift2_c(|x, y| x.clone() + y.clone(), &b1, &b2);
+        c.observe(&mut env, &with_frp_context, |env, value| env.out.push(value.clone()));
+        assert_eq!(vec![10], env.out);
+    }
 /*
-test("lift", () => {
-    const a = new CellSink<number>(1),
-        b = new CellSink<number>(5),
-        out : string[] = [],
-        kill = a.lift(b, (aa, bb) => aa + " " + bb)
-                .listen(a => out.push(a));
-    a.send(12);
-    b.send(6);
-    kill();
-    assertEquals(["1 5", "12 5", "12 6"], out);
-});
-
-test("liftGlitch", () => {
-    const a = new CellSink(1),
-        a3 = a.map(x => x * 3),
-        a5 = a.map(x => x * 5),
-        b = a3.lift(a5, (x, y) => x + " " + y),
-        out : string[] = [],
-        kill = b.listen(x => out.push(x));
-    a.send(2);
-    kill();
-    assertEquals(["3 5", "6 10"], out);
-});
-
 test("liftFromSimultaneous", () => {
     const t = Transaction.run(() => {
         const b1 = new CellSink(3),
