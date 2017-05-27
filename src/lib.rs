@@ -767,35 +767,30 @@ test("mapCLateListen", () => {
         c.observe(&mut env, &with_frp_context, |env, value| env.out.push(value.clone()));
         assert_eq!(vec![10], env.out);
     }
-/*
-test("liftFromSimultaneous", () => {
-    const t = Transaction.run(() => {
-        const b1 = new CellSink(3),
-            b2 = new CellSink(5);
-        b2.send(7);
-        return new Tuple2(b1, b2);
-    });
-    const b1 = t.a,
-        b2 = t.b,
-        out : number[] = [],
-        kill = b1.lift(b2, (x, y) => x + y)
-          .listen(a => out.push(a));
-    kill();
-    assertEquals([10], out);
-});
 
-test("holdIsDelayed", () => {
-    const s = new StreamSink<number>(),
-        h = s.hold(0),
-        sPair = s.snapshot(h, (a, b) => a + " " + b),
-        out : string[] = [],
-        kill = sPair.listen(a => out.push(a));
-    s.send(2);
-    s.send(3);
-    kill();
-    assertEquals(["2 0", "3 2"], out);
-});
-*/
+    #[test]
+    fn hold_is_delayed() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<String>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let s = env.frp_context.new_stream_sink();
+        let h = env.frp_context.hold(0, &s);
+        let sPair = env.frp_context.snapshot(|a, b| format!("{} {}", a, b), &s, &h);
+        sPair.observe(&mut env, &with_frp_context, |env, value| env.out.push(value.clone()));
+        s.send(&mut env, &with_frp_context, 2);
+        s.send(&mut env, &with_frp_context, 3);
+        assert_eq!(vec![String::from("2 0"), String::from("3 2")], env.out);
+    }
 
     #[test]
     fn switch_c() {
