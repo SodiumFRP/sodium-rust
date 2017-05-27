@@ -603,25 +603,50 @@ test("defer", () => {
         c.change_value(&mut env, &with_frp_context, 7);
         assert_eq!(vec![9, 2, 7], env.out);
     }
+
+    #[test]
+    fn constant_cell() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<u32>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let c: Cell<Env,u32> = env.frp_context.constant(12);
+        c.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
+        assert_eq!(vec![12], env.out);
+    }
+
+    #[test]
+    fn map_c() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<String>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let c: CellSink<Env,u32> = env.frp_context.new_cell_sink(6);
+        let c2 = env.frp_context.map_c(&c, |a| format!("{}", a));
+        c2.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
+        c.change_value(&mut env, &with_frp_context, 8);
+        assert_eq!(vec![String::from("6"), String::from("8")], env.out);
+    }
+
 /*
-test("constantCell", () => {
-    const c = new Cell<number>(12),
-        out : number[] = [],
-        kill = c.listen(a => out.push(a));
-    kill();
-    assertEquals([12], out);
-});
-
-test("mapC", () => {
-    const c = new CellSink<number>(6),
-        out : string[] = [],
-        kill = c.map(a => ""+a)
-                .listen(a => out.push(a));
-    c.send(8);
-    kill();
-    assertEquals(["6", "8"], out);
-});
-
 test("mapCLateListen", () => {
     shouldThrow("invoked before listeners", () => {
         const c = new CellSink<number>(6),
@@ -634,18 +659,33 @@ test("mapCLateListen", () => {
         assertEquals(["2", "8"], out);
     });
 });
+*/
 
-test("apply", () => {
-    const cf = new CellSink<(a : number) => string>(a => "1 "+a),
-        ca = new CellSink<number>(5),
-        out : string[] = [],
-        kill = Cell.apply(cf, ca).listen(a => out.push(a));
-    cf.send(a => "12 " + a);
-    ca.send(6);
-    kill();
-    assertEquals(["1 5", "12 5", "12 6"], out);
-});
+    #[test]
+    fn apply() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<String>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let cf: CellSink<Env,Box<Fn(&u32)->String>> = env.frp_context.new_cell_sink(Box::new(|a| format!("1 {}", a)));
+        let ca: CellSink<Env,u32> = env.frp_context.new_cell_sink(5);
+        let c = env.frp_context.apply(&cf, &ca);
+        c.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
+        cf.change_value(&mut env, &with_frp_context, Box::new(|a| format!("12 {}", a)));
+        ca.change_value(&mut env, &with_frp_context, 6);
+        assert_eq!(vec![String::from("1 5"), String::from("12 5"), String::from("12 6")], env.out);
+    }
 
+/*
 test("lift", () => {
     const a = new CellSink<number>(1),
         b = new CellSink<number>(5),
