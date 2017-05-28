@@ -5,18 +5,15 @@ use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::rc::Weak;
+use std::borrow::Borrow;
 
 pub struct Cell<ENV,A> {
     node: Rc<Node<ENV,A>>
 }
 
 impl<ENV,A> IsCell<ENV,A> for Cell<ENV,A> {
-    fn node_as_ref<'r>(&'r self) -> &'r Rc<Node<ENV,A>> {
-        &self.node
-    }
-
-    fn node_as_mut<'r>(&'r mut self) -> &'r mut Rc<Node<ENV,A>> {
-        &mut self.node
+    fn node_id(&self) -> NodeID {
+        self.node.id.clone()
     }
 }
 
@@ -25,12 +22,8 @@ pub struct CellSink<ENV,A> {
 }
 
 impl<ENV,A> IsCell<ENV,A> for CellSink<ENV,A> {
-    fn node_as_ref<'r>(&'r self) -> &'r Rc<Node<ENV,A>> {
-        &self.node
-    }
-
-    fn node_as_mut<'r>(&'r mut self) -> &'r mut Rc<Node<ENV,A>> {
-        &mut self.node
+    fn node_id(&self) -> NodeID {
+        self.node.id.clone()
     }
 }
 
@@ -39,12 +32,8 @@ pub struct Stream<ENV,A> {
 }
 
 impl<ENV,A> IsStream<ENV,A> for Stream<ENV,A> {
-    fn node_as_ref<'r>(&'r self) -> &'r Rc<Node<ENV,Option<A>>> {
-        &self.node
-    }
-
-    fn node_as_mut<'r>(&'r mut self) -> &'r mut Rc<Node<ENV,Option<A>>> {
-        &mut self.node
+    fn node_id(&self) -> NodeID {
+        self.node.id.clone()
     }
 }
 
@@ -53,29 +42,36 @@ pub struct StreamSink<ENV,A> {
 }
 
 impl<ENV,A> IsStream<ENV,A> for StreamSink<ENV,A> {
-    fn node_as_ref<'r>(&'r self) -> &'r Rc<Node<ENV,Option<A>>> {
-        &self.node
-    }
-
-    fn node_as_mut<'r>(&'r mut self) -> &'r mut Rc<Node<ENV,Option<A>>> {
-        &mut self.node
+    fn node_id(&self) -> NodeID {
+        self.node.id.clone()
     }
 }
 
 trait IsCell<ENV,A> {
-    fn node_as_ref<'r>(&'r self) -> &'r Rc<Node<ENV,A>>;
-    fn node_as_mut<'r>(&'r mut self) -> &'r mut Rc<Node<ENV,A>>;
+    fn node_id(&self) -> NodeID;
 
-    fn sample<'r>(&'r self) -> &'r A
-    where ENV:'r
+    fn sample<F,R>(&self, frp_context: &FrpContext<ENV>, k: F) -> R
+    where
+    ENV:'static,
+    A:'static,
+    F: FnOnce(&A) -> R
     {
-        &self.node_as_ref().value
+        frp_context.with_raw_node_as_ref(
+            self.node_id(),
+            move |raw_node| {
+                match raw_node.downcast_node_ref::<A>() {
+                    Some(node) => {
+                        k(&node.value)
+                    },
+                    None => panic!("Node of wrong type")
+                }
+            }
+        )
     }
 }
 
 trait IsStream<ENV,A> {
-    fn node_as_ref<'r>(&self) -> &Rc<Node<ENV,Option<A>>>;
-    fn node_as_mut<'r>(&mut self) -> &mut Rc<Node<ENV,Option<A>>>;
+    fn node_id(&self) -> NodeID;
 }
 
 struct RawNode<ENV> {
@@ -98,13 +94,20 @@ type NodeID = usize;
 struct Node<ENV,A:?Sized> {
     id: NodeID,
 
-    // purely for checking if a node is used in the correct FrpContext
-    frp_context: *const FrpContext<ENV>,
+    // for removing from Node from graph in FrpContext
+    frp_context: *mut FrpContext<ENV>,
 
     depends_on_nodes: Vec<Rc<RawNode<ENV>>>,
     dependent_nodes: Vec<Weak<RawNode<ENV>>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
     value: A
+}
+
+impl<ENV,A:?Sized> Drop for Node<ENV,A> {
+    fn drop(&mut self) {
+        let frp_context: &mut FrpContext<ENV> = unsafe { &mut *self.frp_context };
+        frp_context.graph[self.id] = None;
+    }
 }
 
 pub struct FrpContext<ENV> {
@@ -131,6 +134,33 @@ impl<ENV:'static> FrpContext<ENV> {
             }
         }
         return self.graph.len();
+    }
+
+    fn with_raw_node_as_ref<F,R>(&self, node_id: NodeID, k: F) -> R
+    where
+    F: FnOnce(&RawNode<ENV>)->R,
+    {
+        let do_panic;
+        {
+            let node_id = node_id.clone();
+            do_panic = move || {
+                panic!("Node with ID {} did not live long enough", node_id);
+            };
+        }
+        match self.graph.get(node_id) {
+            Some(x) => {
+                match x {
+                    &Some(ref x2) => {
+                        match x2.upgrade() {
+                            Some(x3) => k(x3.borrow()),
+                            None => do_panic()
+                        }
+                    },
+                    &None => do_panic()
+                }
+            },
+            None => do_panic()
+        }
     }
 }
 
