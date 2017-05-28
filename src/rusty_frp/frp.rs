@@ -3,7 +3,119 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::marker::PhantomData;
+use std::rc::Rc;
+use std::rc::Weak;
 
+pub struct Cell<ENV,A> {
+    node: Rc<Node<ENV,A>>
+}
+
+impl<ENV,A> IsCell<ENV,A> for Cell<ENV,A> {
+    fn node_as_ref<'r>(&'r self) -> &'r Rc<Node<ENV,A>> {
+        &self.node
+    }
+
+    fn node_as_mut<'r>(&'r mut self) -> &'r mut Rc<Node<ENV,A>> {
+        &mut self.node
+    }
+}
+
+pub struct CellSink<ENV,A> {
+    node: Rc<Node<ENV,A>>
+}
+
+impl<ENV,A> IsCell<ENV,A> for CellSink<ENV,A> {
+    fn node_as_ref<'r>(&'r self) -> &'r Rc<Node<ENV,A>> {
+        &self.node
+    }
+
+    fn node_as_mut<'r>(&'r mut self) -> &'r mut Rc<Node<ENV,A>> {
+        &mut self.node
+    }
+}
+
+pub struct Stream<ENV,A> {
+    node: Rc<Node<ENV,Option<A>>>
+}
+
+impl<ENV,A> IsStream<ENV,A> for Stream<ENV,A> {
+    fn node_as_ref<'r>(&'r self) -> &'r Rc<Node<ENV,Option<A>>> {
+        &self.node
+    }
+
+    fn node_as_mut<'r>(&'r mut self) -> &'r mut Rc<Node<ENV,Option<A>>> {
+        &mut self.node
+    }
+}
+
+pub struct StreamSink<ENV,A> {
+    node: Rc<Node<ENV,Option<A>>>
+}
+
+impl<ENV,A> IsStream<ENV,A> for StreamSink<ENV,A> {
+    fn node_as_ref<'r>(&'r self) -> &'r Rc<Node<ENV,Option<A>>> {
+        &self.node
+    }
+
+    fn node_as_mut<'r>(&'r mut self) -> &'r mut Rc<Node<ENV,Option<A>>> {
+        &mut self.node
+    }
+}
+
+trait IsCell<ENV,A> {
+    fn node_as_ref<'r>(&self) -> &Rc<Node<ENV,A>>;
+    fn node_as_mut<'r>(&mut self) -> &mut Rc<Node<ENV,A>>;
+}
+
+trait IsStream<ENV,A> {
+    fn node_as_ref<'r>(&self) -> &Rc<Node<ENV,Option<A>>>;
+    fn node_as_mut<'r>(&mut self) -> &mut Rc<Node<ENV,Option<A>>>;
+}
+
+struct RawNode<ENV> {
+    phantom_env: PhantomData<ENV>,
+    node: Any
+}
+
+impl<ENV:'static> RawNode<ENV> {
+    fn downcast_node_mut<'r,A:'static>(&'r mut self) -> Option<&'r mut Node<ENV,A>> {
+        self.node.downcast_mut::<Node<ENV,A>>()
+    }
+
+    fn downcast_node_ref<'r,A:'static>(&'r self) -> Option<&'r Node<ENV,A>> {
+        self.node.downcast_ref::<Node<ENV,A>>()
+    }
+}
+
+type NodeID = usize;
+
+struct Node<ENV,A:?Sized> {
+    id: NodeID,
+    frp_context: Weak<FrpContext<ENV>>,
+    depends_on_nodes: Vec<Rc<RawNode<ENV>>>,
+    dependent_nodes: Vec<Weak<RawNode<ENV>>>,
+    reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
+    value: A
+}
+
+pub struct FrpContext<ENV> {
+    graph: Vec<Option<Weak<RawNode<ENV>>>>
+}
+
+impl<ENV:'static> FrpContext<ENV> {
+    fn next_cell_id(&self) -> NodeID {
+        let len = self.graph.len();
+        for i in 0..len {
+            match self.graph.get(i) {
+                Some(_) => (),
+                None => return i
+            }
+        }
+        return self.graph.len();
+    }
+}
+
+/*
 pub struct FrpContext<ENV> {
     free_cell_id: u32,
     cell_map: HashMap<u32,CellImpl<ENV,Any>>,
@@ -1250,3 +1362,4 @@ impl<ENV:'static,A:?Sized> CellImpl<ENV,A> {
         }
     }
 }
+*/

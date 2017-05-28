@@ -4,6 +4,7 @@ pub mod rusty_frp;
 
 #[cfg(test)]
 mod tests {
+    /*
     use rusty_frp::Cell;
     use rusty_frp::CellSink;
     use rusty_frp::CellTrait;
@@ -1055,5 +1056,7 @@ setTimeout(() => {
             console.log(name + " - PASS");
         }, 100);
     }, 100);
+*/
+
 */
 }
