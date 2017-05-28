@@ -97,7 +97,10 @@ type NodeID = usize;
 
 struct Node<ENV,A:?Sized> {
     id: NodeID,
-    frp_context: Weak<FrpContext<ENV>>,
+
+    // purely for checking if a node is used in the correct FrpContext
+    frp_context: *const FrpContext<ENV>,
+
     depends_on_nodes: Vec<Rc<RawNode<ENV>>>,
     dependent_nodes: Vec<Weak<RawNode<ENV>>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
@@ -113,8 +116,18 @@ impl<ENV:'static> FrpContext<ENV> {
         let len = self.graph.len();
         for i in 0..len {
             match self.graph.get(i) {
-                Some(_) => (),
-                None => return i
+                Some(x) => {
+                    match x {
+                        &Some(ref x2) => {
+                            match x2.upgrade() {
+                                Some(_) => (),
+                                None => return i
+                            }
+                        },
+                        &None => return i
+                    }
+                },
+                None => ()
             }
         }
         return self.graph.len();
