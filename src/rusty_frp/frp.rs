@@ -63,8 +63,14 @@ impl<ENV,A> IsStream<ENV,A> for StreamSink<ENV,A> {
 }
 
 trait IsCell<ENV,A> {
-    fn node_as_ref<'r>(&self) -> &Rc<Node<ENV,A>>;
-    fn node_as_mut<'r>(&mut self) -> &mut Rc<Node<ENV,A>>;
+    fn node_as_ref<'r>(&'r self) -> &'r Rc<Node<ENV,A>>;
+    fn node_as_mut<'r>(&'r mut self) -> &'r mut Rc<Node<ENV,A>>;
+
+    fn sample<'r>(&'r self) -> &'r A
+    where ENV:'r
+    {
+        &self.node_as_ref().value
+    }
 }
 
 trait IsStream<ENV,A> {
