@@ -184,26 +184,6 @@ impl<ENV:'static> FrpContext<ENV> {
         }
     }
 
-    /*
-    fn sample<F,R>(&self, frp_context: &FrpContext<ENV>, k: F) -> R
-    where
-    ENV:'static,
-    A:'static,
-    F: FnOnce(&A) -> R
-    {
-        frp_context.with_raw_node_as_ref(
-            self.node_id(),
-            move |raw_node| {
-                match raw_node.downcast_node_ref::<A>() {
-                    Some(node) => {
-                        k(&node.value)
-                    },
-                    None => panic!("Node of wrong type")
-                }
-            }
-        )
-    }
-    */
     fn unsafe_sample<A,F,R>(&self, node_id: &NodeID, k: F) -> R
     where
     ENV:'static,
