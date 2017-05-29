@@ -77,17 +77,7 @@ trait IsCell<ENV,A> {
     A:'static,
     F: FnOnce(&A) -> R
     {
-        frp_context.with_raw_node_as_ref(
-            self.node_id(),
-            move |raw_node| {
-                match raw_node.downcast_node_ref::<A>() {
-                    Some(node) => {
-                        k(&node.value)
-                    },
-                    None => panic!("Node of wrong type")
-                }
-            }
-        )
+        frp_context.unsafe_sample(&self.node_id(), k)
     }
 }
 
@@ -121,7 +111,12 @@ struct Node<ENV,A:?Sized> {
     depends_on_nodes: Vec<Rc<RefCell<RawNode<ENV>>>>,
     dependent_nodes: Vec<Weak<RefCell<RawNode<ENV>>>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
-    value: A
+    value: Value<A>
+}
+
+enum Value<A:?Sized> {
+    Direct(Box<A>),
+    InDirect(NodeID)
 }
 
 impl<ENV,A:?Sized> Drop for Node<ENV,A> {
@@ -159,7 +154,7 @@ impl<ENV:'static> FrpContext<ENV> {
         return self.graph.len();
     }
 
-    fn with_raw_node_as_ref<F,R>(&self, node_id: NodeID, k: F) -> R
+    fn with_raw_node_as_ref<F,R>(&self, node_id: &NodeID, k: F) -> R
     where
     F: FnOnce(&RawNode<ENV>)->R,
     {
@@ -170,7 +165,7 @@ impl<ENV:'static> FrpContext<ENV> {
                 panic!("Node with ID {} did not live long enough", node_id);
             };
         }
-        match self.graph.get(node_id) {
+        match self.graph.get(node_id.clone()) {
             Some(x) => {
                 match x {
                     &Some(ref x2) => {
@@ -187,6 +182,48 @@ impl<ENV:'static> FrpContext<ENV> {
             },
             None => do_panic()
         }
+    }
+
+    /*
+    fn sample<F,R>(&self, frp_context: &FrpContext<ENV>, k: F) -> R
+    where
+    ENV:'static,
+    A:'static,
+    F: FnOnce(&A) -> R
+    {
+        frp_context.with_raw_node_as_ref(
+            self.node_id(),
+            move |raw_node| {
+                match raw_node.downcast_node_ref::<A>() {
+                    Some(node) => {
+                        k(&node.value)
+                    },
+                    None => panic!("Node of wrong type")
+                }
+            }
+        )
+    }
+    */
+    fn unsafe_sample<A,F,R>(&self, node_id: &NodeID, k: F) -> R
+    where
+    ENV:'static,
+    A:'static,
+    F: FnOnce(&A) -> R
+    {
+        self.with_raw_node_as_ref(
+            node_id,
+            move |raw_node| {
+                match raw_node.downcast_node_ref::<A>() {
+                    Some(node) => {
+                        match &node.value {
+                            &Value::Direct(ref x) => k(x),
+                            &Value::InDirect(ref node_id2) => self.unsafe_sample(node_id2, k)
+                        }
+                    },
+                    None => panic!("Node of wrong type")
+                }
+            }
+        )
     }
 }
 
