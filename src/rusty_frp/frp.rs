@@ -132,7 +132,9 @@ impl<ENV,A:?Sized> Drop for Node<ENV,A> {
 }
 
 pub struct FrpContext<ENV> {
-    graph: Vec<Option<Weak<RefCell<RawNode<ENV>>>>>
+    graph: Vec<Option<Weak<RefCell<RawNode<ENV>>>>>,
+    cells_to_be_updated: HashSet<NodeID>,
+    transaction_depth: u32
 }
 
 impl<ENV:'static> FrpContext<ENV> {
