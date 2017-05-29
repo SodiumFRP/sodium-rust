@@ -28,6 +28,15 @@ pub struct CellSink<ENV,A> {
     phantom_a: PhantomData<A>
 }
 
+impl<ENV,A> CellSink<ENV,A> {
+    fn of(node: Rc<RefCell<RawNode<ENV>>>) -> CellSink<ENV,A> {
+        CellSink {
+            node: node,
+            phantom_a: PhantomData
+        }
+    }
+}
+
 impl<ENV:'static,A:'static> IsCell<ENV,A> for CellSink<ENV,A> {
     fn node_id(&self) -> NodeID {
         let tmp: &RefCell<RawNode<ENV>> = self.node.borrow();
@@ -87,16 +96,16 @@ trait IsStream<ENV,A> {
 
 struct RawNode<ENV> {
     phantom_env: PhantomData<ENV>,
-    node: Any
+    node: Box<Any>
 }
 
 impl<ENV:'static> RawNode<ENV> {
     fn downcast_node_mut<'r,A:'static>(&'r mut self) -> Option<&'r mut Node<ENV,A>> {
-        self.node.downcast_mut::<Node<ENV,A>>()
+        self.node.as_mut().downcast_mut::<Node<ENV,A>>()
     }
 
     fn downcast_node_ref<'r,A:'static>(&'r self) -> Option<&'r Node<ENV,A>> {
-        self.node.downcast_ref::<Node<ENV,A>>()
+        self.node.as_ref().downcast_ref::<Node<ENV,A>>()
     }
 }
 
@@ -110,6 +119,7 @@ struct Node<ENV,A:?Sized> {
 
     depends_on_nodes: Vec<Rc<RefCell<RawNode<ENV>>>>,
     dependent_nodes: Vec<Weak<RefCell<RawNode<ENV>>>>,
+    update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
     value: Value<A>
 }
@@ -117,6 +127,19 @@ struct Node<ENV,A:?Sized> {
 enum Value<A:?Sized> {
     Direct(Box<A>),
     InDirect(NodeID)
+}
+
+impl<ENV,A:?Sized> Node<ENV,A> {
+    fn to_raw(self) -> RawNode<ENV>
+    where
+    ENV:'static,
+    A:'static
+    {
+        RawNode {
+            phantom_env: PhantomData,
+            node: Box::new(self)
+        }
+    }
 }
 
 impl<ENV,A:?Sized> Drop for Node<ENV,A> {
@@ -204,6 +227,41 @@ impl<ENV:'static> FrpContext<ENV> {
                 }
             }
         )
+    }
+
+    fn insert_node<A>(&mut self, node: Node<ENV,A>) -> Rc<RefCell<RawNode<ENV>>>
+    where
+    A:'static
+    {
+        let node_id = node.id.clone();
+        let rc = Rc::new(RefCell::new(node.to_raw()));
+        let w = Rc::downgrade(&rc);
+        let len = self.graph.len();
+        if node_id == len {
+            self.graph.push(Some(w));
+        } else {
+            self.graph[node_id] = Some(w);
+        }
+        return rc;
+    }
+
+    pub fn new_cell_sink<A>(&mut self, value: A) -> CellSink<ENV,A>
+    where
+    A:'static
+    {
+        let node_id = self.next_cell_id();
+        let frp_context: *mut FrpContext<ENV> = self;
+        CellSink::of(self.insert_node(
+            Node {
+                id: node_id,
+                frp_context: frp_context,
+                depends_on_nodes: Vec::new(),
+                dependent_nodes: Vec::new(),
+                update_fn_op: None,
+                reset_value_after_propergate_op: None,
+                value: Value::Direct(Box::new(value))
+            }
+        ))
     }
 }
 
