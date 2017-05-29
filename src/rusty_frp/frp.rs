@@ -5,45 +5,66 @@ use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::rc::Weak;
+use std::cell::RefCell;
 use std::borrow::Borrow;
 
 pub struct Cell<ENV,A> {
-    node: Rc<Node<ENV,A>>
+    node: Rc<RefCell<RawNode<ENV>>>,
+    phantom_a: PhantomData<A>
 }
 
-impl<ENV,A> IsCell<ENV,A> for Cell<ENV,A> {
+impl<ENV:'static,A:'static> IsCell<ENV,A> for Cell<ENV,A> {
     fn node_id(&self) -> NodeID {
-        self.node.id.clone()
+        let tmp: &RefCell<RawNode<ENV>> = self.node.borrow();
+        match tmp.borrow().downcast_node_ref::<A>() {
+            Some(node) => node.id.clone(),
+            None => panic!("failed RawNode cast")
+        }
     }
 }
 
 pub struct CellSink<ENV,A> {
-    node: Rc<Node<ENV,A>>
+    node: Rc<RefCell<RawNode<ENV>>>,
+    phantom_a: PhantomData<A>
 }
 
-impl<ENV,A> IsCell<ENV,A> for CellSink<ENV,A> {
+impl<ENV:'static,A:'static> IsCell<ENV,A> for CellSink<ENV,A> {
     fn node_id(&self) -> NodeID {
-        self.node.id.clone()
+        let tmp: &RefCell<RawNode<ENV>> = self.node.borrow();
+        match tmp.borrow().downcast_node_ref::<A>() {
+            Some(node) => node.id.clone(),
+            None => panic!("failed RawNode cast")
+        }
     }
 }
 
 pub struct Stream<ENV,A> {
-    node: Rc<Node<ENV,Option<A>>>
+    node: Rc<RefCell<RawNode<ENV>>>,
+    phantom_a: PhantomData<A>
 }
 
-impl<ENV,A> IsStream<ENV,A> for Stream<ENV,A> {
+impl<ENV:'static,A:'static> IsStream<ENV,A> for Stream<ENV,A> {
     fn node_id(&self) -> NodeID {
-        self.node.id.clone()
+        let tmp: &RefCell<RawNode<ENV>> = self.node.borrow();
+        match tmp.borrow().downcast_node_ref::<Option<A>>() {
+            Some(node) => node.id.clone(),
+            None => panic!("failed RawNode cast")
+        }
     }
 }
 
 pub struct StreamSink<ENV,A> {
-    node: Rc<Node<ENV,Option<A>>>
+    node: Rc<RefCell<RawNode<ENV>>>,
+    phantom_a: PhantomData<A>
 }
 
-impl<ENV,A> IsStream<ENV,A> for StreamSink<ENV,A> {
+impl<ENV:'static,A:'static> IsStream<ENV,A> for StreamSink<ENV,A> {
     fn node_id(&self) -> NodeID {
-        self.node.id.clone()
+        let tmp: &RefCell<RawNode<ENV>> = self.node.borrow();
+        match tmp.borrow().downcast_node_ref::<Option<A>>() {
+            Some(node) => node.id.clone(),
+            None => panic!("failed RawNode cast")
+        }
     }
 }
 
@@ -97,8 +118,8 @@ struct Node<ENV,A:?Sized> {
     // for removing from Node from graph in FrpContext
     frp_context: *mut FrpContext<ENV>,
 
-    depends_on_nodes: Vec<Rc<RawNode<ENV>>>,
-    dependent_nodes: Vec<Weak<RawNode<ENV>>>,
+    depends_on_nodes: Vec<Rc<RefCell<RawNode<ENV>>>>,
+    dependent_nodes: Vec<Weak<RefCell<RawNode<ENV>>>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
     value: A
 }
@@ -111,7 +132,7 @@ impl<ENV,A:?Sized> Drop for Node<ENV,A> {
 }
 
 pub struct FrpContext<ENV> {
-    graph: Vec<Option<Weak<RawNode<ENV>>>>
+    graph: Vec<Option<Weak<RefCell<RawNode<ENV>>>>>
 }
 
 impl<ENV:'static> FrpContext<ENV> {
@@ -152,7 +173,10 @@ impl<ENV:'static> FrpContext<ENV> {
                 match x {
                     &Some(ref x2) => {
                         match x2.upgrade() {
-                            Some(x3) => k(x3.borrow()),
+                            Some(x3) => {
+                                let x4: &RefCell<RawNode<ENV>> = x3.borrow();
+                                k(x4.borrow().borrow())
+                            },
                             None => do_panic()
                         }
                     },
