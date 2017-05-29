@@ -13,6 +13,15 @@ pub struct Cell<ENV,A> {
     phantom_a: PhantomData<A>
 }
 
+impl<ENV,A> Cell<ENV,A> {
+    fn of(node: Rc<RefCell<RawNode<ENV>>>) -> Cell<ENV,A> {
+        Cell {
+            node: node,
+            phantom_a: PhantomData
+        }
+    }
+}
+
 impl<ENV:'static,A:'static> IsCell<ENV,A> for Cell<ENV,A> {
     fn node_id(&self) -> NodeID {
         let tmp: &RefCell<RawNode<ENV>> = self.node.borrow();
@@ -80,13 +89,45 @@ impl<ENV:'static,A:'static> IsStream<ENV,A> for StreamSink<ENV,A> {
 trait IsCell<ENV,A> {
     fn node_id(&self) -> NodeID;
 
-    fn sample<F,R>(&self, frp_context: &FrpContext<ENV>, k: F) -> R
+    fn sample<'r>(&self, frp_context: &'r FrpContext<ENV>) -> &'r A
+    where
+    ENV:'static,
+    A:'static
+    {
+        let mut result: Option<*const A> = None;
+        frp_context.unsafe_sample(&self.node_id(), |a| result = Some(a));
+        match result {
+            Some(a) => unsafe { &*a },
+            None => panic!("")
+        }
+    }
+
+    fn map<B,F>(&self, frp_context: &mut FrpContext<ENV>, f: F) -> Cell<ENV,B>
     where
     ENV:'static,
     A:'static,
-    F: FnOnce(&A) -> R
+    B:'static,
+    F: Fn(&A) -> B
     {
-        frp_context.unsafe_sample(&self.node_id(), k)
+        let node_id = frp_context.next_cell_id();
+        let frp_context2: *mut FrpContext<ENV> = frp_context;
+        let self_node = frp_context.unsafe_node_id_into_raw_node(&self.node_id());
+        {
+            let tmp: &RefCell<RawNode<ENV>> = self_node.borrow();
+            (*tmp.borrow_mut()).downcast_node_mut::<A>().unwrap().dependent_nodes.push(node_id);
+        }
+        let initial_value = f(self.sample(frp_context));
+        Cell::of(frp_context.insert_node(
+            Node {
+                id: node_id,
+                frp_context: frp_context2,
+                depends_on_nodes: vec![self_node],
+                dependent_nodes: Vec::new(),
+                update_fn_op: None, // <-- TODO
+                reset_value_after_propergate_op: None,
+                value: Value::Direct(Box::new(initial_value))
+            }
+        ))
     }
 }
 
@@ -118,7 +159,7 @@ struct Node<ENV,A:?Sized> {
     frp_context: *mut FrpContext<ENV>,
 
     depends_on_nodes: Vec<Rc<RefCell<RawNode<ENV>>>>,
-    dependent_nodes: Vec<Weak<RefCell<RawNode<ENV>>>>,
+    dependent_nodes: Vec<NodeID>,
     update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
     value: Value<A>
@@ -204,6 +245,18 @@ impl<ENV:'static> FrpContext<ENV> {
                 }
             },
             None => do_panic()
+        }
+    }
+
+    fn unsafe_node_id_into_raw_node(&self, node_id: &NodeID) -> Rc<RefCell<RawNode<ENV>>> {
+        match &self.graph[node_id.clone()] {
+            &Some(ref n) => {
+                match n.upgrade() {
+                    Some(n2) => n2,
+                    None => panic!("No node exists with node id {}", node_id)
+                }
+            },
+            &None => panic!("No node exists with node id {}", node_id)
         }
     }
 
