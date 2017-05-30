@@ -71,7 +71,7 @@ impl<ENV:'static,A:'static> IsStream<ENV,A> for StreamSink<ENV,A> {
     }
 }
 
-trait IsCell<ENV,A> {
+pub trait IsCell<ENV,A> {
     fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>>;
 
     fn with_node_as_ref<F,R>(&self, k:F) -> R
@@ -165,7 +165,7 @@ trait IsCell<ENV,A> {
     }
 }
 
-trait IsStream<ENV,A> {
+pub trait IsStream<ENV,A> {
     fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>>;
 
     fn with_node_as_ref<F,R>(&self, k:F) -> R

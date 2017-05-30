@@ -4,6 +4,14 @@ pub mod rusty_frp;
 
 #[cfg(test)]
 mod tests {
+    use rusty_frp::Cell;
+    use rusty_frp::CellSink;
+    use rusty_frp::IsCell;
+    use rusty_frp::FrpContext;
+    use rusty_frp::Stream;
+    use rusty_frp::StreamSink;
+    use rusty_frp::IsStream;
+    use rusty_frp::WithFrpContext;
     /*
     use rusty_frp::Cell;
     use rusty_frp::CellSink;
