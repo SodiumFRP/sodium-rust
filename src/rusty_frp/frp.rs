@@ -6,6 +6,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::rc::Weak;
 use std::cell::RefCell;
+use std::cell::Ref;
 use std::borrow::Borrow;
 
 pub struct Cell<ENV,A> {
@@ -23,12 +24,8 @@ impl<ENV,A> Cell<ENV,A> {
 }
 
 impl<ENV:'static,A:'static> IsCell<ENV,A> for Cell<ENV,A> {
-    fn node_id(&self) -> NodeID {
-        let tmp: &RefCell<RawNode<ENV>> = self.node.borrow();
-        match tmp.borrow().downcast_node_ref::<A>() {
-            Some(node) => node.id.clone(),
-            None => panic!("failed RawNode cast")
-        }
+    fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>> {
+        &self.node
     }
 }
 
@@ -47,12 +44,8 @@ impl<ENV,A> CellSink<ENV,A> {
 }
 
 impl<ENV:'static,A:'static> IsCell<ENV,A> for CellSink<ENV,A> {
-    fn node_id(&self) -> NodeID {
-        let tmp: &RefCell<RawNode<ENV>> = self.node.borrow();
-        match tmp.borrow().downcast_node_ref::<A>() {
-            Some(node) => node.id.clone(),
-            None => panic!("failed RawNode cast")
-        }
+    fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>> {
+        &self.node
     }
 }
 
@@ -62,12 +55,8 @@ pub struct Stream<ENV,A> {
 }
 
 impl<ENV:'static,A:'static> IsStream<ENV,A> for Stream<ENV,A> {
-    fn node_id(&self) -> NodeID {
-        let tmp: &RefCell<RawNode<ENV>> = self.node.borrow();
-        match tmp.borrow().downcast_node_ref::<Option<A>>() {
-            Some(node) => node.id.clone(),
-            None => panic!("failed RawNode cast")
-        }
+    fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>> {
+        &self.node
     }
 }
 
@@ -77,17 +66,47 @@ pub struct StreamSink<ENV,A> {
 }
 
 impl<ENV:'static,A:'static> IsStream<ENV,A> for StreamSink<ENV,A> {
-    fn node_id(&self) -> NodeID {
-        let tmp: &RefCell<RawNode<ENV>> = self.node.borrow();
-        match tmp.borrow().downcast_node_ref::<Option<A>>() {
-            Some(node) => node.id.clone(),
-            None => panic!("failed RawNode cast")
-        }
+    fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>> {
+        &self.node
     }
 }
 
 trait IsCell<ENV,A> {
-    fn node_id(&self) -> NodeID;
+    fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>>;
+
+    fn with_node_as_ref<F,R>(&self, k:F) -> R
+    where
+    ENV:'static,
+    A:'static,
+    F:FnOnce(&Node<ENV,A>)->R
+    {
+        let tmp: &RefCell<RawNode<ENV>> = self.raw_node().borrow();
+        match tmp.borrow().downcast_node_ref::<A>() {
+            Some(x) => k(x),
+            None => panic!("Failed to cast node")
+        }
+    }
+
+    fn with_node_as_mut<F,R>(&self, k:F) -> R
+    where
+    ENV:'static,
+    A:'static,
+    F:FnOnce(&mut Node<ENV,A>)->R
+    {
+        let tmp: &RefCell<RawNode<ENV>> = self.raw_node().borrow();
+        match tmp.borrow_mut().downcast_node_mut::<A>() {
+            Some(x) => k(x),
+            None => panic!("Failed to cast node")
+        }
+    }
+
+    fn node_id(&self) -> NodeID
+    where
+    ENV:'static,
+    A:'static
+    {
+        self.with_node_as_ref(|n| n.id.clone())
+    }
 
     fn sample<'r>(&self, frp_context: &'r FrpContext<ENV>) -> &'r A
     where
@@ -111,28 +130,49 @@ trait IsCell<ENV,A> {
     {
         let node_id = frp_context.next_cell_id();
         let frp_context2: *mut FrpContext<ENV> = frp_context;
-        let self_node = frp_context.unsafe_node_id_into_raw_node(&self.node_id());
-        {
-            let tmp: &RefCell<RawNode<ENV>> = self_node.borrow();
-            (*tmp.borrow_mut()).downcast_node_mut::<A>().unwrap().dependent_nodes.push(node_id);
-        }
         let initial_value = f(self.sample(frp_context));
-        Cell::of(frp_context.insert_node(
+        let result_node: Cell<ENV,B> = Cell::of(frp_context.insert_node(
             Node {
                 id: node_id,
                 frp_context: frp_context2,
-                depends_on_nodes: vec![self_node],
+                depends_on_nodes: vec![self.raw_node().clone()],
                 dependent_nodes: Vec::new(),
                 update_fn_op: None, // <-- TODO
                 reset_value_after_propergate_op: None,
                 value: Value::Direct(Box::new(initial_value))
             }
-        ))
+        ));
+        {
+            let result_node = Rc::downgrade(result_node.raw_node());
+            self.with_node_as_mut(move |n| { n.dependent_nodes.push(result_node); });
+        }
+        result_node
     }
 }
 
 trait IsStream<ENV,A> {
-    fn node_id(&self) -> NodeID;
+    fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>>;
+
+    fn with_node_as_ref<F,R>(&self, k:F) -> R
+    where
+    ENV:'static,
+    A:'static,
+    F:FnOnce(&Node<ENV,A>)->R
+    {
+        let tmp: &RefCell<RawNode<ENV>> = self.raw_node().borrow();
+        match tmp.borrow().downcast_node_ref::<A>() {
+            Some(x) => k(x),
+            None => panic!("Failed to cast node")
+        }
+    }
+
+    fn node_id(&self) -> NodeID
+    where
+    ENV:'static,
+    A:'static
+    {
+        self.with_node_as_ref(|n| n.id.clone())
+    }
 }
 
 struct RawNode<ENV> {
@@ -159,7 +199,7 @@ struct Node<ENV,A:?Sized> {
     frp_context: *mut FrpContext<ENV>,
 
     depends_on_nodes: Vec<Rc<RefCell<RawNode<ENV>>>>,
-    dependent_nodes: Vec<NodeID>,
+    dependent_nodes: Vec<Weak<RefCell<RawNode<ENV>>>>,
     update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
     value: Value<A>
