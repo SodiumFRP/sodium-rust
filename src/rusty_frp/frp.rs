@@ -126,18 +126,33 @@ trait IsCell<ENV,A> {
     ENV:'static,
     A:'static,
     B:'static,
-    F: Fn(&A) -> B
+    F: Fn(&A)->B + 'static
     {
+        let a_node_id = self.node_id();
         let node_id = frp_context.next_cell_id();
         let frp_context2: *mut FrpContext<ENV> = frp_context;
         let initial_value = f(self.sample(frp_context));
         let result_node: Cell<ENV,B> = Cell::of(frp_context.insert_node(
             Node {
-                id: node_id,
+                id: node_id.clone(),
                 frp_context: frp_context2,
                 depends_on_nodes: vec![self.raw_node().clone()],
                 dependent_nodes: Vec::new(),
-                update_fn_op: None, // <-- TODO
+                update_fn_op: Some(Box::new(move |frp_context| {
+                    let b = frp_context.unsafe_sample(
+                        &a_node_id,
+                        |a: &A| f(a)
+                    );
+                    frp_context.unsafe_with_node_as_mut_by_node_id(
+                        &node_id,
+                        |n: &mut Node<ENV,B>| {
+                            match &mut n.value {
+                                &mut Value::Direct(ref mut v) => *v.as_mut() = b,
+                                &mut Value::InDirect(_) => panic!("Expected direct value")
+                            }
+                        }
+                    );
+                })),
                 reset_value_after_propergate_op: None,
                 value: Value::Direct(Box::new(initial_value))
             }
@@ -297,6 +312,36 @@ impl<ENV:'static> FrpContext<ENV> {
                 }
             },
             &None => panic!("No node exists with node id {}", node_id)
+        }
+    }
+
+    fn unsafe_with_node_as_ref_by_node_id<A,F,R>(&self, node_id: &NodeID, k:F) -> R
+    where
+    ENV:'static,
+    A:'static,
+    F:FnOnce(&Node<ENV,A>)->R
+    {
+        let tmp = self.unsafe_node_id_into_raw_node(node_id);
+        let tmp2: &RefCell<RawNode<ENV>> = tmp.borrow();
+        let tmp3 = tmp2.borrow();
+        match tmp3.downcast_node_ref::<A>() {
+            Some(x) => k(x),
+            None => panic!("Failed to cast node")
+        }
+    }
+
+    fn unsafe_with_node_as_mut_by_node_id<A,F,R>(&self, node_id: &NodeID, k:F) -> R
+    where
+    ENV:'static,
+    A:'static,
+    F:FnOnce(&mut Node<ENV,A>)->R
+    {
+        let tmp = self.unsafe_node_id_into_raw_node(node_id);
+        let tmp2: &RefCell<RawNode<ENV>> = tmp.borrow();
+        let mut tmp3 = tmp2.borrow_mut();
+        match tmp3.downcast_node_mut::<A>() {
+            Some(x) => k(x),
+            None => panic!("Failed to cast node")
         }
     }
 
