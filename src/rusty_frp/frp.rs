@@ -136,6 +136,8 @@ pub trait IsCell<ENV,A> {
             Node {
                 id: node_id.clone(),
                 frp_context: frp_context2,
+                free_observer_id: 0,
+                observer_map: HashMap::new(),
                 depends_on_nodes: vec![self.raw_node().clone()],
                 dependent_nodes: Vec::new(),
                 update_fn_op: Some(Box::new(move |frp_context| {
@@ -196,11 +198,11 @@ struct RawNode<ENV> {
 }
 
 impl<ENV:'static> RawNode<ENV> {
-    fn downcast_node_mut<'r,A:'static>(&'r mut self) -> Option<&'r mut Node<ENV,A>> {
+    fn downcast_node_mut<'r,A:'static+?Sized>(&'r mut self) -> Option<&'r mut Node<ENV,A>> {
         self.node.as_mut().downcast_mut::<Node<ENV,A>>()
     }
 
-    fn downcast_node_ref<'r,A:'static>(&'r self) -> Option<&'r Node<ENV,A>> {
+    fn downcast_node_ref<'r,A:'static+?Sized>(&'r self) -> Option<&'r Node<ENV,A>> {
         self.node.as_ref().downcast_ref::<Node<ENV,A>>()
     }
 }
@@ -213,6 +215,8 @@ struct Node<ENV,A:?Sized> {
     // for removing from Node from graph in FrpContext
     frp_context: *mut FrpContext<ENV>,
 
+    free_observer_id: u32,
+    observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
     depends_on_nodes: Vec<Rc<RefCell<RawNode<ENV>>>>,
     dependent_nodes: Vec<Weak<RefCell<RawNode<ENV>>>>,
     update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)>>,
@@ -247,11 +251,76 @@ impl<ENV,A:?Sized> Drop for Node<ENV,A> {
 
 pub struct FrpContext<ENV> {
     graph: Vec<Option<Weak<RefCell<RawNode<ENV>>>>>,
-    cells_to_be_updated: HashSet<NodeID>,
+    nodes_to_be_updated: HashSet<NodeID>,
     transaction_depth: u32
 }
 
 impl<ENV:'static> FrpContext<ENV> {
+    pub fn new() -> FrpContext<ENV> {
+        FrpContext {
+            graph: Vec::new(),
+            nodes_to_be_updated: HashSet::new(),
+            transaction_depth: 0
+        }
+    }
+
+    pub fn transaction<F,R>(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, k: F) -> R
+    where F: Fn(&mut ENV, &WithFrpContext<ENV>) -> R
+    {
+        {
+            let frp_context = with_frp_context.with_frp_context(env);
+            frp_context.transaction_depth = frp_context.transaction_depth + 1;
+        }
+        let result = k(env, with_frp_context);
+        let final_depth;
+        {
+            let frp_context = with_frp_context.with_frp_context(env);
+            frp_context.transaction_depth = frp_context.transaction_depth - 1;
+            final_depth = frp_context.transaction_depth;
+        }
+        if final_depth == 0 {
+            FrpContext::propergate(env, with_frp_context);
+        }
+        result
+    }
+
+    fn propergate(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>) {
+
+    }
+
+    fn mark_all_decendent_nodes_for_update(&mut self, node_id: &NodeID, visited: &mut HashSet<NodeID>) {
+        if visited.contains(node_id) {
+            return;
+        }
+        self.nodes_to_be_updated.insert(node_id.clone());
+        visited.insert(node_id.clone());
+        let mut dependent_node_ids: Vec<NodeID> = Vec::new();
+        self.unsafe_with_node_as_ref_by_node_id(
+            &node_id,
+            |n: &Node<ENV,Any>| {
+                for dependent_node in &n.dependent_nodes {
+                    match dependent_node.upgrade() {
+                        Some(ref tmp) => {
+                            let tmp2: &RefCell<RawNode<ENV>> = tmp.borrow();
+                            let tmp3 = tmp2.borrow();
+                            let tmp4: Option<&Node<ENV,Any>> = tmp3.downcast_node_ref();
+                            match tmp4 {
+                                Some(tmp5) => {
+                                    dependent_node_ids.push(tmp5.id);
+                                },
+                                None => ()
+                            }
+                        },
+                        None => ()
+                    }
+                }
+            }
+        );
+        for dependent_node_id in dependent_node_ids {
+            self.mark_all_decendent_nodes_for_update(&dependent_node_id, visited);
+        }
+    }
+
     fn next_cell_id(&self) -> NodeID {
         let len = self.graph.len();
         for i in 0..len {
@@ -318,7 +387,7 @@ impl<ENV:'static> FrpContext<ENV> {
     fn unsafe_with_node_as_ref_by_node_id<A,F,R>(&self, node_id: &NodeID, k:F) -> R
     where
     ENV:'static,
-    A:'static,
+    A:'static + ?Sized,
     F:FnOnce(&Node<ENV,A>)->R
     {
         let tmp = self.unsafe_node_id_into_raw_node(node_id);
@@ -393,6 +462,8 @@ impl<ENV:'static> FrpContext<ENV> {
             Node {
                 id: node_id,
                 frp_context: frp_context,
+                free_observer_id: 0,
+                observer_map: HashMap::new(),
                 depends_on_nodes: Vec::new(),
                 dependent_nodes: Vec::new(),
                 update_fn_op: None,
@@ -401,6 +472,10 @@ impl<ENV:'static> FrpContext<ENV> {
             }
         ))
     }
+}
+
+pub trait WithFrpContext<ENV> {
+    fn with_frp_context<'r>(&self, &'r mut ENV) -> &'r mut FrpContext<ENV>;
 }
 
 /*
