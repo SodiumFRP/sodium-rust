@@ -306,6 +306,66 @@ impl<ENV:'static> FrpContext<ENV> {
     }
 
     fn propergate(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>) {
+        let mut ts = TopologicalSort::<NodeID>::new();
+        {
+            let frp_context = with_frp_context.with_frp_context(env);
+            frp_context.transaction_depth = frp_context.transaction_depth + 1;
+            for node_to_be_updated in &frp_context.nodes_to_be_updated {
+                ts.insert(node_to_be_updated.clone());
+                frp_context.unsafe_with_node_as_ref_by_node_id(
+                    node_to_be_updated,
+                    |node| {
+                        for dependent_node in &node.dependent_nodes {
+                            match dependent_node.upgrade() {
+                                Some(x) => {
+                                    let x2: &RefCell<Node<ENV,Any>> = x.borrow();
+                                    let x3: Ref<Node<ENV,Any>> = x2.borrow();
+                                    let x4: &Node<ENV,Any> = x3.borrow();
+                                    ts.add_dependency(node_to_be_updated.clone(), x4.id.clone());
+                                },
+                                None => ()
+                            }
+                        }
+                    }
+                );
+            }
+        }
+        let mut node_ids_in_update_order: Vec<NodeID> = Vec::new();
+        loop {
+            let next_op = ts.pop();
+            match next_op {
+                Some(node_id) => {
+                    node_ids_in_update_order.push(node_id)
+                },
+                None => {
+                    if ts.len() != 0 {
+                        panic!("cyclic dependency");
+                    }
+                    break;
+                }
+            }
+        }
+        for node_id in &node_ids_in_update_order {
+            FrpContext::update_node(env, with_frp_context, node_id);
+        }
+        {
+            let frp_context = with_frp_context.with_frp_context(env);
+            frp_context.transaction_depth = frp_context.transaction_depth - 1;
+        }
+        for node_id in &node_ids_in_update_order {
+            // TODO: Trigger node's callbacks
+        }
+        for node_id in &node_ids_in_update_order {
+            // TODO: Reset to reset_value_after_propergate_op
+            // This is mainly for events
+        }
+        {
+            let frp_context = with_frp_context.with_frp_context(env);
+            frp_context.nodes_to_be_updated.clear();
+        }
+    }
+
+    fn update_node(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, node_id: &NodeID) {
 
     }
 
