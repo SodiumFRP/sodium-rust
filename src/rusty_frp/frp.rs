@@ -7,15 +7,17 @@ use std::rc::Rc;
 use std::rc::Weak;
 use std::cell::RefCell;
 use std::cell::Ref;
+use std::cell::RefMut;
 use std::borrow::Borrow;
+use std::borrow::BorrowMut;
 
 pub struct Cell<ENV,A> {
-    node: Rc<RefCell<RawNode<ENV>>>,
+    node: Rc<RefCell<Node<ENV,Any>>>,
     phantom_a: PhantomData<A>
 }
 
 impl<ENV,A> Cell<ENV,A> {
-    fn of(node: Rc<RefCell<RawNode<ENV>>>) -> Cell<ENV,A> {
+    fn of(node: Rc<RefCell<Node<ENV,Any>>>) -> Cell<ENV,A> {
         Cell {
             node: node,
             phantom_a: PhantomData
@@ -24,18 +26,18 @@ impl<ENV,A> Cell<ENV,A> {
 }
 
 impl<ENV:'static,A:'static> IsCell<ENV,A> for Cell<ENV,A> {
-    fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>> {
+    fn node<'r>(&'r self) -> &'r Rc<RefCell<Node<ENV,Any>>> {
         &self.node
     }
 }
 
 pub struct CellSink<ENV,A> {
-    node: Rc<RefCell<RawNode<ENV>>>,
+    node: Rc<RefCell<Node<ENV,Any>>>,
     phantom_a: PhantomData<A>
 }
 
 impl<ENV,A> CellSink<ENV,A> {
-    fn of(node: Rc<RefCell<RawNode<ENV>>>) -> CellSink<ENV,A> {
+    fn of(node: Rc<RefCell<Node<ENV,Any>>>) -> CellSink<ENV,A> {
         CellSink {
             node: node,
             phantom_a: PhantomData
@@ -44,60 +46,56 @@ impl<ENV,A> CellSink<ENV,A> {
 }
 
 impl<ENV:'static,A:'static> IsCell<ENV,A> for CellSink<ENV,A> {
-    fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>> {
+    fn node<'r>(&'r self) -> &'r Rc<RefCell<Node<ENV,Any>>> {
         &self.node
     }
 }
 
 pub struct Stream<ENV,A> {
-    node: Rc<RefCell<RawNode<ENV>>>,
+    node: Rc<RefCell<Node<ENV,Any>>>,
     phantom_a: PhantomData<A>
 }
 
 impl<ENV:'static,A:'static> IsStream<ENV,A> for Stream<ENV,A> {
-    fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>> {
+    fn node<'r>(&'r self) -> &'r Rc<RefCell<Node<ENV,Any>>> {
         &self.node
     }
 }
 
 pub struct StreamSink<ENV,A> {
-    node: Rc<RefCell<RawNode<ENV>>>,
+    node: Rc<RefCell<Node<ENV,Any>>>,
     phantom_a: PhantomData<A>
 }
 
 impl<ENV:'static,A:'static> IsStream<ENV,A> for StreamSink<ENV,A> {
-    fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>> {
+    fn node<'r>(&'r self) -> &'r Rc<RefCell<Node<ENV,Any>>> {
         &self.node
     }
 }
 
 pub trait IsCell<ENV,A> {
-    fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>>;
+    fn node<'r>(&'r self) -> &'r Rc<RefCell<Node<ENV,Any>>>;
 
     fn with_node_as_ref<F,R>(&self, k:F) -> R
     where
     ENV:'static,
     A:'static,
-    F:FnOnce(&Node<ENV,A>)->R
+    F:FnOnce(&Node<ENV,Any>)->R
     {
-        let tmp: &RefCell<RawNode<ENV>> = self.raw_node().borrow();
-        match tmp.borrow().downcast_node_ref::<A>() {
-            Some(x) => k(x),
-            None => panic!("Failed to cast node")
-        }
+        let tmp: &RefCell<Node<ENV,Any>> = self.node().borrow();
+        let tmp2: Ref<Node<ENV,Any>> = tmp.borrow();
+        k(tmp2.borrow())
     }
 
     fn with_node_as_mut<F,R>(&self, k:F) -> R
     where
     ENV:'static,
     A:'static,
-    F:FnOnce(&mut Node<ENV,A>)->R
+    F:FnOnce(&mut Node<ENV,Any>)->R
     {
-        let tmp: &RefCell<RawNode<ENV>> = self.raw_node().borrow();
-        match tmp.borrow_mut().downcast_node_mut::<A>() {
-            Some(x) => k(x),
-            None => panic!("Failed to cast node")
-        }
+        let tmp: &RefCell<Node<ENV,Any>> = self.node().borrow();
+        let mut tmp2: RefMut<Node<ENV,Any>> = tmp.borrow_mut();
+        k(tmp2.borrow_mut())
     }
 
     fn node_id(&self) -> NodeID
@@ -138,7 +136,7 @@ pub trait IsCell<ENV,A> {
                 frp_context: frp_context2,
                 free_observer_id: 0,
                 observer_map: HashMap::new(),
-                depends_on_nodes: vec![self.raw_node().clone()],
+                depends_on_nodes: vec![self.node().clone()],
                 dependent_nodes: Vec::new(),
                 update_fn_op: Some(Box::new(move |frp_context| {
                     let b = frp_context.unsafe_sample(
@@ -147,9 +145,14 @@ pub trait IsCell<ENV,A> {
                     );
                     frp_context.unsafe_with_node_as_mut_by_node_id(
                         &node_id,
-                        |n: &mut Node<ENV,B>| {
+                        |n: &mut Node<ENV,Any>| {
                             match &mut n.value {
-                                &mut Value::Direct(ref mut v) => *v.as_mut() = b,
+                                &mut Value::Direct(ref mut v) => {
+                                    match v.downcast_mut::<B>() {
+                                        Some(v2) => *v2 = b,
+                                        None => panic!("Node has wrong type")
+                                    }
+                                },
                                 &mut Value::InDirect(_) => panic!("Expected direct value")
                             }
                         }
@@ -160,7 +163,7 @@ pub trait IsCell<ENV,A> {
             }
         ));
         {
-            let result_node = Rc::downgrade(result_node.raw_node());
+            let result_node = Rc::downgrade(result_node.node());
             self.with_node_as_mut(move |n| { n.dependent_nodes.push(result_node); });
         }
         result_node
@@ -168,19 +171,17 @@ pub trait IsCell<ENV,A> {
 }
 
 pub trait IsStream<ENV,A> {
-    fn raw_node<'r>(&'r self) -> &'r Rc<RefCell<RawNode<ENV>>>;
+    fn node<'r>(&'r self) -> &'r Rc<RefCell<Node<ENV,Any>>>;
 
     fn with_node_as_ref<F,R>(&self, k:F) -> R
     where
     ENV:'static,
     A:'static,
-    F:FnOnce(&Node<ENV,A>)->R
+    F:FnOnce(&Node<ENV,Any>)->R
     {
-        let tmp: &RefCell<RawNode<ENV>> = self.raw_node().borrow();
-        match tmp.borrow().downcast_node_ref::<A>() {
-            Some(x) => k(x),
-            None => panic!("Failed to cast node")
-        }
+        let tmp: &RefCell<Node<ENV,Any>> = self.node().borrow();
+        let tmp2: Ref<Node<ENV,Any>> = tmp.borrow();
+        k(tmp2.borrow())
     }
 
     fn node_id(&self) -> NodeID
@@ -189,21 +190,6 @@ pub trait IsStream<ENV,A> {
     A:'static
     {
         self.with_node_as_ref(|n| n.id.clone())
-    }
-}
-
-struct RawNode<ENV> {
-    phantom_env: PhantomData<ENV>,
-    node: Box<Any>
-}
-
-impl<ENV:'static> RawNode<ENV> {
-    fn downcast_node_mut<'r,A:'static+?Sized>(&'r mut self) -> Option<&'r mut Node<ENV,A>> {
-        self.node.as_mut().downcast_mut::<Node<ENV,A>>()
-    }
-
-    fn downcast_node_ref<'r,A:'static+?Sized>(&'r self) -> Option<&'r Node<ENV,A>> {
-        self.node.as_ref().downcast_ref::<Node<ENV,A>>()
     }
 }
 
@@ -217,8 +203,8 @@ struct Node<ENV,A:?Sized> {
 
     free_observer_id: u32,
     observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
-    depends_on_nodes: Vec<Rc<RefCell<RawNode<ENV>>>>,
-    dependent_nodes: Vec<Weak<RefCell<RawNode<ENV>>>>,
+    depends_on_nodes: Vec<Rc<RefCell<Node<ENV,Any>>>>,
+    dependent_nodes: Vec<Weak<RefCell<Node<ENV,Any>>>>,
     update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
     value: Value<A>
@@ -229,28 +215,63 @@ enum Value<A:?Sized> {
     InDirect(NodeID)
 }
 
-impl<ENV,A:?Sized> Node<ENV,A> {
-    fn to_raw(self) -> RawNode<ENV>
+impl<ENV,A> Node<ENV,A> {
+    fn to_raw(mut self) -> Node<ENV,Any>
     where
     ENV:'static,
     A:'static
     {
-        RawNode {
-            phantom_env: PhantomData,
-            node: Box::new(self)
+        let mut observer_map: HashMap<u32,Box<Fn(&mut ENV,&Any)>> = HashMap::new();
+        for (k,v) in self.observer_map.drain() {
+            observer_map.insert(k, Box::new(
+                move |env, a| {
+                    match a.downcast_ref::<A>() {
+                        Some(a2) => v(env, a2),
+                        None => ()
+                    }
+                }
+            ));
+        }
+        let reset_value_after_propergate_op: Option<Box<Fn(&mut Any)>>;
+        match self.reset_value_after_propergate_op {
+            Some(reset_value_after_propergate) => {
+                reset_value_after_propergate_op = Some(
+                    Box::new(move |a: &mut Any| {
+                       match a.downcast_mut::<A>() {
+                           Some(a2) => {
+                               reset_value_after_propergate(a2);
+                           },
+                           None => {
+                               println!("reset failed");
+                           }
+                       };
+                   })
+                );
+            },
+            None => {
+                reset_value_after_propergate_op = None;
+            }
+        }
+        let value = match self.value {
+            Value::Direct(x) => Value::Direct(x as Box<Any>),
+            Value::InDirect(x) => Value::InDirect(x)
+        };
+        Node {
+            id: self.id,
+            frp_context: self.frp_context,
+            free_observer_id: self.free_observer_id,
+            observer_map: observer_map,
+            depends_on_nodes: self.depends_on_nodes,
+            dependent_nodes: self.dependent_nodes,
+            update_fn_op: self.update_fn_op,
+            reset_value_after_propergate_op: reset_value_after_propergate_op,
+            value: value
         }
     }
 }
 
-impl<ENV,A:?Sized> Drop for Node<ENV,A> {
-    fn drop(&mut self) {
-        let frp_context: &mut FrpContext<ENV> = unsafe { &mut *self.frp_context };
-        frp_context.graph[self.id] = None;
-    }
-}
-
 pub struct FrpContext<ENV> {
-    graph: Vec<Option<Weak<RefCell<RawNode<ENV>>>>>,
+    graph: Vec<Weak<RefCell<Node<ENV,Any>>>>,
     nodes_to_be_updated: HashSet<NodeID>,
     transaction_depth: u32
 }
@@ -301,15 +322,10 @@ impl<ENV:'static> FrpContext<ENV> {
                 for dependent_node in &n.dependent_nodes {
                     match dependent_node.upgrade() {
                         Some(ref tmp) => {
-                            let tmp2: &RefCell<RawNode<ENV>> = tmp.borrow();
-                            let tmp3 = tmp2.borrow();
-                            let tmp4: Option<&Node<ENV,Any>> = tmp3.downcast_node_ref();
-                            match tmp4 {
-                                Some(tmp5) => {
-                                    dependent_node_ids.push(tmp5.id);
-                                },
-                                None => ()
-                            }
+                            let tmp2: &RefCell<Node<ENV,Any>> = tmp.borrow();
+                            let tmp3: Ref<Node<ENV,Any>> = tmp2.borrow();
+                            let tmp4: &Node<ENV,Any> = tmp3.borrow();
+                            dependent_node_ids.push(tmp4.id.clone());
                         },
                         None => ()
                     }
@@ -326,14 +342,9 @@ impl<ENV:'static> FrpContext<ENV> {
         for i in 0..len {
             match self.graph.get(i) {
                 Some(x) => {
-                    match x {
-                        &Some(ref x2) => {
-                            match x2.upgrade() {
-                                Some(_) => (),
-                                None => return i
-                            }
-                        },
-                        &None => return i
+                    match x.upgrade() {
+                        Some(_) => (),
+                        None => return i
                     }
                 },
                 None => ()
@@ -344,7 +355,7 @@ impl<ENV:'static> FrpContext<ENV> {
 
     fn with_raw_node_as_ref<F,R>(&self, node_id: &NodeID, k: F) -> R
     where
-    F: FnOnce(&RawNode<ENV>)->R,
+    F: FnOnce(&Node<ENV,Any>)->R,
     {
         let do_panic;
         {
@@ -355,63 +366,46 @@ impl<ENV:'static> FrpContext<ENV> {
         }
         match self.graph.get(node_id.clone()) {
             Some(x) => {
-                match x {
-                    &Some(ref x2) => {
-                        match x2.upgrade() {
-                            Some(x3) => {
-                                let x4: &RefCell<RawNode<ENV>> = x3.borrow();
-                                k(x4.borrow().borrow())
-                            },
-                            None => do_panic()
-                        }
+                match x.upgrade() {
+                    Some(x3) => {
+                        let x4: &RefCell<Node<ENV,Any>> = x3.borrow();
+                        let x5: Ref<Node<ENV,Any>> = x4.borrow();
+                        k(x5.borrow())
                     },
-                    &None => do_panic()
+                    None => do_panic()
                 }
             },
             None => do_panic()
         }
     }
 
-    fn unsafe_node_id_into_raw_node(&self, node_id: &NodeID) -> Rc<RefCell<RawNode<ENV>>> {
-        match &self.graph[node_id.clone()] {
-            &Some(ref n) => {
-                match n.upgrade() {
-                    Some(n2) => n2,
-                    None => panic!("No node exists with node id {}", node_id)
-                }
-            },
-            &None => panic!("No node exists with node id {}", node_id)
+    fn unsafe_node_id_into_raw_node(&self, node_id: &NodeID) -> Rc<RefCell<Node<ENV,Any>>> {
+        match self.graph[node_id.clone()].upgrade() {
+            Some(n2) => n2,
+            None => panic!("No node exists with node id {}", node_id)
         }
     }
 
-    fn unsafe_with_node_as_ref_by_node_id<A,F,R>(&self, node_id: &NodeID, k:F) -> R
+    fn unsafe_with_node_as_ref_by_node_id<F,R>(&self, node_id: &NodeID, k:F) -> R
     where
     ENV:'static,
-    A:'static + ?Sized,
-    F:FnOnce(&Node<ENV,A>)->R
+    F:FnOnce(&Node<ENV,Any>)->R
     {
         let tmp = self.unsafe_node_id_into_raw_node(node_id);
-        let tmp2: &RefCell<RawNode<ENV>> = tmp.borrow();
-        let tmp3 = tmp2.borrow();
-        match tmp3.downcast_node_ref::<A>() {
-            Some(x) => k(x),
-            None => panic!("Failed to cast node")
-        }
+        let tmp2: &RefCell<Node<ENV,Any>> = tmp.borrow();
+        let tmp3: Ref<Node<ENV,Any>> = tmp2.borrow();
+        k(tmp3.borrow())
     }
 
-    fn unsafe_with_node_as_mut_by_node_id<A,F,R>(&self, node_id: &NodeID, k:F) -> R
+    fn unsafe_with_node_as_mut_by_node_id<F,R>(&self, node_id: &NodeID, k:F) -> R
     where
     ENV:'static,
-    A:'static,
-    F:FnOnce(&mut Node<ENV,A>)->R
+    F:FnOnce(&mut Node<ENV,Any>)->R
     {
         let tmp = self.unsafe_node_id_into_raw_node(node_id);
-        let tmp2: &RefCell<RawNode<ENV>> = tmp.borrow();
-        let mut tmp3 = tmp2.borrow_mut();
-        match tmp3.downcast_node_mut::<A>() {
-            Some(x) => k(x),
-            None => panic!("Failed to cast node")
-        }
+        let tmp2: &RefCell<Node<ENV,Any>> = tmp.borrow();
+        let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
+        k(tmp3.borrow_mut())
     }
 
     fn unsafe_sample<A,F,R>(&self, node_id: &NodeID, k: F) -> R
@@ -422,21 +416,22 @@ impl<ENV:'static> FrpContext<ENV> {
     {
         self.with_raw_node_as_ref(
             node_id,
-            move |raw_node| {
-                match raw_node.downcast_node_ref::<A>() {
-                    Some(node) => {
-                        match &node.value {
-                            &Value::Direct(ref x) => k(x),
-                            &Value::InDirect(ref node_id2) => self.unsafe_sample(node_id2, k)
+            move |node| {
+                match &node.value {
+                    &Value::Direct(ref x) => {
+                        let x2 = x.as_ref();
+                        match x.downcast_ref::<A>() {
+                            Some(x2) => k(x2),
+                            None => panic!("Node of wrong type")
                         }
                     },
-                    None => panic!("Node of wrong type")
+                    &Value::InDirect(ref node_id2) => self.unsafe_sample(node_id2, k)
                 }
             }
         )
     }
 
-    fn insert_node<A>(&mut self, node: Node<ENV,A>) -> Rc<RefCell<RawNode<ENV>>>
+    fn insert_node<A>(&mut self, node: Node<ENV,A>) -> Rc<RefCell<Node<ENV,Any>>>
     where
     A:'static
     {
@@ -445,9 +440,9 @@ impl<ENV:'static> FrpContext<ENV> {
         let w = Rc::downgrade(&rc);
         let len = self.graph.len();
         if node_id == len {
-            self.graph.push(Some(w));
+            self.graph.push(w);
         } else {
-            self.graph[node_id] = Some(w);
+            self.graph[node_id] = w;
         }
         return rc;
     }
