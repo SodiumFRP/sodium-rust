@@ -128,12 +128,23 @@ pub trait IsCell<ENV,A> {
         self.with_node_as_ref(|n| n.id.clone())
     }
 
-    fn observe<F>(&self, observer: F) -> Box<FnOnce(&mut FrpContext<ENV>)>
+    fn observe<F>(&self, env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, observer: F) -> Box<FnOnce(&mut FrpContext<ENV>)>
     where
     ENV: 'static,
     A: 'static,
     F:Fn(&mut ENV,&A) + 'static
     {
+        {
+            let value: *const Any;
+            {
+                let frp_context = with_frp_context.with_frp_context(env);
+                value = self.sample(frp_context);
+            }
+            match (unsafe { &*value }).downcast_ref::<A>() {
+                Some(value2) => observer(env, value2),
+                None => ()
+            }
+        }
         let observer2: Box<Fn(&mut ENV, &Any)> = Box::new(
             move |env, a| {
                 match a.downcast_ref::<A>() {
@@ -205,7 +216,9 @@ pub trait IsCell<ENV,A> {
                             match &mut n.value {
                                 &mut Value::Direct(ref mut v) => {
                                     match v.downcast_mut::<B>() {
-                                        Some(v2) => *v2 = b,
+                                        Some(v2) => {
+                                            *v2 = b;
+                                        },
                                         None => panic!("Node has wrong type")
                                     }
                                 },
@@ -415,14 +428,26 @@ impl<ENV:'static> FrpContext<ENV> {
             let env2: *mut ENV = env;
             let frp_context = with_frp_context.with_frp_context(env);
             for node_id in &node_ids_in_update_order {
-                frp_context.unsafe_with_node_as_ref_by_node_id(
+                let mut value_op: Option<*const Any> = None;
+                frp_context.unsafe_sample2(
                     node_id,
-                    |n| {
-                        for (_,observer) in &n.observer_map {
-                            observer(unsafe { &mut *env2 }, &n.value);
-                        }
+                    |value| {
+                        value_op = Some(value);
                     }
-                )
+                );
+                match value_op {
+                    Some(value) => {
+                        frp_context.unsafe_with_node_as_ref_by_node_id(
+                            node_id,
+                            |n| {
+                                for (_,observer) in &n.observer_map {
+                                    observer(unsafe { &mut *env2 }, unsafe { &*value });
+                                }
+                            }
+                        );
+                    },
+                    None => ()
+                }
             }
         }
         for node_id in &node_ids_in_update_order {
@@ -570,6 +595,25 @@ impl<ENV:'static> FrpContext<ENV> {
         let tmp2: &RefCell<Node<ENV,Any>> = tmp.borrow();
         let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
         k(tmp3.borrow_mut())
+    }
+
+    fn unsafe_sample2<F,R>(&self, node_id: &NodeID, k: F) -> R
+    where
+    ENV:'static,
+    F: FnOnce(&Any) -> R
+    {
+        self.with_raw_node_as_ref(
+            node_id,
+            move |node| {
+                match &node.value {
+                    &Value::Direct(ref x) => {
+                        let x2 = x.as_ref();
+                        k(x2)
+                    },
+                    &Value::InDirect(ref node_id2) => self.unsafe_sample2(node_id2, k)
+                }
+            }
+        )
     }
 
     fn unsafe_sample<A,F,R>(&self, node_id: &NodeID, k: F) -> R
