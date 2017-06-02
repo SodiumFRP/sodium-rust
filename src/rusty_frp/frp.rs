@@ -352,12 +352,38 @@ impl<ENV:'static> FrpContext<ENV> {
             let frp_context = with_frp_context.with_frp_context(env);
             frp_context.transaction_depth = frp_context.transaction_depth - 1;
         }
-        for node_id in &node_ids_in_update_order {
-            // TODO: Trigger node's callbacks
+        {
+            let env2: *mut ENV = env;
+            let frp_context = with_frp_context.with_frp_context(env);
+            for node_id in &node_ids_in_update_order {
+                frp_context.unsafe_with_node_as_ref_by_node_id(
+                    node_id,
+                    |n| {
+                        for (_,observer) in &n.observer_map {
+                            observer(unsafe { &mut *env2 }, &n.value);
+                        }
+                    }
+                )
+            }
         }
         for node_id in &node_ids_in_update_order {
-            // TODO: Reset to reset_value_after_propergate_op
-            // This is mainly for events
+            let frp_context = with_frp_context.with_frp_context(env);
+            frp_context.unsafe_with_node_as_mut_by_node_id(
+                node_id,
+                |n| {
+                    match &n.reset_value_after_propergate_op {
+                        &Some(ref reset_value_after_propergate) => {
+                            match &mut n.value {
+                                &mut Value::Direct(ref mut x) => {
+                                    reset_value_after_propergate(x.as_mut());
+                                },
+                                &mut Value::InDirect(_) => ()
+                            }
+                        },
+                        &None => ()
+                    }
+                }
+            );
         }
         {
             let frp_context = with_frp_context.with_frp_context(env);
