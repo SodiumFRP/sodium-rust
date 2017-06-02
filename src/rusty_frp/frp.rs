@@ -345,8 +345,11 @@ impl<ENV:'static> FrpContext<ENV> {
                 }
             }
         }
-        for node_id in &node_ids_in_update_order {
-            FrpContext::update_node(env, with_frp_context, node_id);
+        {
+            let frp_context = with_frp_context.with_frp_context(env);
+            for node_id in &node_ids_in_update_order {
+                frp_context.update_node(node_id);
+            }
         }
         {
             let frp_context = with_frp_context.with_frp_context(env);
@@ -391,8 +394,17 @@ impl<ENV:'static> FrpContext<ENV> {
         }
     }
 
-    fn update_node(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, node_id: &NodeID) {
-
+    fn update_node(&mut self, node_id: &NodeID) {
+        let frp_context: *mut Self = self;
+        self.unsafe_with_node_as_ref_by_node_id(
+            node_id,
+            |n| {
+                match &n.update_fn_op {
+                    &Some(ref update_fn) => update_fn(unsafe { &mut *frp_context }),
+                    &None => ()
+                }
+            }
+        );
     }
 
     fn mark_all_decendent_nodes_for_update(&mut self, node_id: &NodeID, visited: &mut HashSet<NodeID>) {
