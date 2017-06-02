@@ -43,6 +43,28 @@ impl<ENV,A> CellSink<ENV,A> {
             phantom_a: PhantomData
         }
     }
+
+    fn send(&self, env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, value: A)
+    where
+    ENV: 'static,
+    A: 'static
+    {
+        let node_id = self.node_id();
+        FrpContext::transaction(
+            env,
+            with_frp_context,
+            move |env, with_frp_context| {
+                let frp_context = with_frp_context.with_frp_context(env);
+                frp_context.unsafe_with_node_as_mut_by_node_id(
+                    &node_id,
+                    move |n| {
+                        n.value = Value::Direct(Box::new(value));
+                    }
+                );
+                frp_context.mark_all_decendent_nodes_for_update(&node_id);
+            }
+        )
+    }
 }
 
 impl<ENV:'static,A:'static> IsCell<ENV,A> for CellSink<ENV,A> {
@@ -286,7 +308,7 @@ impl<ENV:'static> FrpContext<ENV> {
     }
 
     pub fn transaction<F,R>(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, k: F) -> R
-    where F: Fn(&mut ENV, &WithFrpContext<ENV>) -> R
+    where F: FnOnce(&mut ENV, &WithFrpContext<ENV>) -> R
     {
         {
             let frp_context = with_frp_context.with_frp_context(env);
@@ -407,7 +429,11 @@ impl<ENV:'static> FrpContext<ENV> {
         );
     }
 
-    fn mark_all_decendent_nodes_for_update(&mut self, node_id: &NodeID, visited: &mut HashSet<NodeID>) {
+    fn mark_all_decendent_nodes_for_update(&mut self, node_id: &NodeID) {
+        self.mark_all_decendent_nodes_for_update2(node_id, &mut HashSet::new());
+    }
+
+    fn mark_all_decendent_nodes_for_update2(&mut self, node_id: &NodeID, visited: &mut HashSet<NodeID>) {
         if visited.contains(node_id) {
             return;
         }
@@ -431,7 +457,7 @@ impl<ENV:'static> FrpContext<ENV> {
             }
         );
         for dependent_node_id in dependent_node_ids {
-            self.mark_all_decendent_nodes_for_update(&dependent_node_id, visited);
+            self.mark_all_decendent_nodes_for_update2(&dependent_node_id, visited);
         }
     }
 
