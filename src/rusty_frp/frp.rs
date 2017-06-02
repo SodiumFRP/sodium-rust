@@ -195,12 +195,10 @@ pub trait IsCell<ENV,A> {
     {
         let a_node_id = self.node_id();
         let node_id = frp_context.next_cell_id();
-        let frp_context2: *mut FrpContext<ENV> = frp_context;
         let initial_value = f(self.sample(frp_context));
         let result_node: Cell<ENV,B> = Cell::of(frp_context.insert_node(
             Node {
                 id: node_id.clone(),
-                frp_context: frp_context2,
                 free_observer_id: 0,
                 observer_map: HashMap::new(),
                 depends_on_nodes: vec![self.node().clone()],
@@ -266,10 +264,6 @@ type NodeID = usize;
 
 struct Node<ENV,A:?Sized> {
     id: NodeID,
-
-    // for removing from Node from graph in FrpContext
-    frp_context: *mut FrpContext<ENV>,
-
     free_observer_id: u32,
     observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
     depends_on_nodes: Vec<Rc<RefCell<Node<ENV,Any>>>>,
@@ -327,7 +321,6 @@ impl<ENV,A> Node<ENV,A> {
         };
         Node {
             id: self.id,
-            frp_context: self.frp_context,
             free_observer_id: self.free_observer_id,
             observer_map: observer_map,
             depends_on_nodes: self.depends_on_nodes,
@@ -660,11 +653,9 @@ impl<ENV:'static> FrpContext<ENV> {
     A:'static
     {
         let node_id = self.next_cell_id();
-        let frp_context: *mut FrpContext<ENV> = self;
         CellSink::of(self.insert_node(
             Node {
                 id: node_id,
-                frp_context: frp_context,
                 free_observer_id: 0,
                 observer_map: HashMap::new(),
                 depends_on_nodes: Vec::new(),
