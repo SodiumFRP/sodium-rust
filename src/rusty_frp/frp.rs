@@ -451,16 +451,22 @@ impl<ENV:'static> FrpContext<ENV> {
     }
 
     fn update_node(&mut self, node_id: &NodeID) {
-        let frp_context: *mut Self = self;
+        let mut update_fn_op: Option<*const Fn(&mut FrpContext<ENV>)> = None;
         self.unsafe_with_node_as_ref_by_node_id(
             node_id,
             |n| {
                 match &n.update_fn_op {
-                    &Some(ref update_fn) => update_fn(unsafe { &mut *frp_context }),
+                    &Some(ref update_fn) => update_fn_op = Some(update_fn.as_ref()),
                     &None => ()
                 }
             }
         );
+        match update_fn_op {
+            Some(update_fn) => {
+                unsafe { (*update_fn)(self) };
+            },
+            None => ()
+        }
     }
 
     fn mark_all_decendent_nodes_for_update(&mut self, node_id: &NodeID) {
