@@ -5,6 +5,7 @@ pub use self::frp::FrpContext;
 pub use self::frp::Stream;
 pub use self::frp::StreamSink;
 pub use self::frp::IsStream;
+pub use self::frp::WithFrpContext;
 
 /*
 pub use self::frp::Cell;

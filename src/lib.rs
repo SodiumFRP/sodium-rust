@@ -632,7 +632,7 @@ test("defer", () => {
         c.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
         assert_eq!(vec![12], env.out);
     }
-
+*/
     #[test]
     fn map_c() {
         struct Env {
@@ -649,12 +649,12 @@ test("defer", () => {
         }
         let with_frp_context = WithFrpContextForEnv {};
         let c: CellSink<Env,u32> = env.frp_context.new_cell_sink(6);
-        let c2 = env.frp_context.map_c(&c, |a| format!("{}", a));
-        c2.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
-        c.change_value(&mut env, &with_frp_context, 8);
+        let c2 = c.map(&mut env.frp_context, |a| format!("{}", a));
+        c2.observe(|env,value| env.out.push(value.clone()));
+        c.send(&mut env, &with_frp_context, 8);
         assert_eq!(vec![String::from("6"), String::from("8")], env.out);
     }
-
+/*
 /*
 test("mapCLateListen", () => {
     shouldThrow("invoked before listeners", () => {

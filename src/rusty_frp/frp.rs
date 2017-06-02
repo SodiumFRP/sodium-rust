@@ -44,7 +44,7 @@ impl<ENV,A> CellSink<ENV,A> {
         }
     }
 
-    fn send(&self, env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, value: A)
+    pub fn send(&self, env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, value: A)
     where
     ENV: 'static,
     A: 'static
@@ -126,6 +126,40 @@ pub trait IsCell<ENV,A> {
     A:'static
     {
         self.with_node_as_ref(|n| n.id.clone())
+    }
+
+    fn observe<F>(&self, observer: F) -> Box<FnOnce(&mut FrpContext<ENV>)>
+    where
+    ENV: 'static,
+    A: 'static,
+    F:Fn(&mut ENV,&A) + 'static
+    {
+        let observer2: Box<Fn(&mut ENV, &Any)> = Box::new(
+            move |env, a| {
+                match a.downcast_ref::<A>() {
+                    Some(a2) => observer(env, a2),
+                    None => ()
+                }
+            }
+        );
+        let observer_id;
+        {
+            let tmp: &RefCell<Node<ENV,Any>> = self.node().borrow();
+            let mut tmp2: RefMut<Node<ENV,Any>> = tmp.borrow_mut();
+            let tmp3: &mut Node<ENV,Any> = tmp2.borrow_mut();
+            observer_id = tmp3.free_observer_id.clone();
+            tmp3.free_observer_id = tmp3.free_observer_id + 1;
+            tmp3.observer_map.insert(observer_id, observer2);
+        }
+        let node_id = self.node_id();
+        Box::new(move |frp_context| {
+            frp_context.unsafe_with_node_as_mut_by_node_id(
+                &node_id,
+                move |n| {
+                    n.observer_map.remove(&observer_id);
+                }
+            )
+        })
     }
 
     fn sample<'r>(&self, frp_context: &'r FrpContext<ENV>) -> &'r A
