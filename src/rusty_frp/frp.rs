@@ -95,6 +95,63 @@ impl<ENV:'static,A:'static> IsStream<ENV,A> for StreamSink<ENV,A> {
     }
 }
 
+macro_rules! lift_c {
+    ($frp_context:expr, $f:expr, $($cell:expr),*) => {{
+        let frp_context = $frp_context;
+        let f2 = $f;
+        let node_id = frp_context.next_cell_id();
+        let initial_value = f2( $($cell.sample(frp_context),)* );
+        let result_node = Cell::of(frp_context.insert_node(
+            Node {
+                id: node_id.clone(),
+                free_observer_id: 0,
+                observer_map: HashMap::new(),
+                depends_on_nodes:
+                    vec![
+                        $(Rc::downgrade($cell.node()),)*
+                    ],
+                dependent_nodes: Vec::new(),
+                update_fn_op: None,
+                reset_value_after_propergate_op: None,
+                value: Value::Direct(Box::new(initial_value))
+            }
+        ));
+        $(
+            {
+                let result_node = result_node.node().clone();
+                $cell.with_node_as_mut(move |n| { n.dependent_nodes.push(result_node); });
+            }
+        )*
+        /* TODO: Finish this
+        frp_context.unsafe_with_node_as_mut_by_node_id(
+            &node_id,
+            |n| {
+
+            }
+        );*/
+        result_node
+    }}
+}
+
+fn test() {
+    struct Env {
+        frp_context: FrpContext<Env>,
+        out: Vec<u32>
+    }
+    let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+    #[derive(Copy,Clone)]
+    struct WithFrpContextForEnv {}
+    impl WithFrpContext<Env> for WithFrpContextForEnv {
+        fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+            return &mut env.frp_context;
+        }
+    }
+    let with_frp_context = WithFrpContextForEnv {};
+    let ca: CellSink<Env,u32> = env.frp_context.new_cell_sink(2);
+    let cb: CellSink<Env,u32> = env.frp_context.new_cell_sink(5);
+    let cc: Cell<Env,u32> = lift_c!(&mut env.frp_context, |a:&u32,b:&u32| { a.clone() + b.clone() }, ca, cb);
+}
+
 pub trait IsCell<ENV,A> {
     fn node<'r>(&'r self) -> &'r Rc<RefCell<Node<ENV,Any>>>;
 
