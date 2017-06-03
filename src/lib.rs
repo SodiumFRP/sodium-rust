@@ -669,7 +669,7 @@ test("mapCLateListen", () => {
     });
 });
 */
-
+*/
     #[test]
     fn apply() {
         struct Env {
@@ -687,13 +687,13 @@ test("mapCLateListen", () => {
         let with_frp_context = WithFrpContextForEnv {};
         let cf: CellSink<Env,Box<Fn(&u32)->String>> = env.frp_context.new_cell_sink(Box::new(|a| format!("1 {}", a)));
         let ca: CellSink<Env,u32> = env.frp_context.new_cell_sink(5);
-        let c = env.frp_context.apply(&cf, &ca);
+        let c = ca.apply(&mut env.frp_context, &cf);
         c.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
-        cf.change_value(&mut env, &with_frp_context, Box::new(|a| format!("12 {}", a)));
-        ca.change_value(&mut env, &with_frp_context, 6);
+        cf.send(&mut env, &with_frp_context, Box::new(|a| format!("12 {}", a)));
+        ca.send(&mut env, &with_frp_context, 6);
         assert_eq!(vec![String::from("1 5"), String::from("12 5"), String::from("12 6")], env.out);
     }
-
+/*
     #[test]
     fn lift() {
         struct Env {
