@@ -201,7 +201,7 @@ pub trait IsCell<ENV,A> {
                 id: node_id.clone(),
                 free_observer_id: 0,
                 observer_map: HashMap::new(),
-                depends_on_nodes: vec![self.node().clone()],
+                depends_on_nodes: vec![Rc::downgrade(self.node())],
                 dependent_nodes: Vec::new(),
                 update_fn_op: Some(Box::new(move |frp_context| {
                     let b = frp_context.unsafe_sample(
@@ -230,7 +230,7 @@ pub trait IsCell<ENV,A> {
             }
         ));
         {
-            let result_node = Rc::downgrade(result_node.node());
+            let result_node = result_node.node().clone();
             self.with_node_as_mut(move |n| { n.dependent_nodes.push(result_node); });
         }
         result_node
@@ -266,8 +266,8 @@ struct Node<ENV,A:?Sized> {
     id: NodeID,
     free_observer_id: u32,
     observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
-    depends_on_nodes: Vec<Rc<RefCell<Node<ENV,Any>>>>,
-    dependent_nodes: Vec<Weak<RefCell<Node<ENV,Any>>>>,
+    depends_on_nodes: Vec<Weak<RefCell<Node<ENV,Any>>>>,
+    dependent_nodes: Vec<Rc<RefCell<Node<ENV,Any>>>>,
     update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
     value: Value<A>
@@ -378,15 +378,10 @@ impl<ENV:'static> FrpContext<ENV> {
                     node_to_be_updated,
                     |node| {
                         for dependent_node in &node.dependent_nodes {
-                            match dependent_node.upgrade() {
-                                Some(x) => {
-                                    let x2: &RefCell<Node<ENV,Any>> = x.borrow();
-                                    let x3: Ref<Node<ENV,Any>> = x2.borrow();
-                                    let x4: &Node<ENV,Any> = x3.borrow();
-                                    ts.add_dependency(node_to_be_updated.clone(), x4.id.clone());
-                                },
-                                None => ()
-                            }
+                            let x2: &RefCell<Node<ENV,Any>> = dependent_node.borrow();
+                            let x3: Ref<Node<ENV,Any>> = x2.borrow();
+                            let x4: &Node<ENV,Any> = x3.borrow();
+                            ts.add_dependency(node_to_be_updated.clone(), x4.id.clone());
                         }
                     }
                 );
@@ -502,15 +497,10 @@ impl<ENV:'static> FrpContext<ENV> {
             &node_id,
             |n: &Node<ENV,Any>| {
                 for dependent_node in &n.dependent_nodes {
-                    match dependent_node.upgrade() {
-                        Some(ref tmp) => {
-                            let tmp2: &RefCell<Node<ENV,Any>> = tmp.borrow();
-                            let tmp3: Ref<Node<ENV,Any>> = tmp2.borrow();
-                            let tmp4: &Node<ENV,Any> = tmp3.borrow();
-                            dependent_node_ids.push(tmp4.id.clone());
-                        },
-                        None => ()
-                    }
+                    let tmp2: &RefCell<Node<ENV,Any>> = dependent_node.borrow();
+                    let tmp3: Ref<Node<ENV,Any>> = tmp2.borrow();
+                    let tmp4: &Node<ENV,Any> = tmp3.borrow();
+                    dependent_node_ids.push(tmp4.id.clone());
                 }
             }
         );
