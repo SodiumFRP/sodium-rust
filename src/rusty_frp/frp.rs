@@ -16,6 +16,12 @@ pub struct Cell<ENV,A> {
     phantom_a: PhantomData<A>
 }
 
+impl<ENV,A> Clone for Cell<ENV,A> {
+    fn clone(&self) -> Self {
+        Cell::of(self.node.clone())
+    }
+}
+
 impl<ENV,A> Cell<ENV,A> {
     fn of(node: Rc<RefCell<Node<ENV,Any>>>) -> Cell<ENV,A> {
         Cell {
@@ -34,6 +40,12 @@ impl<ENV:'static,A:'static> IsCell<ENV,A> for Cell<ENV,A> {
 pub struct CellSink<ENV,A> {
     node: Rc<RefCell<Node<ENV,Any>>>,
     phantom_a: PhantomData<A>
+}
+
+impl<ENV,A> Clone for CellSink<ENV,A> {
+    fn clone(&self) -> Self {
+        CellSink::of(self.node.clone())
+    }
 }
 
 impl<ENV,A> CellSink<ENV,A> {
@@ -100,35 +112,47 @@ macro_rules! lift_c {
         let frp_context = $frp_context;
         let f2 = $f;
         let node_id = frp_context.next_cell_id();
-        let initial_value = f2( $($cell.sample(frp_context),)* );
+        let depends_on_node_ids = vec![
+            $($cell.node_id(),)*
+        ];
+        let depends_on_nodes = vec![
+            $(Rc::downgrade($cell.node()),)*
+        ];
+        let initial_value = f2( $($cell.clone().sample(frp_context),)* );
+        let calc = move |frp_context: &FrpContext<_>| { f2( $($cell.sample(frp_context),)* ) };
         let result_node = Cell::of(frp_context.insert_node(
             Node {
                 id: node_id.clone(),
                 free_observer_id: 0,
                 observer_map: HashMap::new(),
-                depends_on_nodes:
-                    vec![
-                        $(Rc::downgrade($cell.node()),)*
-                    ],
+                depends_on_nodes: depends_on_nodes,
                 dependent_nodes: Vec::new(),
-                update_fn_op: None,
+                update_fn_op: Some(Box::new(
+                    move |frp_context| {
+                        let value = calc(frp_context);
+                        frp_context.unsafe_with_node_as_mut_by_node_id(
+                            &node_id,
+                            |_,n| {
+                                n.value = Value::Direct(Box::new(value));
+                            }
+                        );
+                    }
+                )),
                 reset_value_after_propergate_op: None,
                 value: Value::Direct(Box::new(initial_value))
             }
         ));
-        $(
-            {
+        {
+            for depends_on_node_id in depends_on_node_ids {
                 let result_node = result_node.node().clone();
-                $cell.with_node_as_mut(move |n| { n.dependent_nodes.push(result_node); });
+                frp_context.unsafe_with_node_as_mut_by_node_id(
+                    &depends_on_node_id,
+                    |_,n| {
+                        n.dependent_nodes.push(result_node);
+                    }
+                )
             }
-        )*
-        /* TODO: Finish this
-        frp_context.unsafe_with_node_as_mut_by_node_id(
-            &node_id,
-            |n| {
-
-            }
-        );*/
+        }
         result_node
     }}
 }
