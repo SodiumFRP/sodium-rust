@@ -890,6 +890,26 @@ impl<ENV:'static> FrpContext<ENV> {
             }
         ))
     }
+
+    pub fn new_stream_sink<A>(&mut self) -> StreamSink<ENV,A>
+    where
+    A:'static
+    {
+        let ca: CellSink<ENV,Option<A>> = self.new_cell_sink(None);
+        let tmp1: &Rc<RefCell<Node<ENV,Any>>> = ca.node();
+        let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
+        let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
+        let tmp4: &mut Node<ENV,Any> = tmp3.borrow_mut();
+        tmp4.reset_value_after_propergate_op = Some(
+            Box::new(|v: &mut Any| {
+                match v.downcast_mut::<Option<A>>() {
+                    Some(v2) => *v2 = None,
+                    None => ()
+                }
+            }
+        ));
+        StreamSink::of(ca.node().clone())
+    }
 }
 
 pub trait WithFrpContext<ENV> {
