@@ -693,7 +693,7 @@ test("mapCLateListen", () => {
         ca.send(&mut env, &with_frp_context, 6);
         assert_eq!(vec![String::from("1 5"), String::from("12 5"), String::from("12 6")], env.out);
     }
-/*
+
     #[test]
     fn lift() {
         struct Env {
@@ -711,13 +711,14 @@ test("mapCLateListen", () => {
         let with_frp_context = WithFrpContextForEnv {};
         let a = env.frp_context.new_cell_sink(1);
         let b = env.frp_context.new_cell_sink(5);
-        let c = env.frp_context.lift2_c(|aa, bb| format!("{} {}", aa, bb), &a, &b);
+        let c = a.lift2(&mut env.frp_context, &b, |aa, bb| format!("{} {}", aa, bb));
         c.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
-        a.change_value(&mut env, &with_frp_context, 12);
-        b.change_value(&mut env, &with_frp_context, 6);
+        a.send(&mut env, &with_frp_context, 12);
+        b.send(&mut env, &with_frp_context, 6);
         assert_eq!(vec![String::from("1 5"), String::from("12 5"), String::from("12 6")], env.out);
     }
 
+    /*
     #[test]
     fn lift_glitch() {
         struct Env {
