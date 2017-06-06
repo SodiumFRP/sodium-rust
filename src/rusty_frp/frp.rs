@@ -118,8 +118,8 @@ macro_rules! lift_c {
         let depends_on_nodes = vec![
             $(Rc::downgrade($cell.node()),)*
         ];
-        let initial_value = f2( $($cell.clone().sample(frp_context),)* );
-        let calc: Box<Fn(&FrpContext<_>)->_> = Box::new(move |frp_context: &FrpContext<_>| { f2( $($cell.sample(frp_context),)* ) });
+        let calc = move |frp_context: &FrpContext<_>| { f2( $($cell.sample(frp_context),)* ) };
+        let initial_value = calc(frp_context);
         let update_fn: Box<Fn(&mut FrpContext<_>) + 'static> = Box::new(
             move |frp_context| {
                 let value = calc(frp_context);
