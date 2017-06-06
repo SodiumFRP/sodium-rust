@@ -110,7 +110,7 @@ impl<ENV:'static,A:'static> IsStream<ENV,A> for StreamSink<ENV,A> {
 macro_rules! lift_c {
     ($frp_context:expr, $f:expr, $($cell:expr),*) => {{
         let frp_context = $frp_context;
-        let f2 = $f;
+        let f2 = Box::new($f);
         let node_id = frp_context.next_cell_id();
         let depends_on_node_ids = vec![
             $($cell.node_id(),)*
@@ -119,7 +119,18 @@ macro_rules! lift_c {
             $(Rc::downgrade($cell.node()),)*
         ];
         let initial_value = f2( $($cell.clone().sample(frp_context),)* );
-        let calc = move |frp_context: &FrpContext<_>| { f2( $($cell.sample(frp_context),)* ) };
+        let calc: Box<Fn(&FrpContext<_>)->_> = Box::new(move |frp_context: &FrpContext<_>| { f2( $($cell.sample(frp_context),)* ) });
+        let update_fn: Box<Fn(&mut FrpContext<_>) + 'static> = Box::new(
+            move |frp_context| {
+                let value = calc(frp_context);
+                frp_context.unsafe_with_node_as_mut_by_node_id(
+                    &node_id,
+                    |_,n| {
+                        n.value = Value::Direct(Box::new(value));
+                    }
+                );
+            }
+        );
         let result_node = Cell::of(frp_context.insert_node(
             Node {
                 id: node_id.clone(),
@@ -127,17 +138,7 @@ macro_rules! lift_c {
                 observer_map: HashMap::new(),
                 depends_on_nodes: depends_on_nodes,
                 dependent_nodes: Vec::new(),
-                update_fn_op: Some(Box::new(
-                    move |frp_context| {
-                        let value = calc(frp_context);
-                        frp_context.unsafe_with_node_as_mut_by_node_id(
-                            &node_id,
-                            |_,n| {
-                                n.value = Value::Direct(Box::new(value));
-                            }
-                        );
-                    }
-                )),
+                update_fn_op: Some(update_fn),
                 reset_value_after_propergate_op: None,
                 value: Value::Direct(Box::new(initial_value))
             }
@@ -157,27 +158,12 @@ macro_rules! lift_c {
     }}
 }
 
-fn test() {
-    struct Env {
-        frp_context: FrpContext<Env>,
-        out: Vec<u32>
-    }
-    let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
-    #[derive(Copy,Clone)]
-    struct WithFrpContextForEnv {}
-    impl WithFrpContext<Env> for WithFrpContextForEnv {
-        fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
-            return &mut env.frp_context;
-        }
-    }
-    let with_frp_context = WithFrpContextForEnv {};
-    let ca: CellSink<Env,u32> = env.frp_context.new_cell_sink(2);
-    let cb: CellSink<Env,u32> = env.frp_context.new_cell_sink(5);
-    let cc: Cell<Env,u32> = lift_c!(&mut env.frp_context, |a:&u32,b:&u32| { a.clone() + b.clone() }, ca, cb);
-}
-
 pub trait IsCell<ENV,A> {
     fn node<'r>(&'r self) -> &'r Rc<RefCell<Node<ENV,Any>>>;
+
+    fn as_cell(&self) -> Cell<ENV,A> {
+        Cell::of(self.node().clone())
+    }
 
     fn with_node_as_ref<F,R>(&self, k:F) -> R
     where
@@ -381,6 +367,21 @@ pub trait IsCell<ENV,A> {
             cf.with_node_as_mut(move |n| { n.dependent_nodes.push(result_node); });
         }
         result_node
+    }
+
+    fn lift2<B,C,CB,F>(&self, frp_context: &mut FrpContext<ENV>, cb: &CB, f: F) -> Cell<ENV,C>
+    where
+    ENV: 'static,
+    A: 'static,
+    B: 'static,
+    C: 'static,
+    CB: IsCell<ENV,B>,
+    F: Fn(&A,&B)->C + 'static
+    {
+        let ca: Cell<ENV,A> = self.as_cell();
+        let cb: Cell<ENV,B> = cb.as_cell();
+        let result: Cell<ENV,C> = lift_c!(frp_context, f, ca, cb);
+        return result;
     }
 }
 
