@@ -102,6 +102,12 @@ pub struct Stream<ENV,A> {
     phantom_a: PhantomData<A>
 }
 
+impl<ENV:'static,A:'static> Clone for Stream<ENV,A> {
+    fn clone(&self) -> Self {
+        Stream::of(self.node.clone())
+    }
+}
+
 impl<ENV:'static,A:'static> Stream<ENV,A> {
     fn of(node: Rc<RefCell<Node<ENV,Any>>>) -> Stream<ENV,A> {
         Stream {
@@ -120,6 +126,22 @@ impl<ENV:'static,A:'static> IsStream<ENV,A> for Stream<ENV,A> {
 pub struct StreamSink<ENV,A> {
     node: Rc<RefCell<Node<ENV,Any>>>,
     phantom_a: PhantomData<A>
+}
+
+impl<ENV:'static,A:'static> StreamSink<ENV,A> {
+    fn of(node: Rc<RefCell<Node<ENV,Any>>>) -> StreamSink<ENV,A> {
+        StreamSink {
+            node: node,
+            phantom_a: PhantomData
+        }
+    }
+}
+
+
+impl<ENV:'static,A:'static> Clone for StreamSink<ENV,A> {
+    fn clone(&self) -> Self {
+        StreamSink::of(self.node.clone())
+    }
 }
 
 impl<ENV:'static,A:'static> IsStream<ENV,A> for StreamSink<ENV,A> {
