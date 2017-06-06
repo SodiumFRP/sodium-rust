@@ -29,6 +29,18 @@ impl<ENV,A> Cell<ENV,A> {
             phantom_a: PhantomData
         }
     }
+
+    fn from_stream<SA>(sa: &SA) -> Cell<ENV,Option<A>>
+    where SA: IsStream<ENV,A>
+    {
+        Cell::of(sa.node().clone())
+    }
+}
+
+impl<ENV:'static,A:'static> Cell<ENV,Option<A>> {
+    fn to_stream(&self) -> Stream<ENV,A> {
+        Stream::of(self.node().clone())
+    }
 }
 
 impl<ENV:'static,A:'static> IsCell<ENV,A> for Cell<ENV,A> {
@@ -88,6 +100,15 @@ impl<ENV:'static,A:'static> IsCell<ENV,A> for CellSink<ENV,A> {
 pub struct Stream<ENV,A> {
     node: Rc<RefCell<Node<ENV,Any>>>,
     phantom_a: PhantomData<A>
+}
+
+impl<ENV:'static,A:'static> Stream<ENV,A> {
+    fn of(node: Rc<RefCell<Node<ENV,Any>>>) -> Stream<ENV,A> {
+        Stream {
+            node: node,
+            phantom_a: PhantomData
+        }
+    }
 }
 
 impl<ENV:'static,A:'static> IsStream<ENV,A> for Stream<ENV,A> {
@@ -426,6 +447,10 @@ pub trait IsCell<ENV,A> {
 
 pub trait IsStream<ENV,A> {
     fn node<'r>(&'r self) -> &'r Rc<RefCell<Node<ENV,Any>>>;
+
+    fn as_cell(&self) -> Cell<ENV,Option<A>> {
+        Cell::of(self.node().clone())
+    }
 
     fn with_node_as_ref<F,R>(&self, k:F) -> R
     where
