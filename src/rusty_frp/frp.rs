@@ -132,6 +132,65 @@ impl<ENV:'static,A:'static> Stream<ENV,A> {
                 }
             )
     }
+
+    pub fn hold(&self, frp_context: &mut FrpContext<ENV>, value: A) -> Cell<ENV,A>
+    where
+    A: Copy
+    {
+        let ca: CellSink<ENV,A> = frp_context.new_cell_sink(value.clone());
+        {
+            let tmp1: &Rc<RefCell<Node<ENV,Any>>> = self.node();
+            let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
+            let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
+            let tmp4: &mut Node<ENV,Any> = tmp3.borrow_mut();
+            tmp4.dependent_nodes.push(ca.node().clone());
+        }
+        {
+            let tmp1: &Rc<RefCell<Node<ENV,Any>>> = ca.node();
+            let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
+            let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
+            let tmp4: &mut Node<ENV,Any> = tmp3.borrow_mut();
+            tmp4.depends_on_nodes.push(Rc::downgrade(self.node()));
+            {
+                let id = self.node_id();
+                let ca_id = ca.node_id();
+                tmp4.update_fn_op = Some(Box::new(move |frp_context| {
+                    let value_op = frp_context.unsafe_sample(
+                        &id,
+                        |frp_context: &FrpContext<ENV>, a: &Option<A>| {
+                            a.clone()
+                        }
+                    );
+                    match value_op {
+                        Some(value) => {
+                            frp_context.unsafe_with_node_as_mut_by_node_id(
+                                &ca_id,
+                                move |frp_context, n| {
+                                    n.reset_value_after_propergate_op = Some(Box::new(move |v: &mut Any| {
+                                        match v.downcast_mut::<A>() {
+                                            Some(v2) => *v2 = value,
+                                            None => ()
+                                        }
+                                    }));
+                                }
+                            );
+                        },
+                        None => ()
+                    }
+                }));
+            }
+            {
+                let value = value.clone();
+                tmp4.reset_value_after_propergate_op = Some(Box::new(move |v: &mut Any| {
+                    match v.downcast_mut::<A>() {
+                        Some(v2) => *v2 = value,
+                        None => ()
+                    }
+                }));
+            }
+        }
+        Cell::of(ca.node().clone())
+    }
 }
 
 impl<ENV:'static,A:'static> IsStream<ENV,A> for Stream<ENV,A> {

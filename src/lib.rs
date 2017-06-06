@@ -777,8 +777,7 @@ test("mapCLateListen", () => {
         c.observe(&mut env, &with_frp_context, |env, value| env.out.push(value.clone()));
         assert_eq!(vec![10], env.out);
     }
-
-    /*
+/*
     #[test]
     fn hold_is_delayed() {
         struct Env {
@@ -795,14 +794,15 @@ test("mapCLateListen", () => {
         }
         let with_frp_context = WithFrpContextForEnv {};
         let s = env.frp_context.new_stream_sink();
-        let h = env.frp_context.hold(0, &s);
+        let h = S.hold(&mut env.frp_context, 0);
         let sPair = env.frp_context.snapshot(|a, b| format!("{} {}", a, b), &s, &h);
         sPair.observe(&mut env, &with_frp_context, |env, value| env.out.push(value.clone()));
         s.send(&mut env, &with_frp_context, 2);
         s.send(&mut env, &with_frp_context, 3);
         assert_eq!(vec![String::from("2 0"), String::from("3 2")], env.out);
     }
-
+*/
+    /*
     #[test]
     fn switch_c() {
         struct SC {
