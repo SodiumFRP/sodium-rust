@@ -383,6 +383,45 @@ pub trait IsCell<ENV,A> {
         let result: Cell<ENV,C> = lift_c!(frp_context, f, ca, cb);
         return result;
     }
+
+    fn lift3<B,C,D,CB,CC,F>(&self, frp_context: &mut FrpContext<ENV>, cb: &CB, cc: &CC, f: F) -> Cell<ENV,D>
+    where
+    ENV: 'static,
+    A: 'static,
+    B: 'static,
+    C: 'static,
+    D: 'static,
+    CB: IsCell<ENV,B>,
+    CC: IsCell<ENV,C>,
+    F: Fn(&A,&B,&C)->D + 'static
+    {
+        let ca: Cell<ENV,A> = self.as_cell();
+        let cb: Cell<ENV,B> = cb.as_cell();
+        let cc: Cell<ENV,C> = cc.as_cell();
+        let result: Cell<ENV,D> = lift_c!(frp_context, f, ca, cb, cc);
+        return result;
+    }
+
+    fn lift4<B,C,D,E,CB,CC,CD,F>(&self, frp_context: &mut FrpContext<ENV>, cb: &CB, cc: &CC, cd: &CD, f: F) -> Cell<ENV,E>
+    where
+    ENV: 'static,
+    A: 'static,
+    B: 'static,
+    C: 'static,
+    D: 'static,
+    E: 'static,
+    CB: IsCell<ENV,B>,
+    CC: IsCell<ENV,C>,
+    CD: IsCell<ENV,D>,
+    F: Fn(&A,&B,&C,&D)->E + 'static
+    {
+        let ca: Cell<ENV,A> = self.as_cell();
+        let cb: Cell<ENV,B> = cb.as_cell();
+        let cc: Cell<ENV,C> = cc.as_cell();
+        let cd: Cell<ENV,D> = cd.as_cell();
+        let result: Cell<ENV,E> = lift_c!(frp_context, f, ca, cb, cc, cd);
+        return result;
+    }
 }
 
 pub trait IsStream<ENV,A> {
