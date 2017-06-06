@@ -742,7 +742,6 @@ test("mapCLateListen", () => {
         assert_eq!(vec![String::from("3 5"), String::from("6 10")], env.out);
     }
 
-    /*
     #[test]
     fn lift_from_simultaneous() {
         struct Env {
@@ -769,15 +768,16 @@ test("mapCLateListen", () => {
                     b1 = frp_context.new_cell_sink(3);
                     b2 = frp_context.new_cell_sink(5);
                 }
-                b2.change_value(env, with_frp_context, 7);
+                b2.send(env, with_frp_context, 7);
                 (b1, b2)
             }
         );
-        let c = env.frp_context.lift2_c(|x, y| x.clone() + y.clone(), &b1, &b2);
+        let c = b1.lift2(&mut env.frp_context, &b2, |x, y| x.clone() + y.clone());
         c.observe(&mut env, &with_frp_context, |env, value| env.out.push(value.clone()));
         assert_eq!(vec![10], env.out);
     }
 
+    /*
     #[test]
     fn hold_is_delayed() {
         struct Env {
