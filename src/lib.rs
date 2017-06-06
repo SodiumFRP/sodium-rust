@@ -205,6 +205,7 @@ function test(name : string, t : () => void)
     }
 }*/
 
+*/
     #[test]
     fn map() {
         struct Env {
@@ -221,7 +222,7 @@ function test(name : string, t : () => void)
         }
         let with_frp_context = WithFrpContextForEnv {};
         let s: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
-        let s2 = env.frp_context.map_s(&s, |a| a + 1);
+        let s2 = s.map(&mut env.frp_context, |a| a + 1);
         s2.observe(
             &mut env,
             &with_frp_context,
@@ -231,7 +232,7 @@ function test(name : string, t : () => void)
         s.send(&mut env, &with_frp_context, 7);
         assert_eq!(env.out, vec![8]);
     }
-
+/*
 /*
 test("send_with_no_listener_1", () => {
     shouldThrow("invoked before listeners",

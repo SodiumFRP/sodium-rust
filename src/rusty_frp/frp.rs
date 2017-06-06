@@ -38,7 +38,7 @@ impl<ENV,A> Cell<ENV,A> {
 }
 
 impl<ENV:'static,A:'static> Cell<ENV,Option<A>> {
-    fn to_stream(&self) -> Stream<ENV,A> {
+    fn as_stream(&self) -> Stream<ENV,A> {
         Stream::of(self.node().clone())
     }
 }
@@ -115,6 +115,23 @@ impl<ENV:'static,A:'static> Stream<ENV,A> {
             phantom_a: PhantomData
         }
     }
+
+    pub fn observe<F>(&self, env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, k: F) -> Box<FnOnce(&mut FrpContext<ENV>)>
+    where
+    F: Fn(&mut ENV, &A) + 'static
+    {
+        self.as_cell()
+            .observe(
+                env,
+                with_frp_context,
+                move |env, a| {
+                    match a {
+                        &Some(ref a2) => k(env, a2),
+                        &None => ()
+                    }
+                }
+            )
+    }
 }
 
 impl<ENV:'static,A:'static> IsStream<ENV,A> for Stream<ENV,A> {
@@ -134,6 +151,11 @@ impl<ENV:'static,A:'static> StreamSink<ENV,A> {
             node: node,
             phantom_a: PhantomData
         }
+    }
+
+    pub fn send(&self, env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, value: A) {
+        let cs: CellSink<ENV,Option<A>> = CellSink::of(self.node().clone());
+        cs.send(env, with_frp_context, Some(value));
     }
 }
 
@@ -491,6 +513,26 @@ pub trait IsStream<ENV,A> {
     A:'static
     {
         self.with_node_as_ref(|n| n.id.clone())
+    }
+
+    fn map<B,F>(&self, frp_context: &mut FrpContext<ENV>, f: F) -> Stream<ENV,B>
+    where
+    ENV: 'static,
+    A: 'static,
+    B: 'static,
+    F: Fn(&A)->B + 'static
+    {
+        self.as_cell()
+            .map(
+                frp_context,
+                move |a| {
+                    match a {
+                        &Some(ref a2) => Some(f(a2)),
+                        &None => None
+                    }
+                }
+            )
+            .as_stream()
     }
 }
 
