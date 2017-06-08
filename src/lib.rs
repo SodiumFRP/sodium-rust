@@ -595,7 +595,6 @@ test("defer", () => {
         assert_eq!(vec![String::from("100 0"), String::from("200 2"), String::from("300 1")], env.out);
     }
 
-/*
     #[test]
     fn values() {
         struct Env {
@@ -613,8 +612,8 @@ test("defer", () => {
         let with_frp_context = WithFrpContextForEnv {};
         let c: CellSink<Env,u32> = env.frp_context.new_cell_sink(9);
         c.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
-        c.change_value(&mut env, &with_frp_context, 2);
-        c.change_value(&mut env, &with_frp_context, 7);
+        c.send(&mut env, &with_frp_context, 2);
+        c.send(&mut env, &with_frp_context, 7);
         assert_eq!(vec![9, 2, 7], env.out);
     }
 
@@ -637,7 +636,7 @@ test("defer", () => {
         c.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
         assert_eq!(vec![12], env.out);
     }
-*/
+
     #[test]
     fn map_c() {
         struct Env {
