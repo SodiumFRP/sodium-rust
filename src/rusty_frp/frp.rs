@@ -1022,6 +1022,22 @@ impl<ENV:'static> FrpContext<ENV> {
         return rc;
     }
 
+    pub fn never<A>(&mut self) -> Stream<ENV,A>
+    where
+    A:'static
+    {
+        let ss: StreamSink<ENV,A> = self.new_stream_sink();
+        Stream::of(ss.node().clone())
+    }
+
+    pub fn constant<A>(&mut self, value: A) -> Cell<ENV,A>
+    where
+    A: 'static
+    {
+        let cs: CellSink<ENV,A> = self.new_cell_sink(value);
+        Cell::of(cs.node().clone())
+    }
+
     pub fn new_cell_sink<A>(&mut self, value: A) -> CellSink<ENV,A>
     where
     A:'static
