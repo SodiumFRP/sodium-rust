@@ -565,6 +565,29 @@ pub trait IsStream<ENV,A> {
             .as_stream()
     }
 
+    fn snapshot<B,C,CB,F>(&self, frp_context: &mut FrpContext<ENV>, cb: &CB, f: F) -> Stream<ENV,C>
+    where
+    ENV: 'static,
+    A: 'static,
+    B: 'static,
+    C: 'static,
+    CB: IsCell<ENV,B>,
+    F: Fn(&A,&B)->C + 'static
+    {
+        self.as_cell()
+            .lift2(
+                frp_context,
+                &cb.as_cell(),
+                move |a_op,b| {
+                    match a_op {
+                        &Some(ref a) => Some(f(a,b)),
+                        &None => None
+                    }
+                }
+            )
+            .as_stream()
+    }
+
     fn merge<F,SA>(&self, frp_context: &mut FrpContext<ENV>, sa: &SA, f: F) -> Stream<ENV,A>
     where
     ENV: 'static,
@@ -630,6 +653,7 @@ pub trait IsStream<ENV,A> {
     A: 'static + Copy
     {
         let ca: CellSink<ENV,A> = frp_context.new_cell_sink(value.clone());
+        let ca_id = ca.node_id();
         {
             let tmp1: &Rc<RefCell<Node<ENV,Any>>> = self.node();
             let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
@@ -645,7 +669,6 @@ pub trait IsStream<ENV,A> {
             tmp4.depends_on_nodes.push(Rc::downgrade(self.node()));
             {
                 let id = self.node_id();
-                let ca_id = ca.node_id();
                 tmp4.update_fn_op = Some(Box::new(move |frp_context| {
                     let value_op = frp_context.unsafe_sample(
                         &id,
