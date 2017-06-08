@@ -618,6 +618,37 @@ pub trait IsStream<ENV,A> {
             )
             .as_stream()
     }
+
+    fn merge<F,SA>(&self, frp_context: &mut FrpContext<ENV>, sa: &SA, f: F) -> Stream<ENV,A>
+    where
+    ENV: 'static,
+    A: 'static + Clone,
+    SA: IsStream<ENV,A>,
+    F: Fn(&A,&A)->A + 'static
+    {
+        self.as_cell()
+            .lift2(
+                frp_context,
+                &sa.as_cell(),
+                move |a1_op, a2_op| {
+                    match a1_op {
+                        &Some(ref a1) => {
+                            match a2_op {
+                                &Some(ref a2) => Some(f(a1,a2)),
+                                &None => Some(a1.clone())
+                            }
+                        },
+                        &None => {
+                            match a2_op {
+                                &Some(ref a2) => Some(a2.clone()),
+                                &None => None
+                            }
+                        }
+                    }
+                }
+            )
+            .as_stream()
+    }
 }
 
 type NodeID = usize;
