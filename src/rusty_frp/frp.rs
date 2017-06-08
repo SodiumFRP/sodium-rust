@@ -593,6 +593,31 @@ pub trait IsStream<ENV,A> {
             )
             .as_stream()
     }
+
+    fn filter<F>(&self, frp_context: &mut FrpContext<ENV>, f: F) -> Stream<ENV,A>
+    where
+    ENV: 'static,
+    A: 'static + Clone,
+    F: Fn(&A)->bool + 'static
+    {
+        self.as_cell()
+            .map(
+                frp_context,
+                move |a_op| {
+                    match a_op {
+                        &Some(ref a) => {
+                            if f(a) {
+                                Some(a.clone())
+                            } else {
+                                None
+                            }
+                        },
+                        &None => None
+                    }
+                }
+            )
+            .as_stream()
+    }
 }
 
 type NodeID = usize;
@@ -680,6 +705,30 @@ impl<ENV:'static> FrpContext<ENV> {
             nodes_to_be_updated: HashSet::new(),
             transaction_depth: 0
         }
+    }
+
+    pub fn filter_option<A,SA_OP>(&mut self, sa_op: &SA_OP) -> Stream<ENV,A>
+    where
+    A: 'static + Clone,
+    SA_OP: IsStream<ENV,Option<A>>
+    {
+        sa_op
+            .as_cell()
+            .map(
+                self,
+                |a_op_op| {
+                    match a_op_op {
+                        &Some(ref a_op) => {
+                            match a_op {
+                                &Some(ref a) => Some(a.clone()),
+                                &None => None
+                            }
+                        },
+                        &None => None
+                    }
+                }
+            )
+            .as_stream()
     }
 
     pub fn transaction<F,R>(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>, k: F) -> R

@@ -386,7 +386,7 @@ test("coalesce", () => {
     assertEquals([2, 48], out);
 });
 */
-
+*/
     #[test]
     fn filter() {
         struct Env {
@@ -403,7 +403,7 @@ test("coalesce", () => {
         }
         let with_frp_context = WithFrpContextForEnv {};
         let s: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
-        let s2 = env.frp_context.filter(|a| a.clone() < 10, &s);
+        let s2 = s.filter(&mut env.frp_context, |a| a.clone() < 10);
         s2.observe(&mut env, &with_frp_context, |env, value| env.out.push(value.clone()));
         s.send(&mut env, &with_frp_context, 2);
         s.send(&mut env, &with_frp_context, 16);
@@ -411,6 +411,7 @@ test("coalesce", () => {
         assert_eq!(vec![2, 9], env.out);
     }
 
+/*
     #[test]
     fn merge2() {
         struct Env {
