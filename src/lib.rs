@@ -278,7 +278,7 @@ test("mapTo", () => {
     assertEquals(["fusebox", "fusebox"], out);
 });
 */
-
+*/
     #[test]
     fn merge_non_simultaneous() {
         struct Env {
@@ -296,7 +296,7 @@ test("mapTo", () => {
         let with_frp_context = WithFrpContextForEnv {};
         let s1: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
         let s2: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
-        let s3 = env.frp_context.or_else(&s2, &s1);
+        let s3 = s2.or_else(&mut env.frp_context, &s1);
         s3.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
         s1.send(&mut env, &with_frp_context, 7);
         s2.send(&mut env, &with_frp_context, 9);
@@ -321,7 +321,7 @@ test("mapTo", () => {
         let with_frp_context = WithFrpContextForEnv {};
         let s1: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
         let s2: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
-        let s3 = env.frp_context.or_else(&s2, &s1);
+        let s3 = s2.or_else(&mut env.frp_context, &s1);
         s3.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
         FrpContext::transaction(
             &mut env,
@@ -370,6 +370,8 @@ test("mapTo", () => {
         );
         assert_eq!(vec![60,9,90,90,90], env.out);
     }
+
+    /*
 /*
 test("coalesce", () => {
     const s = new StreamSink<number>((a, b) => a+b),
@@ -411,7 +413,6 @@ test("coalesce", () => {
         assert_eq!(vec![2, 9], env.out);
     }
 
-/*
     #[test]
     fn merge2() {
         struct Env {
@@ -428,16 +429,16 @@ test("coalesce", () => {
         }
         let with_frp_context = WithFrpContextForEnv {};
         let sa: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
-        let sb_1 = env.frp_context.map_s(&sa, |x| x.clone() / 10);
-        let sb = env.frp_context.filter(|x| x.clone() != 0, &sb_1);
-        let sc_1 = env.frp_context.map_s(&sa, |x| x.clone() % 10);
-        let sc = env.frp_context.merge(&sc_1, &sb, |x, y| x.clone() + y.clone());
+        let sb_1 = sa.map(&mut env.frp_context, |x| x.clone() / 10);
+        let sb = sb_1.filter(&mut env.frp_context, |x| x.clone() != 0);
+        let sc_1 = sa.map(&mut env.frp_context, |x| x.clone() % 10);
+        let sc = sc_1.merge(&mut env.frp_context, &sb, |x, y| x.clone() + y.clone());
         sc.observe(&mut env, &with_frp_context, |env, value| env.out.push(value.clone()));
         sa.send(&mut env, &with_frp_context, 2);
         sa.send(&mut env, &with_frp_context, 52);
         assert_eq!(vec![2, 7], env.out);
     }
-
+/*
 /*
 test("loopStream", () => {
     const sa = new StreamSink<number>(),

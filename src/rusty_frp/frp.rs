@@ -649,6 +649,15 @@ pub trait IsStream<ENV,A> {
             )
             .as_stream()
     }
+
+    fn or_else<SA>(&self, frp_context: &mut FrpContext<ENV>, sa: &SA) -> Stream<ENV,A>
+    where
+    ENV: 'static,
+    A: 'static + Clone,
+    SA: IsStream<ENV,A>,
+    {
+        self.merge(frp_context, sa, |a,b| a.clone())
+    }
 }
 
 type NodeID = usize;
