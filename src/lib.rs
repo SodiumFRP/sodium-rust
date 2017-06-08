@@ -541,7 +541,7 @@ test("defer", () => {
     assertEquals(["C","B","A"], out);
 });
 */
-
+*/
     #[test]
     fn hold() {
         struct Env {
@@ -565,7 +565,6 @@ test("defer", () => {
         s.send(&mut env, &with_frp_context, 9);
         assert_eq!(vec![2, 9], env.out);
     }
-*/
 
     #[test]
     fn snapshot() {

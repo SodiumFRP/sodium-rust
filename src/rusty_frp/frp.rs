@@ -490,14 +490,6 @@ pub trait IsCell<ENV,A> {
         let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
         let mut tmp4: &mut Node<ENV,Any> = tmp3.borrow_mut();
         tmp4.value = Value::Direct(Box::new(None as Option<A>));
-        tmp4.reset_value_after_propergate_op = Some(Box::new(
-            |a| {
-                match a.downcast_mut::<Option<A>>() {
-                    Some(a2) => *a2 = None,
-                    None => ()
-                }
-            }
-        ));
         ca.as_stream()
     }
 }
@@ -658,7 +650,7 @@ pub trait IsStream<ENV,A> {
     fn hold(&self, frp_context: &mut FrpContext<ENV>, value: A) -> Cell<ENV,A>
     where
     ENV: 'static,
-    A: 'static + Copy
+    A: 'static + Clone
     {
         let ca: CellSink<ENV,A> = frp_context.new_cell_sink(value.clone());
         let ca_id = ca.node_id();
@@ -691,7 +683,7 @@ pub trait IsStream<ENV,A> {
                                 move |frp_context, n| {
                                     n.reset_value_after_propergate_op = Some(Box::new(move |v: &mut Any| {
                                         match v.downcast_mut::<A>() {
-                                            Some(v2) => *v2 = value,
+                                            Some(v2) => unsafe { *v2 = value.clone() },
                                             None => ()
                                         }
                                     }));
@@ -706,7 +698,7 @@ pub trait IsStream<ENV,A> {
                 let value = value.clone();
                 tmp4.reset_value_after_propergate_op = Some(Box::new(move |v: &mut Any| {
                     match v.downcast_mut::<A>() {
-                        Some(v2) => *v2 = value,
+                        Some(v2) => *v2 = value.clone(),
                         None => ()
                     }
                 }));
