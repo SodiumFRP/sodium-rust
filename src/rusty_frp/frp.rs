@@ -471,6 +471,14 @@ pub trait IsCell<ENV,A> {
         return result;
     }
 
+    fn values(&self, frp_context: &mut FrpContext<ENV>) -> Stream<ENV,A>
+    where
+    ENV: 'static,
+    A: 'static + Clone
+    {
+        self.map(frp_context, |a| Some(a.clone())).as_stream()
+    }
+
     fn updates(&self, frp_context: &mut FrpContext<ENV>) -> Stream<ENV,A>
     where
     ENV: 'static,
