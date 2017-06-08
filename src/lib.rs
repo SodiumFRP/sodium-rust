@@ -541,7 +541,7 @@ test("defer", () => {
     assertEquals(["C","B","A"], out);
 });
 */
-
+*/
     #[test]
     fn hold() {
         struct Env {
@@ -558,14 +558,15 @@ test("defer", () => {
         }
         let with_frp_context = WithFrpContextForEnv {};
         let s: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
-        let c = env.frp_context.hold(0, &s);
-        let s2 = env.frp_context.updates(&c);
+        let c = s.hold(&mut env.frp_context, 0);
+        let s2 = c.updates(&mut env.frp_context);
         s2.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
         s.send(&mut env, &with_frp_context, 2);
         s.send(&mut env, &with_frp_context, 9);
         assert_eq!(vec![2, 9], env.out);
     }
 
+/*
     #[test]
     fn snapshot() {
         struct Env {
