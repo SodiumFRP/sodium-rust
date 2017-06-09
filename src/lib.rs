@@ -1002,6 +1002,9 @@ test("switchSSimultaneous", () => {
             }
         );
         sum.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
+        sa.send(&mut env, &with_frp_context, 2);
+        sa.send(&mut env, &with_frp_context, 3);
+        sa.send(&mut env, &with_frp_context, 1);
         assert_eq!(vec![0, 2, 5, 6], env.out);
         assert_eq!(6, sum.sample(&env.frp_context).clone());
     }
