@@ -795,20 +795,20 @@ impl<ENV:'static> FrpContext<ENV> {
         }
     }
 
-    pub fn cell_loop<A,F>(frp_context: &mut FrpContext<ENV>, k: F) -> Cell<ENV,A>
+    pub fn cell_loop<A,F>(&mut self, k: F) -> Cell<ENV,A>
     where
     ENV: 'static,
     A: 'static + Clone,
-    F: FnOnce(&mut FrpContext<ENV>,&Cell<ENV,Box<Fn()->A>>)->Cell<ENV,A>
+    F: FnOnce(&mut FrpContext<ENV>,&Cell<ENV,Box<Fn()->A + 'static>>)->Cell<ENV,A>
     {
-        let cell: CellSink<ENV,Box<Fn()->A>> = frp_context.new_cell_sink(
+        let cell: CellSink<ENV,Box<Fn()->A + 'static>> = self.new_cell_sink(
             Box::new(
                 || panic!("cell_loop: value observed before loop was constructed")
             )
         );
-        let cell2 = k(frp_context, &cell.as_cell());
-        let cell3: Cell<ENV,Box<Fn()->A>> = cell2.map(
-            frp_context,
+        let cell2 = k(self,&cell.as_cell());
+        let cell3: Cell<ENV,Box<Fn()->A + 'static>> = cell2.map(
+            self,
             |a| {
                 let a2 = a.clone();
                 let r: Box<Fn()->A> = Box::new(move || a2.clone());
@@ -823,7 +823,7 @@ impl<ENV:'static> FrpContext<ENV> {
             tmp4.value = Value::InDirect(cell3.node_id());
         }
         let cell4: Cell<ENV,A> = cell3.map(
-            frp_context,
+            self,
             |thunk| thunk()
         );
         cell4

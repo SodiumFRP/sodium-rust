@@ -971,7 +971,42 @@ test("switchSSimultaneous", () => {
     kill();
     assertEquals([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], out);
 });
+*/
+*/
 
+    #[test]
+    fn loop_cell() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<u32>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let sa: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
+        let sum = env.frp_context.cell_loop(
+            |frp_context: &mut FrpContext<Env>, sum: &Cell<Env,Box<Fn()->u32>>| {
+                sa
+                    .snapshot(
+                        frp_context,
+                        sum,
+                        |x, y| x.clone() + y()
+                    )
+                    .hold(frp_context, 0)
+            }
+        );
+        sum.observe(&mut env, &with_frp_context, |env,value| env.out.push(value.clone()));
+        assert_eq!(vec![0, 2, 5, 6], env.out);
+        assert_eq!(6, sum.sample(&env.frp_context).clone());
+    }
+
+/*
 test("loopCell", () => {
     const sa = new StreamSink<number>(),
         sum_out = Transaction.run(() => {
@@ -989,7 +1024,10 @@ test("loopCell", () => {
     assertEquals([0, 2, 5, 6], out);
     assertEquals(6, sum_out.sample());
 });
+*/
 
+/*
+/*
 test("accum", () => {
     const sa = new StreamSink<number>(),
         out : number[] = [],
