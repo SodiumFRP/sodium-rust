@@ -795,6 +795,40 @@ impl<ENV:'static> FrpContext<ENV> {
         }
     }
 
+    pub fn cell_loop<A,F>(frp_context: &mut FrpContext<ENV>, k: F) -> Cell<ENV,A>
+    where
+    ENV: 'static,
+    A: 'static + Clone,
+    F: FnOnce(&mut FrpContext<ENV>,&Cell<ENV,Box<Fn()->A>>)->Cell<ENV,A>
+    {
+        let cell: CellSink<ENV,Box<Fn()->A>> = frp_context.new_cell_sink(
+            Box::new(
+                || panic!("cell_loop: value observed before loop was constructed")
+            )
+        );
+        let cell2 = k(frp_context, &cell.as_cell());
+        let cell3: Cell<ENV,Box<Fn()->A>> = cell2.map(
+            frp_context,
+            |a| {
+                let a2 = a.clone();
+                let r: Box<Fn()->A> = Box::new(move || a2.clone());
+                r
+            }
+        );
+        {
+            let tmp1: &Rc<RefCell<Node<ENV,Any>>> = cell.node();
+            let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
+            let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
+            let tmp4: &mut Node<ENV,Any> = tmp3.borrow_mut();
+            tmp4.value = Value::InDirect(cell3.node_id());
+        }
+        let cell4: Cell<ENV,A> = cell3.map(
+            frp_context,
+            |thunk| thunk()
+        );
+        cell4
+    }
+
     pub fn filter_option<A,SA_OP>(&mut self, sa_op: &SA_OP) -> Stream<ENV,A>
     where
     A: 'static + Clone,
