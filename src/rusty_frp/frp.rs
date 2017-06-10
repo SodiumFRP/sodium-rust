@@ -164,7 +164,7 @@ macro_rules! lift_c {
             $($cell.node_id(),)*
         ];
         let depends_on_nodes = vec![
-            $(Rc::downgrade($cell.node()),)*
+            $($cell.node().clone(),)*
         ];
         let calc = move |frp_context: &FrpContext<_>| { f2( $($cell.sample(frp_context),)* ) };
         let initial_value = calc(frp_context);
@@ -197,7 +197,7 @@ macro_rules! lift_c {
                 frp_context.unsafe_with_node_as_mut_by_node_id(
                     &depends_on_node_id,
                     |_,n| {
-                        n.dependent_nodes.push(result_node);
+                        n.dependent_nodes.push(Rc::downgrade(&result_node));
                     }
                 )
             }
@@ -316,7 +316,7 @@ pub trait IsCell<ENV,A> {
                 id: node_id.clone(),
                 free_observer_id: 0,
                 observer_map: HashMap::new(),
-                depends_on_nodes: vec![Rc::downgrade(self.node())],
+                depends_on_nodes: vec![self.node().clone()],
                 dependent_nodes: Vec::new(),
                 update_fn_op: Some(Box::new(move |frp_context| {
                     let b = frp_context.unsafe_sample(
@@ -346,7 +346,7 @@ pub trait IsCell<ENV,A> {
         ));
         {
             let result_node = result_node.node().clone();
-            self.with_node_as_mut(move |n| { n.dependent_nodes.push(result_node); });
+            self.with_node_as_mut(move |n| { n.dependent_nodes.push(Rc::downgrade(&result_node)); });
         }
         result_node
     }
@@ -369,8 +369,8 @@ pub trait IsCell<ENV,A> {
                 observer_map: HashMap::new(),
                 depends_on_nodes:
                     vec![
-                        Rc::downgrade(self.node()),
-                        Rc::downgrade(cf.node())
+                        self.node().clone(),
+                        cf.node().clone()
                     ],
                 dependent_nodes: Vec::new(),
                 update_fn_op: Some(Box::new(move |frp_context| {
@@ -408,11 +408,11 @@ pub trait IsCell<ENV,A> {
         ));
         {
             let result_node = result_node.node().clone();
-            self.with_node_as_mut(move |n| { n.dependent_nodes.push(result_node); });
+            self.with_node_as_mut(move |n| { n.dependent_nodes.push(Rc::downgrade(&result_node)); });
         }
         {
             let result_node = result_node.node().clone();
-            cf.with_node_as_mut(move |n| { n.dependent_nodes.push(result_node); });
+            cf.with_node_as_mut(move |n| { n.dependent_nodes.push(Rc::downgrade(&result_node)); });
         }
         result_node
     }
@@ -659,14 +659,14 @@ pub trait IsStream<ENV,A> {
             let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
             let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
             let tmp4: &mut Node<ENV,Any> = tmp3.borrow_mut();
-            tmp4.dependent_nodes.push(ca.node().clone());
+            tmp4.dependent_nodes.push(Rc::downgrade(ca.node()));
         }
         {
             let tmp1: &Rc<RefCell<Node<ENV,Any>>> = ca.node();
             let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
             let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
             let tmp4: &mut Node<ENV,Any> = tmp3.borrow_mut();
-            tmp4.depends_on_nodes.push(Rc::downgrade(self.node()));
+            tmp4.depends_on_nodes.push(self.node().clone());
             {
                 let id = self.node_id();
                 tmp4.update_fn_op = Some(Box::new(move |frp_context| {
@@ -714,8 +714,8 @@ struct Node<ENV,A:?Sized> {
     id: NodeID,
     free_observer_id: u32,
     observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
-    depends_on_nodes: Vec<Weak<RefCell<Node<ENV,Any>>>>,
-    dependent_nodes: Vec<Rc<RefCell<Node<ENV,Any>>>>,
+    depends_on_nodes: Vec<Rc<RefCell<Node<ENV,Any>>>>,
+    dependent_nodes: Vec<Weak<RefCell<Node<ENV,Any>>>>,
     update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
     value: Value<A>
@@ -884,10 +884,15 @@ impl<ENV:'static> FrpContext<ENV> {
                     node_to_be_updated,
                     |_, node| {
                         for dependent_node in &node.dependent_nodes {
-                            let x2: &RefCell<Node<ENV,Any>> = dependent_node.borrow();
-                            let x3: Ref<Node<ENV,Any>> = x2.borrow();
-                            let x4: &Node<ENV,Any> = x3.borrow();
-                            ts.add_dependency(node_to_be_updated.clone(), x4.id.clone());
+                            match dependent_node.upgrade() {
+                                Some(x1) => {
+                                    let x2: &RefCell<Node<ENV,Any>> = x1.borrow();
+                                    let x3: Ref<Node<ENV,Any>> = x2.borrow();
+                                    let x4: &Node<ENV,Any> = x3.borrow();
+                                    ts.add_dependency(node_to_be_updated.clone(), x4.id.clone());
+                                },
+                                None => ()
+                            }
                         }
                     }
                 );
@@ -1003,10 +1008,15 @@ impl<ENV:'static> FrpContext<ENV> {
             &node_id,
             |_: &FrpContext<ENV>, n: &Node<ENV,Any>| {
                 for dependent_node in &n.dependent_nodes {
-                    let tmp2: &RefCell<Node<ENV,Any>> = dependent_node.borrow();
-                    let tmp3: Ref<Node<ENV,Any>> = tmp2.borrow();
-                    let tmp4: &Node<ENV,Any> = tmp3.borrow();
-                    dependent_node_ids.push(tmp4.id.clone());
+                    match dependent_node.upgrade() {
+                        Some(tmp1) => {
+                            let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
+                            let tmp3: Ref<Node<ENV,Any>> = tmp2.borrow();
+                            let tmp4: &Node<ENV,Any> = tmp3.borrow();
+                            dependent_node_ids.push(tmp4.id.clone());
+                        },
+                        None => ()
+                    }
                 }
             }
         );
