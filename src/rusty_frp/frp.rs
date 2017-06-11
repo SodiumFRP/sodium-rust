@@ -188,6 +188,7 @@ macro_rules! lift_c {
                 dependent_nodes: Vec::new(),
                 update_fn_op: Some(update_fn),
                 reset_value_after_propergate_op: None,
+                delayed: false,
                 value: Value::Direct(Box::new(initial_value))
             }
         ));
@@ -341,6 +342,7 @@ pub trait IsCell<ENV,A> {
                     );
                 })),
                 reset_value_after_propergate_op: None,
+                delayed: false,
                 value: Value::Direct(Box::new(initial_value))
             }
         ));
@@ -403,6 +405,7 @@ pub trait IsCell<ENV,A> {
                     )
                 })),
                 reset_value_after_propergate_op: None,
+                delayed: false,
                 value: Value::Direct(Box::new(initial_value))
             }
         ));
@@ -706,6 +709,22 @@ pub trait IsStream<ENV,A> {
         }
         Cell::of(ca.node().clone())
     }
+
+    fn delay(&self, frp_context: &mut FrpContext<ENV>) -> Stream<ENV,A>
+    where
+    ENV: 'static,
+    A: 'static + Clone
+    {
+        let s = self.map(frp_context, |x| x.clone());
+        {
+            let tmp1: &Rc<RefCell<Node<ENV,Any>>> = s.node();
+            let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
+            let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
+            let tmp4: &mut Node<ENV,Any> = tmp3.borrow_mut();
+            tmp4.delayed = true;
+        }
+        s
+    }
 }
 
 type NodeID = usize;
@@ -718,6 +737,7 @@ struct Node<ENV,A:?Sized> {
     dependent_nodes: Vec<Weak<RefCell<Node<ENV,Any>>>>,
     update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
+    delayed: bool,
     value: Value<A>
 }
 
@@ -775,6 +795,7 @@ impl<ENV,A> Node<ENV,A> {
             dependent_nodes: self.dependent_nodes,
             update_fn_op: self.update_fn_op,
             reset_value_after_propergate_op: reset_value_after_propergate_op,
+            delayed: self.delayed,
             value: value
         }
     }
@@ -1184,6 +1205,7 @@ impl<ENV:'static> FrpContext<ENV> {
                 dependent_nodes: Vec::new(),
                 update_fn_op: None,
                 reset_value_after_propergate_op: None,
+                delayed: false,
                 value: Value::Direct(Box::new(value))
             }
         ))
