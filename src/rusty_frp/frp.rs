@@ -1241,6 +1241,42 @@ impl<ENV:'static> FrpContext<ENV> {
         ));
         StreamSink::of(ca.node().clone())
     }
+
+    pub fn switch_c<A,CCA>(&mut self, cell_thunk_cell_a: &CCA) -> Cell<ENV,A>
+    where
+    A:'static,
+    CCA:IsCell<ENV,Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,A>>>
+    {
+        let initial_inner_cell_fn: *const Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,A>> = cell_thunk_cell_a.sample(self);
+        let initial_inner_cell = unsafe { (*initial_inner_cell_fn)(self) };
+        let node_id = self.next_cell_id();
+        let cell_thunk_cell_a = cell_thunk_cell_a.as_cell();
+        let c: Cell<ENV,A> = Cell::of(self.insert_node(
+            Node::<ENV,A> {
+                id: node_id.clone(),
+                free_observer_id: 0,
+                observer_map: HashMap::new(),
+                depends_on_nodes: vec![cell_thunk_cell_a.node().clone(), initial_inner_cell.node().clone()],
+                dependent_nodes: Vec::new(),
+                update_fn_op: Some(
+                    Box::new(move |frp_context: &mut FrpContext<ENV>| {
+                        let inner_cell_fn: *const Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,A>> = cell_thunk_cell_a.sample(frp_context);
+                        let inner_cell = unsafe { (*initial_inner_cell_fn)(frp_context) };
+                        frp_context.unsafe_with_node_as_mut_by_node_id(
+                            &node_id,
+                            move |_: &FrpContext<ENV>, n: &mut Node<ENV,Any>| {
+                                n.value = Value::InDirect(inner_cell.node_id());
+                            }
+                        );
+                    })
+                ),
+                reset_value_after_propergate_op: None,
+                delayed: false,
+                value: Value::InDirect(initial_inner_cell.node_id())
+            }
+        ));
+        c
+    }
 }
 
 pub trait WithFrpContext<ENV> {
