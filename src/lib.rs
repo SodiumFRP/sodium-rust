@@ -804,7 +804,6 @@ test("mapCLateListen", () => {
         assert_eq!(vec![String::from("2 0"), String::from("3 2")], env.out);
     }
 
-    /*
     #[test]
     fn switch_c() {
         struct SC {
@@ -835,22 +834,22 @@ test("mapCLateListen", () => {
         }
         let with_frp_context = WithFrpContextForEnv {};
         let ssc: StreamSink<Env,SC> = env.frp_context.new_stream_sink();
-        let ca_1 = env.frp_context.map_s(&ssc, |s| s.a.clone());
-        let ca_2 = env.frp_context.filter_some(&ca_1);
-        let ca = env.frp_context.hold(String::from("A"), &ca_2);
-        let cb_1 = env.frp_context.map_s(&ssc, |s| s.b.clone());
-        let cb_2 = env.frp_context.filter_some(&cb_1);
-        let cb = env.frp_context.hold(String::from("a"), &cb_2);
-        let csw_str_1 = env.frp_context.map_s(&ssc, |s| s.sw.clone());
-        let csw_str_2 = env.frp_context.filter_some(&csw_str_1);
-        let csw_str = env.frp_context.hold(String::from("ca"), &csw_str_2);
-        let csw: Cell<Env,Cell<Env,String>> = env.frp_context.map_c(&csw_str, move |s| if s == "ca" { ca } else { cb });
-        let co_1 = env.frp_context.map_c(
-            &csw,
+        let ca_1 = ssc.map(&mut env.frp_context, |s| s.a.clone());
+        let ca_2 = env.frp_context.filter_option(&ca_1);
+        let ca = ca_2.hold(&mut env.frp_context, String::from("A"));
+        let cb_1 = ssc.map(&mut env.frp_context, |s| s.b.clone());
+        let cb_2 = env.frp_context.filter_option(&cb_1);
+        let cb = cb_2.hold(&mut env.frp_context, String::from("a"));
+        let csw_str_1 = ssc.map(&mut env.frp_context, |s| s.sw.clone());
+        let csw_str_2 = env.frp_context.filter_option(&csw_str_1);
+        let csw_str = csw_str_2.hold(&mut env.frp_context, String::from("ca"));
+        let csw: Cell<Env,Cell<Env,String>> = csw_str.map(&mut env.frp_context, move |s| if s == "ca" { ca.clone() } else { cb.clone() });
+        let co_1 = csw.map(
+            &mut env.frp_context,
             move |x| {
                 let k: Box<Fn(&mut FrpContext<Env>)->Cell<Env,String>>;
                 let x2 = x.clone();
-                k = Box::new(move |_| { x2 });
+                k = Box::new(move |_| { x2.clone() });
                 return k;
             }
         );
@@ -869,6 +868,7 @@ test("mapCLateListen", () => {
         assert_eq!(vec![String::from("A"), String::from("B"), String::from("c"), String::from("d"), String::from("E"), String::from("F"), String::from("f"), String::from("F"), String::from("g"), String::from("H"), String::from("I")], env.out);
     }
 
+    /*
     #[test]
     fn switch_s() {
         struct SS {
