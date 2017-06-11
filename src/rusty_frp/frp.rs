@@ -685,13 +685,6 @@ pub trait IsStream<ENV,A> {
                             frp_context.unsafe_with_node_as_mut_by_node_id(
                                 &ca_id,
                                 move |frp_context, n| {
-                                    /*
-                                    n.reset_value_after_propergate_op = Some(Box::new(move |v: &mut Any| {
-                                        match v.downcast_mut::<A>() {
-                                            Some(v2) => unsafe { *v2 = value.clone() },
-                                            None => ()
-                                        }
-                                    }));*/
                                     n.value = Value::Direct(Box::new(value.clone()));
                                 }
                             );
@@ -701,14 +694,6 @@ pub trait IsStream<ENV,A> {
                 }));
             }
             {
-                /*
-                let value = value.clone();
-                tmp4.reset_value_after_propergate_op = Some(Box::new(move |v: &mut Any| {
-                    match v.downcast_mut::<A>() {
-                        Some(v2) => *v2 = value.clone(),
-                        None => ()
-                    }
-                }));*/
                 tmp4.value = Value::Direct(Box::new(value));
             }
         }
@@ -1038,19 +1023,19 @@ impl<ENV:'static> FrpContext<ENV> {
         if visited.contains(&(time.clone(),node_id.clone())) {
             return;
         }
-        self.nodes_to_be_updated.insert((time.clone(),node_id.clone()));
-        visited.insert((time.clone(),node_id.clone()));
         let mut dependent_node_ids: Vec<NodeID> = Vec::new();
-        let time2 = self.unsafe_with_node_as_ref_by_node_id(
+        let (time2, time3) = self.unsafe_with_node_as_ref_by_node_id(
             &node_id,
             |_: &FrpContext<ENV>, n: &Node<ENV,Any>| {
                 if n.delayed {
-                    time.clone() + 1
+                    (time.clone() + 1, time.clone() + 2)
                 } else {
-                    time.clone()
+                    (time.clone(), time.clone())
                 }
             }
         );
+        self.nodes_to_be_updated.insert((time3.clone(),node_id.clone()));
+        visited.insert((time3.clone(),node_id.clone()));
         self.unsafe_with_node_as_ref_by_node_id(
             &node_id,
             |_: &FrpContext<ENV>, n: &Node<ENV,Any>| {
