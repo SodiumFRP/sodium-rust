@@ -655,10 +655,11 @@ pub trait IsStream<ENV,A> {
     ENV: 'static,
     A: 'static + Clone
     {
+        let delayed_self = self.delay(frp_context);
         let ca: CellSink<ENV,A> = frp_context.new_cell_sink(value.clone());
         let ca_id = ca.node_id();
         {
-            let tmp1: &Rc<RefCell<Node<ENV,Any>>> = self.node();
+            let tmp1: &Rc<RefCell<Node<ENV,Any>>> = delayed_self.node();
             let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
             let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
             let tmp4: &mut Node<ENV,Any> = tmp3.borrow_mut();
@@ -669,9 +670,9 @@ pub trait IsStream<ENV,A> {
             let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
             let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
             let tmp4: &mut Node<ENV,Any> = tmp3.borrow_mut();
-            tmp4.depends_on_nodes.push(self.node().clone());
+            tmp4.depends_on_nodes.push(delayed_self.node().clone());
             {
-                let id = self.node_id();
+                let id = delayed_self.node_id();
                 tmp4.update_fn_op = Some(Box::new(move |frp_context| {
                     let value_op = frp_context.unsafe_sample(
                         &id,
@@ -684,12 +685,14 @@ pub trait IsStream<ENV,A> {
                             frp_context.unsafe_with_node_as_mut_by_node_id(
                                 &ca_id,
                                 move |frp_context, n| {
+                                    /*
                                     n.reset_value_after_propergate_op = Some(Box::new(move |v: &mut Any| {
                                         match v.downcast_mut::<A>() {
                                             Some(v2) => unsafe { *v2 = value.clone() },
                                             None => ()
                                         }
-                                    }));
+                                    }));*/
+                                    n.value = Value::Direct(Box::new(value.clone()));
                                 }
                             );
                         },
@@ -698,13 +701,15 @@ pub trait IsStream<ENV,A> {
                 }));
             }
             {
+                /*
                 let value = value.clone();
                 tmp4.reset_value_after_propergate_op = Some(Box::new(move |v: &mut Any| {
                     match v.downcast_mut::<A>() {
                         Some(v2) => *v2 = value.clone(),
                         None => ()
                     }
-                }));
+                }));*/
+                tmp4.value = Value::Direct(Box::new(value));
             }
         }
         Cell::of(ca.node().clone())
@@ -999,10 +1004,10 @@ impl<ENV:'static> FrpContext<ENV> {
                     }
                 );
             }
-            {
-                let frp_context = with_frp_context.with_frp_context(env);
-                frp_context.nodes_to_be_updated.clear();
-            }
+        }
+        {
+            let frp_context = with_frp_context.with_frp_context(env);
+            frp_context.nodes_to_be_updated.clear();
         }
     }
 
