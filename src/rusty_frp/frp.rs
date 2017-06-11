@@ -1262,6 +1262,42 @@ impl<ENV:'static> FrpContext<ENV> {
                     Box::new(move |frp_context: &mut FrpContext<ENV>| {
                         let inner_cell_fn: *const Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,A>> = cell_thunk_cell_a.sample(frp_context);
                         let inner_cell = unsafe { (*initial_inner_cell_fn)(frp_context) };
+                        let last_inner_node_id_op = frp_context.unsafe_with_node_as_ref_by_node_id(
+                            &node_id,
+                            |_: &FrpContext<ENV>, n: &Node<ENV,Any>| {
+                                match &n.value {
+                                    &Value::Direct(_) => None,
+                                    &Value::InDirect(ref n2) => Some(n2.clone())
+                                }
+                            }
+                        );
+                        match last_inner_node_id_op {
+                            Some(last_inner_node_id) => {
+                                frp_context.unsafe_with_node_as_mut_by_node_id(
+                                    &last_inner_node_id,
+                                    |_: &FrpContext<ENV>, n| {
+                                        n.dependent_nodes.retain(|n2| {
+                                            match n2.upgrade() {
+                                                Some(tmp1) => {
+                                                    let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
+                                                    let tmp3: Ref<Node<ENV,Any>> = tmp2.borrow();
+                                                    let tmp4: &Node<ENV,Any> = tmp3.borrow();
+                                                    tmp4.id != node_id.clone()
+                                                },
+                                                None => true
+                                            }
+                                        });
+                                    }
+                                );
+                            },
+                            None => ()
+                        }
+                        frp_context.unsafe_with_node_as_mut_by_node_id(
+                            &inner_cell.node_id(),
+                            |_: &FrpContext<ENV>, n| {
+                                n.dependent_nodes.push(frp_context.graph[node_id].clone());
+                            }
+                        );
                         frp_context.unsafe_with_node_as_mut_by_node_id(
                             &node_id,
                             move |_: &FrpContext<ENV>, n: &mut Node<ENV,Any>| {
@@ -1275,6 +1311,12 @@ impl<ENV:'static> FrpContext<ENV> {
                 value: Value::InDirect(initial_inner_cell.node_id())
             }
         ));
+        self.unsafe_with_node_as_mut_by_node_id(
+            &initial_inner_cell.node_id(),
+            |_: &FrpContext<ENV>, n| {
+                n.dependent_nodes.push(Rc::downgrade(c.node()));
+            }
+        );
         c
     }
 }
