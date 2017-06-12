@@ -707,6 +707,31 @@ pub trait IsStream<ENV,A> {
     {
         let node_id = self.node_id().clone();
         let result_node_id = frp_context.next_cell_id();
+        let update_fn: Box<Fn(&mut FrpContext<ENV>)> = Box::new(
+            move |frp_context| {
+                frp_context.unsafe_with_node_as_mut_by_node_id(
+                    &result_node_id,
+                    move |frp_context: &FrpContext<ENV>, n| {
+                        let value = frp_context.unsafe_sample(
+                            &node_id,
+                            |_: &FrpContext<ENV>, v_op: &Option<A>| {
+                                v_op.clone()
+                            }
+                        );
+                        n.delayed_value_op = Some(Box::new(
+                            move |v: &mut Any| {
+                                match v.downcast_mut::<Option<A>>() {
+                                    Some(v2) => {
+                                        *v2 = value.clone()
+                                    }
+                                    None => ()
+                                }
+                            }
+                        ));
+                    }
+                );
+            }
+        );
         let result: Stream<ENV,A> = Stream::of(frp_context.insert_node(
             Node {
                 id: result_node_id,
@@ -714,24 +739,7 @@ pub trait IsStream<ENV,A> {
                 observer_map: HashMap::new(),
                 depends_on_nodes: vec![self.node().clone()],
                 dependent_nodes: Vec::new(),
-                update_fn_op: Some(Box::new(
-                    move |frp_context| {
-                        frp_context.unsafe_with_node_as_mut_by_node_id(
-                            &result_node_id,
-                            |_: &FrpContext<ENV>, n| {
-                                n.delayed_value_op = frp_context.unsafe_sample(
-                                    &node_id,
-                                    |_: &FrpContext<ENV>, v_op: &Option<A>| {
-                                        match v_op {
-                                            &Some(ref v) => Some(Box::new(v.clone()) as Box<Any>),
-                                            &None => None
-                                        }
-                                    }
-                                );
-                            }
-                        );
-                    }
-                )),
+                update_fn_op: Some(update_fn),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
                 value: Value::Direct(Box::new(None as Option<A>))
@@ -759,7 +767,7 @@ struct Node<ENV,A:?Sized> {
     dependent_nodes: Vec<Weak<RefCell<Node<ENV,Any>>>>,
     update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
-    delayed_value_op: Option<Box<A>>,
+    delayed_value_op: Option<Box<Fn(&mut A)>>,
     value: Value<A>
 }
 
@@ -818,7 +826,14 @@ impl<ENV,A> Node<ENV,A> {
             update_fn_op: self.update_fn_op,
             reset_value_after_propergate_op: reset_value_after_propergate_op,
             delayed_value_op: match self.delayed_value_op {
-                Some(v) => Some(v as Box<Any>),
+                Some(k) => Some(Box::new(
+                    move |v: &mut Any| {
+                        match v.downcast_mut::<A>() {
+                            Some(v2) => k(&mut *v2),
+                            None => ()
+                        }
+                    }
+                )),
                 None => None
             },
             value: value
@@ -1018,7 +1033,6 @@ impl<ENV:'static> FrpContext<ENV> {
             let frp_context = with_frp_context.with_frp_context(env);
             frp_context.nodes_to_be_updated.clear();
         }
-        /*
         for node_id in &node_ids_in_update_order {
             let frp_context = with_frp_context.with_frp_context(env);
             let mark_for_update = frp_context.unsafe_with_node_as_mut_by_node_id(
@@ -1026,14 +1040,17 @@ impl<ENV:'static> FrpContext<ENV> {
                 |_, n| {
                     match &n.delayed_value_op {
                         &Some(ref delayed_value) => {
-                            n.value = Value::Direct(Box::new(delayed_value));
+                            match &mut n.value {
+                                &mut Value::Direct(ref mut v) => delayed_value(v.as_mut()),
+                                &mut Value::InDirect(_) => ()
+                            }
                             true
                         },
                         &None => false
                     }
                 }
             );
-        }*/
+        }
     }
 
     fn update_node(&mut self, node_id: &NodeID) {
