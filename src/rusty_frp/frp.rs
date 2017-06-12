@@ -656,48 +656,46 @@ pub trait IsStream<ENV,A> {
     A: 'static + Clone
     {
         let delayed_self = self.delay(frp_context);
-        let ca: CellSink<ENV,A> = frp_context.new_cell_sink(value.clone());
-        let ca_id = ca.node_id();
-        {
-            let tmp1: &Rc<RefCell<Node<ENV,Any>>> = delayed_self.node();
-            let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
-            let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
-            let tmp4: &mut Node<ENV,Any> = tmp3.borrow_mut();
-            tmp4.dependent_nodes.push(Rc::downgrade(ca.node()));
-        }
-        {
-            let tmp1: &Rc<RefCell<Node<ENV,Any>>> = ca.node();
-            let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
-            let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
-            let tmp4: &mut Node<ENV,Any> = tmp3.borrow_mut();
-            tmp4.depends_on_nodes.push(delayed_self.node().clone());
-            {
-                let id = delayed_self.node_id();
-                tmp4.update_fn_op = Some(Box::new(move |frp_context| {
-                    let value_op = frp_context.unsafe_sample(
-                        &id,
-                        |frp_context: &FrpContext<ENV>, a: &Option<A>| {
-                            a.clone()
-                        }
-                    );
-                    match value_op {
-                        Some(value) => {
-                            frp_context.unsafe_with_node_as_mut_by_node_id(
-                                &ca_id,
-                                move |frp_context, n| {
-                                    n.value = Value::Direct(Box::new(value.clone()));
+        let delayed_self_id = delayed_self.node_id().clone();
+        let node_id = frp_context.next_cell_id();
+        let result: Cell<ENV,A> = Cell::of(frp_context.insert_node(
+            Node {
+                id: node_id,
+                free_observer_id: 0,
+                observer_map: HashMap::new(),
+                depends_on_nodes: vec![delayed_self.node().clone()],
+                dependent_nodes: Vec::new(),
+                update_fn_op: Some(Box::new(
+                    move |frp_context: &mut FrpContext<ENV>| {
+                        frp_context.unsafe_with_node_as_mut_by_node_id(
+                            &node_id,
+                            |frp_context: &FrpContext<ENV>, n| {
+                                let v_op = frp_context.unsafe_sample(
+                                    &delayed_self_id,
+                                    |_: &FrpContext<ENV>, v: &Option<A>| v.clone()
+                                );
+                                match v_op {
+                                    Some(v) => {
+                                        n.value = Value::Direct(Box::new(v) as Box<Any>);
+                                    },
+                                    None => ()
                                 }
-                            );
-                        },
-                        None => ()
+                            }
+                        )
                     }
-                }));
+                )),
+                reset_value_after_propergate_op: None,
+                delayed_value_op: None,
+                value: Value::Direct(Box::new(value))
             }
-            {
-                tmp4.value = Value::Direct(Box::new(value));
+        ));
+        frp_context.unsafe_with_node_as_mut_by_node_id(
+            &delayed_self.node_id(),
+            |_: &FrpContext<ENV>, n| {
+                n.dependent_nodes.push(Rc::downgrade(result.node()));
             }
-        }
-        Cell::of(ca.node().clone())
+        );
+        result
     }
 
     fn delay(&self, frp_context: &mut FrpContext<ENV>) -> Stream<ENV,A>
