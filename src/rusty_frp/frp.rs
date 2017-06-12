@@ -188,7 +188,7 @@ macro_rules! lift_c {
                 dependent_nodes: Vec::new(),
                 update_fn_op: Some(update_fn),
                 reset_value_after_propergate_op: None,
-                delayed: false,
+                delayed_value_op: None,
                 value: Value::Direct(Box::new(initial_value))
             }
         ));
@@ -342,7 +342,7 @@ pub trait IsCell<ENV,A> {
                     );
                 })),
                 reset_value_after_propergate_op: None,
-                delayed: false,
+                delayed_value_op: None,
                 value: Value::Direct(Box::new(initial_value))
             }
         ));
@@ -405,7 +405,7 @@ pub trait IsCell<ENV,A> {
                     )
                 })),
                 reset_value_after_propergate_op: None,
-                delayed: false,
+                delayed_value_op: None,
                 value: Value::Direct(Box::new(initial_value))
             }
         ));
@@ -705,15 +705,45 @@ pub trait IsStream<ENV,A> {
     ENV: 'static,
     A: 'static + Clone
     {
-        let s = self.map(frp_context, |x| x.clone());
-        {
-            let tmp1: &Rc<RefCell<Node<ENV,Any>>> = s.node();
-            let tmp2: &RefCell<Node<ENV,Any>> = tmp1.borrow();
-            let mut tmp3: RefMut<Node<ENV,Any>> = tmp2.borrow_mut();
-            let tmp4: &mut Node<ENV,Any> = tmp3.borrow_mut();
-            tmp4.delayed = true;
-        }
-        s
+        let node_id = self.node_id().clone();
+        let result_node_id = frp_context.next_cell_id();
+        let result: Stream<ENV,A> = Stream::of(frp_context.insert_node(
+            Node {
+                id: result_node_id,
+                free_observer_id: 0,
+                observer_map: HashMap::new(),
+                depends_on_nodes: vec![self.node().clone()],
+                dependent_nodes: Vec::new(),
+                update_fn_op: Some(Box::new(
+                    move |frp_context| {
+                        frp_context.unsafe_with_node_as_mut_by_node_id(
+                            &result_node_id,
+                            |_: &FrpContext<ENV>, n| {
+                                n.delayed_value_op = frp_context.unsafe_sample(
+                                    &node_id,
+                                    |_: &FrpContext<ENV>, v_op: &Option<A>| {
+                                        match v_op {
+                                            &Some(ref v) => Some(Box::new(v.clone()) as Box<Any>),
+                                            &None => None
+                                        }
+                                    }
+                                );
+                            }
+                        );
+                    }
+                )),
+                reset_value_after_propergate_op: None,
+                delayed_value_op: None,
+                value: Value::Direct(Box::new(None as Option<A>))
+            }
+        ));
+        frp_context.unsafe_with_node_as_mut_by_node_id(
+            &self.node_id(),
+            |_: &FrpContext<ENV>, n| {
+                n.dependent_nodes.push(Rc::downgrade(result.node()));
+            }
+        );
+        result
     }
 }
 
@@ -729,7 +759,7 @@ struct Node<ENV,A:?Sized> {
     dependent_nodes: Vec<Weak<RefCell<Node<ENV,Any>>>>,
     update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
-    delayed: bool,
+    delayed_value_op: Option<Box<A>>,
     value: Value<A>
 }
 
@@ -787,7 +817,10 @@ impl<ENV,A> Node<ENV,A> {
             dependent_nodes: self.dependent_nodes,
             update_fn_op: self.update_fn_op,
             reset_value_after_propergate_op: reset_value_after_propergate_op,
-            delayed: self.delayed,
+            delayed_value_op: match self.delayed_value_op {
+                Some(v) => Some(v as Box<Any>),
+                None => None
+            },
             value: value
         }
     }
@@ -795,7 +828,7 @@ impl<ENV,A> Node<ENV,A> {
 
 pub struct FrpContext<ENV> {
     graph: Vec<Weak<RefCell<Node<ENV,Any>>>>,
-    nodes_to_be_updated: HashSet<(Time,NodeID)>,
+    nodes_to_be_updated: HashSet<NodeID>,
     transaction_depth: u32
 }
 
@@ -887,113 +920,120 @@ impl<ENV:'static> FrpContext<ENV> {
     }
 
     fn propergate(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>) {
-        let max_time;
+        let mut ts = TopologicalSort::<NodeID>::new();
         {
             let frp_context = with_frp_context.with_frp_context(env);
-            max_time = frp_context.nodes_to_be_updated.iter().map(|&(ref a,_)| a.clone()).fold(0, |a, b| if a > b.clone() { a } else { b.clone() });
-        }
-        for time in 0..max_time+1 {
-            let mut ts = TopologicalSort::<NodeID>::new();
-            {
-                let frp_context = with_frp_context.with_frp_context(env);
-                frp_context.transaction_depth = frp_context.transaction_depth + 1;
-                for &(ref time2,ref node_to_be_updated) in &frp_context.nodes_to_be_updated {
-                    if time == time2.clone() {
-                        ts.insert(node_to_be_updated.clone());
-                        frp_context.unsafe_with_node_as_ref_by_node_id(
-                            node_to_be_updated,
-                            |_, node| {
-                                for dependent_node in &node.dependent_nodes {
-                                    match dependent_node.upgrade() {
-                                        Some(x1) => {
-                                            let x2: &RefCell<Node<ENV,Any>> = x1.borrow();
-                                            let x3: Ref<Node<ENV,Any>> = x2.borrow();
-                                            let x4: &Node<ENV,Any> = x3.borrow();
-                                            ts.add_dependency(node_to_be_updated.clone(), x4.id.clone());
-                                        },
-                                        None => ()
-                                    }
-                                }
+            frp_context.transaction_depth = frp_context.transaction_depth + 1;
+            for node_to_be_updated in &frp_context.nodes_to_be_updated {
+                ts.insert(node_to_be_updated.clone());
+                frp_context.unsafe_with_node_as_ref_by_node_id(
+                    node_to_be_updated,
+                    |_, node| {
+                        for dependent_node in &node.dependent_nodes {
+                            match dependent_node.upgrade() {
+                                Some(x1) => {
+                                    let x2: &RefCell<Node<ENV,Any>> = x1.borrow();
+                                    let x3: Ref<Node<ENV,Any>> = x2.borrow();
+                                    let x4: &Node<ENV,Any> = x3.borrow();
+                                    ts.add_dependency(node_to_be_updated.clone(), x4.id.clone());
+                                },
+                                None => ()
                             }
-                        );
-                    }
-                }
-            }
-            let mut node_ids_in_update_order: Vec<NodeID> = Vec::new();
-            loop {
-                let next_op = ts.pop();
-                match next_op {
-                    Some(node_id) => {
-                        node_ids_in_update_order.push(node_id)
-                    },
-                    None => {
-                        if ts.len() != 0 {
-                            panic!("cyclic dependency");
-                        }
-                        break;
-                    }
-                }
-            }
-            {
-                let frp_context = with_frp_context.with_frp_context(env);
-                for node_id in &node_ids_in_update_order {
-                    frp_context.update_node(node_id);
-                }
-            }
-            {
-                let frp_context = with_frp_context.with_frp_context(env);
-                frp_context.transaction_depth = frp_context.transaction_depth - 1;
-            }
-            {
-                let env2: *mut ENV = env;
-                let frp_context = with_frp_context.with_frp_context(env);
-                for node_id in &node_ids_in_update_order {
-                    let mut value_op: Option<*const Any> = None;
-                    frp_context.unsafe_sample2(
-                        node_id,
-                        |_: &FrpContext<ENV>, value| {
-                            value_op = Some(value);
-                        }
-                    );
-                    match value_op {
-                        Some(value) => {
-                            frp_context.unsafe_with_node_as_ref_by_node_id(
-                                node_id,
-                                |_, n| {
-                                    for (_,observer) in &n.observer_map {
-                                        observer(unsafe { &mut *env2 }, unsafe { &*value });
-                                    }
-                                }
-                            );
-                        },
-                        None => ()
-                    }
-                }
-            }
-            for node_id in &node_ids_in_update_order {
-                let frp_context = with_frp_context.with_frp_context(env);
-                frp_context.unsafe_with_node_as_mut_by_node_id(
-                    node_id,
-                    |_, n| {
-                        match &n.reset_value_after_propergate_op {
-                            &Some(ref reset_value_after_propergate) => {
-                                match &mut n.value {
-                                    &mut Value::Direct(ref mut x) => {
-                                        reset_value_after_propergate(x.as_mut());
-                                    },
-                                    &mut Value::InDirect(_) => ()
-                                }
-                            },
-                            &None => ()
                         }
                     }
                 );
             }
         }
+        let mut node_ids_in_update_order: Vec<NodeID> = Vec::new();
+        loop {
+            let next_op = ts.pop();
+            match next_op {
+                Some(node_id) => {
+                    node_ids_in_update_order.push(node_id)
+                },
+                None => {
+                    if ts.len() != 0 {
+                        panic!("cyclic dependency");
+                    }
+                    break;
+                }
+            }
+        }
+        {
+            let frp_context = with_frp_context.with_frp_context(env);
+            for node_id in &node_ids_in_update_order {
+                frp_context.update_node(node_id);
+            }
+        }
+        {
+            let frp_context = with_frp_context.with_frp_context(env);
+            frp_context.transaction_depth = frp_context.transaction_depth - 1;
+        }
+        {
+            let env2: *mut ENV = env;
+            let frp_context = with_frp_context.with_frp_context(env);
+            for node_id in &node_ids_in_update_order {
+                let mut value_op: Option<*const Any> = None;
+                frp_context.unsafe_sample2(
+                    node_id,
+                    |_: &FrpContext<ENV>, value| {
+                        value_op = Some(value);
+                    }
+                );
+                match value_op {
+                    Some(value) => {
+                        frp_context.unsafe_with_node_as_ref_by_node_id(
+                            node_id,
+                            |_, n| {
+                                for (_,observer) in &n.observer_map {
+                                    observer(unsafe { &mut *env2 }, unsafe { &*value });
+                                }
+                            }
+                        );
+                    },
+                    None => ()
+                }
+            }
+        }
+        for node_id in &node_ids_in_update_order {
+            let frp_context = with_frp_context.with_frp_context(env);
+            frp_context.unsafe_with_node_as_mut_by_node_id(
+                node_id,
+                |_, n| {
+                    match &n.reset_value_after_propergate_op {
+                        &Some(ref reset_value_after_propergate) => {
+                            match &mut n.value {
+                                &mut Value::Direct(ref mut x) => {
+                                    reset_value_after_propergate(x.as_mut());
+                                },
+                                &mut Value::InDirect(_) => ()
+                            }
+                        },
+                        &None => ()
+                    }
+                }
+            );
+        }
         {
             let frp_context = with_frp_context.with_frp_context(env);
             frp_context.nodes_to_be_updated.clear();
         }
+        /*
+        for node_id in &node_ids_in_update_order {
+            let frp_context = with_frp_context.with_frp_context(env);
+            let mark_for_update = frp_context.unsafe_with_node_as_mut_by_node_id(
+                node_id,
+                |_, n| {
+                    match &n.delayed_value_op {
+                        &Some(ref delayed_value) => {
+                            n.value = Value::Direct(Box::new(delayed_value));
+                            true
+                        },
+                        &None => false
+                    }
+                }
+            );
+        }*/
     }
 
     fn update_node(&mut self, node_id: &NodeID) {
@@ -1016,26 +1056,16 @@ impl<ENV:'static> FrpContext<ENV> {
     }
 
     fn mark_all_decendent_nodes_for_update(&mut self, node_id: &NodeID) {
-        self.mark_all_decendent_nodes_for_update2(&0, node_id, &mut HashSet::new());
+        self.mark_all_decendent_nodes_for_update2(node_id, &mut HashSet::new());
     }
 
-    fn mark_all_decendent_nodes_for_update2(&mut self, time: &Time, node_id: &NodeID, visited: &mut HashSet<(Time,NodeID)>) {
-        if visited.contains(&(time.clone(),node_id.clone())) {
+    fn mark_all_decendent_nodes_for_update2(&mut self, node_id: &NodeID, visited: &mut HashSet<NodeID>) {
+        if visited.contains(node_id) {
             return;
         }
         let mut dependent_node_ids: Vec<NodeID> = Vec::new();
-        let (time2, time3) = self.unsafe_with_node_as_ref_by_node_id(
-            &node_id,
-            |_: &FrpContext<ENV>, n: &Node<ENV,Any>| {
-                if n.delayed {
-                    (time.clone() + 1, time.clone() + 2)
-                } else {
-                    (time.clone(), time.clone())
-                }
-            }
-        );
-        self.nodes_to_be_updated.insert((time3.clone(),node_id.clone()));
-        visited.insert((time3.clone(),node_id.clone()));
+        self.nodes_to_be_updated.insert(node_id.clone());
+        visited.insert(node_id.clone());
         self.unsafe_with_node_as_ref_by_node_id(
             &node_id,
             |_: &FrpContext<ENV>, n: &Node<ENV,Any>| {
@@ -1053,7 +1083,7 @@ impl<ENV:'static> FrpContext<ENV> {
             }
         );
         for dependent_node_id in dependent_node_ids {
-            self.mark_all_decendent_nodes_for_update2(&time2, &dependent_node_id, visited);
+            self.mark_all_decendent_nodes_for_update2(&dependent_node_id, visited);
         }
     }
 
@@ -1216,7 +1246,7 @@ impl<ENV:'static> FrpContext<ENV> {
                 dependent_nodes: Vec::new(),
                 update_fn_op: None,
                 reset_value_after_propergate_op: None,
-                delayed: false,
+                delayed_value_op: None,
                 value: Value::Direct(Box::new(value))
             }
         ))
@@ -1307,7 +1337,7 @@ impl<ENV:'static> FrpContext<ENV> {
                     })
                 ),
                 reset_value_after_propergate_op: None,
-                delayed: false,
+                delayed_value_op: None,
                 value: Value::InDirect(initial_inner_cell.node_id())
             }
         ));
