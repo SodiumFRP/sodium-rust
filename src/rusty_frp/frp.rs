@@ -1000,8 +1000,10 @@ impl<ENV:'static> FrpContext<ENV> {
                         frp_context.unsafe_with_node_as_ref_by_node_id(
                             node_id,
                             |_, n| {
-                                for (_,observer) in &n.observer_map {
-                                    observer(unsafe { &mut *env2 }, unsafe { &*value });
+                                if n.delayed_value_op.is_none() {
+                                    for (_,observer) in &n.observer_map {
+                                        observer(unsafe { &mut *env2 }, unsafe { &*value });
+                                    }
                                 }
                             }
                         );
@@ -1038,7 +1040,7 @@ impl<ENV:'static> FrpContext<ENV> {
             let mark_for_update = frp_context.unsafe_with_node_as_mut_by_node_id(
                 node_id,
                 |_, n| {
-                    match &n.delayed_value_op {
+                    let mark_for_update = match &n.delayed_value_op {
                         &Some(ref delayed_value) => {
                             match &mut n.value {
                                 &mut Value::Direct(ref mut v) => delayed_value(v.as_mut()),
@@ -1047,9 +1049,25 @@ impl<ENV:'static> FrpContext<ENV> {
                             true
                         },
                         &None => false
-                    }
+                    };
+                    n.delayed_value_op = None;
+                    mark_for_update
                 }
             );
+            if mark_for_update {
+                frp_context.mark_all_decendent_nodes_for_update(&node_id);
+                frp_context.nodes_to_be_updated.remove(node_id);
+            }
+        }
+        {
+            let again: bool;
+            {
+                let frp_context = with_frp_context.with_frp_context(env);
+                again = frp_context.nodes_to_be_updated.len() > 0;
+            }
+            if again {
+                FrpContext::propergate(env, with_frp_context);
+            }
         }
     }
 
