@@ -12,6 +12,37 @@ mod tests {
     use rusty_frp::StreamSink;
     use rusty_frp::IsStream;
     use rusty_frp::WithFrpContext;
+
+
+    #[test]
+    fn test_delay() {
+        struct Env {
+            frp_context: FrpContext<Env>,
+            out: Vec<u32>
+        }
+        let mut env = Env { frp_context: FrpContext::new(), out: Vec::new() };
+        #[derive(Copy,Clone)]
+        struct WithFrpContextForEnv {}
+        impl WithFrpContext<Env> for WithFrpContextForEnv {
+            fn with_frp_context<'r>(&self, env: &'r mut Env) -> &'r mut FrpContext<Env> {
+                return &mut env.frp_context;
+            }
+        }
+        let with_frp_context = WithFrpContextForEnv {};
+        let s: StreamSink<Env,u32> = env.frp_context.new_stream_sink();
+        let s2 = s.delay(&mut env.frp_context);
+        s2.observe(
+            &mut env,
+            &with_frp_context,
+            |env:&mut Env, value:&u32|
+                env.out.push(value.clone())
+        );
+        s.send(&mut env, &with_frp_context, 1);
+        s.send(&mut env, &with_frp_context, 2);
+        s.send(&mut env, &with_frp_context, 3);
+        assert_eq!(vec![1, 2, 3], env.out);
+    }
+
     /*
     use rusty_frp::Cell;
     use rusty_frp::CellSink;

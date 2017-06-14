@@ -707,6 +707,7 @@ pub trait IsStream<ENV,A> {
         let result_node_id = frp_context.next_cell_id();
         let update_fn: Box<Fn(&mut FrpContext<ENV>)> = Box::new(
             move |frp_context| {
+                let mut mark_it: bool = false;
                 frp_context.unsafe_with_node_as_mut_by_node_id(
                     &result_node_id,
                     move |frp_context: &FrpContext<ENV>, n| {
@@ -716,20 +717,50 @@ pub trait IsStream<ENV,A> {
                                 v_op.clone()
                             }
                         );
-                        n.delayed_value_op = Some(Box::new(
-                            move |v: &mut Any| {
-                                match v.downcast_mut::<Option<A>>() {
-                                    Some(v2) => {
-                                        *v2 = value.clone()
-                                    }
-                                    None => ()
+                        match &n.delayed_value_op {
+                            &Some(ref delayed_value) => {
+                                println!("MARK1");
+                                match &mut n.value {
+                                    &mut Value::Direct(ref mut v) => {
+                                        delayed_value(v);
+                                    },
+                                    &mut Value::InDirect(_) => ()
                                 }
+                            },
+                            &None => {
+                                println!("MARK2");
                             }
-                        ));
+                        }
+                        match value {
+                            Some(value2) => {
+                                println!("MARK SOME");
+                                mark_it = true;
+                                n.delayed_value_op = Some(Box::new(
+                                    move |v: &mut Any| {
+                                        println!("MARK SOME 2");
+                                        match v.downcast_mut::<Option<A>>() {
+                                            Some(v2) => {
+                                                println!("MARK ASSIGN");
+                                                *v2 = Some(value2.clone())
+                                            }
+                                            None => ()
+                                        }
+                                    }
+                                ));
+                            },
+                            None => {
+                                println!("MARK NONE");
+                                n.delayed_value_op = None;
+                            }
+                        }
                     }
                 );
+                if mark_it {
+                    frp_context.mark_all_decendent_nodes_for_update(&result_node_id);
+                }
             }
         );
+        let initial_value: Option<A> = None;
         let result: Stream<ENV,A> = Stream::of(frp_context.insert_node(
             Node {
                 id: result_node_id,
@@ -740,7 +771,7 @@ pub trait IsStream<ENV,A> {
                 update_fn_op: Some(update_fn),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
-                value: Value::Direct(Box::new(None as Option<A>))
+                value: Value::Direct(Box::new(initial_value))
             }
         ));
         frp_context.unsafe_with_node_as_mut_by_node_id(
@@ -933,12 +964,10 @@ impl<ENV:'static> FrpContext<ENV> {
     }
 
     fn propergate(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>) {
-        let mut node_ids_to_notify_observers_of: HashSet<NodeID> = HashSet::new();
         loop {
             let mut ts = TopologicalSort::<NodeID>::new();
             {
                 let frp_context = with_frp_context.with_frp_context(env);
-                frp_context.transaction_depth = frp_context.transaction_depth + 1;
                 for node_to_be_updated in &frp_context.nodes_to_be_updated {
                     ts.insert(node_to_be_updated.clone());
                     frp_context.unsafe_with_node_as_ref_by_node_id(
@@ -976,17 +1005,38 @@ impl<ENV:'static> FrpContext<ENV> {
             }
             {
                 let frp_context = with_frp_context.with_frp_context(env);
+                frp_context.nodes_to_be_updated.clear();
+            }
+            {
+                let frp_context = with_frp_context.with_frp_context(env);
                 for node_id in &node_ids_in_update_order {
                     frp_context.update_node(node_id);
                 }
             }
             {
+                let env2: *mut ENV = env;
                 let frp_context = with_frp_context.with_frp_context(env);
-                frp_context.transaction_depth = frp_context.transaction_depth - 1;
-            }
-            {
                 for node_id in &node_ids_in_update_order {
-                    node_ids_to_notify_observers_of.insert(node_id.clone());
+                    let mut value_op: Option<*const Any> = None;
+                    frp_context.unsafe_sample2(
+                        node_id,
+                        |_: &FrpContext<ENV>, value| {
+                            value_op = Some(value);
+                        }
+                    );
+                    match value_op {
+                        Some(value) => {
+                            frp_context.unsafe_with_node_as_ref_by_node_id(
+                                node_id,
+                                |_, n| {
+                                    for (_,observer) in &n.observer_map {
+                                        observer(unsafe { &mut *env2 }, unsafe { &*value });
+                                    }
+                                }
+                            );
+                        },
+                        None => ()
+                    }
                 }
             }
             for node_id in &node_ids_in_update_order {
@@ -1008,34 +1058,6 @@ impl<ENV:'static> FrpContext<ENV> {
                     }
                 );
             }
-            {
-                let frp_context = with_frp_context.with_frp_context(env);
-                frp_context.nodes_to_be_updated.clear();
-            }
-            for node_id in &node_ids_in_update_order {
-                let frp_context = with_frp_context.with_frp_context(env);
-                let mark_for_update = frp_context.unsafe_with_node_as_mut_by_node_id(
-                    node_id,
-                    |_, n| {
-                        let mark_for_update = match &n.delayed_value_op {
-                            &Some(ref delayed_value) => {
-                                match &mut n.value {
-                                    &mut Value::Direct(ref mut v) => delayed_value(v.as_mut()),
-                                    &mut Value::InDirect(_) => ()
-                                }
-                                true
-                            },
-                            &None => false
-                        };
-                        n.delayed_value_op = None;
-                        mark_for_update
-                    }
-                );
-                if mark_for_update {
-                    frp_context.mark_all_decendent_nodes_for_update(&node_id);
-                    frp_context.nodes_to_be_updated.remove(node_id);
-                }
-            }
             let again: bool;
             {
                 let frp_context = with_frp_context.with_frp_context(env);
@@ -1043,34 +1065,6 @@ impl<ENV:'static> FrpContext<ENV> {
             }
             if !again {
                 break;
-            }
-        }
-        {
-            let env2: *mut ENV = env;
-            let frp_context = with_frp_context.with_frp_context(env);
-            for node_id in &node_ids_to_notify_observers_of {
-                let mut value_op: Option<*const Any> = None;
-                frp_context.unsafe_sample2(
-                    node_id,
-                    |_: &FrpContext<ENV>, value| {
-                        value_op = Some(value);
-                    }
-                );
-                match value_op {
-                    Some(value) => {
-                        frp_context.unsafe_with_node_as_ref_by_node_id(
-                            node_id,
-                            |_, n| {
-                                if n.delayed_value_op.is_none() {
-                                    for (_,observer) in &n.observer_map {
-                                        observer(unsafe { &mut *env2 }, unsafe { &*value });
-                                    }
-                                }
-                            }
-                        );
-                    },
-                    None => ()
-                }
             }
         }
     }
