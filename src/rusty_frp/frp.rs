@@ -729,28 +729,24 @@ pub trait IsStream<ENV,A> {
                         );
                         match &n.delayed_value_op {
                             &Some(ref delayed_value) => {
-                                println!("MARK1");
                                 match &mut n.value {
                                     &mut Value::Direct(ref mut v) => {
-                                        delayed_value(v);
+                                        delayed_value(v.as_mut());
+                                        mark_it = true;
                                     },
                                     &mut Value::InDirect(_) => ()
                                 }
                             },
                             &None => {
-                                println!("MARK2");
                             }
                         }
                         match value {
                             Some(value2) => {
-                                println!("MARK SOME");
                                 mark_it = true;
                                 n.delayed_value_op = Some(Box::new(
                                     move |v: &mut Any| {
-                                        println!("MARK SOME 2");
                                         match v.downcast_mut::<Option<A>>() {
                                             Some(v2) => {
-                                                println!("MARK ASSIGN");
                                                 *v2 = Some(value2.clone())
                                             }
                                             None => ()
@@ -759,7 +755,6 @@ pub trait IsStream<ENV,A> {
                                 ));
                             },
                             None => {
-                                println!("MARK NONE");
                                 n.delayed_value_op = None;
                             }
                         }
@@ -772,7 +767,7 @@ pub trait IsStream<ENV,A> {
         );
         let initial_value: Option<A> = None;
         let result: Stream<ENV,A> = Stream::of(frp_context.insert_node(
-            Node {
+            Node::<ENV,Option<A>> {
                 id: result_node_id,
                 free_observer_id: 0,
                 observer_map: HashMap::new(),
