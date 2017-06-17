@@ -10,6 +10,7 @@ use std::cell::Ref;
 use std::cell::RefMut;
 use std::borrow::Borrow;
 use std::borrow::BorrowMut;
+use std::cmp::max;
 
 pub struct Cell<ENV,A> {
     node: Rc<RefCell<Node<ENV,Any>>>,
@@ -166,6 +167,11 @@ macro_rules! lift_c {
         let depends_on_nodes = vec![
             $($cell.node().clone(),)*
         ];
+        let mut rank: u32 = 0;
+        $(
+            rank = max(rank, $cell.with_node_as_ref(|n| n.rank.clone()));
+        )*
+        rank = rank + 1;
         let calc = move |frp_context: &FrpContext<_>| { f2( $($cell.sample(frp_context),)* ) };
         let initial_value = calc(frp_context);
         let update_fn: Box<Fn(&mut FrpContext<_>) + 'static> = Box::new(
@@ -189,6 +195,7 @@ macro_rules! lift_c {
                 update_fn_op: Some(update_fn),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
+                rank: rank,
                 value: Value::Direct(Box::new(initial_value))
             }
         ));
@@ -343,6 +350,7 @@ pub trait IsCell<ENV,A> {
                 })),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
+                rank: self.with_node_as_ref(|n| n.rank.clone() + 1),
                 value: Value::Direct(Box::new(initial_value))
             }
         ));
@@ -406,6 +414,7 @@ pub trait IsCell<ENV,A> {
                 })),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
+                rank: max(self.with_node_as_ref(|n| n.rank.clone()), cf.with_node_as_ref(|n| n.rank.clone())) + 1,
                 value: Value::Direct(Box::new(initial_value))
             }
         ));
@@ -686,6 +695,7 @@ pub trait IsStream<ENV,A> {
                 )),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
+                rank: self.with_node_as_ref(|n| n.rank.clone()) + 1,
                 value: Value::Direct(Box::new(value))
             }
         ));
@@ -771,6 +781,7 @@ pub trait IsStream<ENV,A> {
                 update_fn_op: Some(update_fn),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
+                rank: self.with_node_as_ref(|n| n.rank.clone()) + 1,
                 value: Value::Direct(Box::new(initial_value))
             }
         ));
@@ -797,6 +808,7 @@ struct Node<ENV,A:?Sized> {
     update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
     delayed_value_op: Option<Box<Fn(&mut A)>>,
+    rank: u32,
     value: Value<A>
 }
 
@@ -865,6 +877,7 @@ impl<ENV,A> Node<ENV,A> {
                 )),
                 None => None
             },
+            rank: self.rank,
             value: value
         }
     }
@@ -1280,6 +1293,7 @@ impl<ENV:'static> FrpContext<ENV> {
                 update_fn_op: None,
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
+                rank: 0,
                 value: Value::Direct(Box::new(value))
             }
         ))
@@ -1314,6 +1328,7 @@ impl<ENV:'static> FrpContext<ENV> {
         let initial_inner_cell = unsafe { (*initial_inner_cell_fn)(self) };
         let node_id = self.next_cell_id();
         let cell_thunk_cell_a = cell_thunk_cell_a.as_cell();
+        let cell_thunk_cell_a2 = cell_thunk_cell_a.clone();
         let c: Cell<ENV,A> = Cell::of(self.insert_node(
             Node::<ENV,A> {
                 id: node_id.clone(),
@@ -1361,16 +1376,19 @@ impl<ENV:'static> FrpContext<ENV> {
                                 n.dependent_nodes.push(frp_context.graph[node_id].clone());
                             }
                         );
+                        let cell_thunk_cell_a2 = cell_thunk_cell_a.clone();
                         frp_context.unsafe_with_node_as_mut_by_node_id(
                             &node_id,
                             move |_: &FrpContext<ENV>, n: &mut Node<ENV,Any>| {
                                 n.value = Value::InDirect(inner_cell.node_id());
+                                n.rank = max(cell_thunk_cell_a2.with_node_as_ref(|n| n.rank.clone()), inner_cell.with_node_as_ref(|n| n.rank.clone())) + 1;
                             }
                         );
                     })
                 ),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
+                rank: max(cell_thunk_cell_a2.with_node_as_ref(|n| n.rank.clone()), initial_inner_cell.with_node_as_ref(|n| n.rank.clone())) + 1,
                 value: Value::InDirect(initial_inner_cell.node_id())
             }
         ));
