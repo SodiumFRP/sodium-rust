@@ -1,4 +1,3 @@
-use topological_sort::TopologicalSort;
 use std::any::Any;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -11,6 +10,7 @@ use std::cell::RefMut;
 use std::borrow::Borrow;
 use std::borrow::BorrowMut;
 use std::cmp::max;
+use std::iter::FromIterator;
 
 pub struct Cell<ENV,A> {
     node: Rc<RefCell<Node<ENV,Any>>>,
@@ -978,43 +978,21 @@ impl<ENV:'static> FrpContext<ENV> {
 
     fn propergate(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>) {
         loop {
-            let mut ts = TopologicalSort::<NodeID>::new();
+            let node_ids_in_update_order: Vec<NodeID>;
             {
+                let mut node_id_rank_list: Vec<(NodeID,u32)> = Vec::new();
                 let frp_context = with_frp_context.with_frp_context(env);
-                for node_to_be_updated in &frp_context.nodes_to_be_updated {
-                    ts.insert(node_to_be_updated.clone());
-                    frp_context.unsafe_with_node_as_ref_by_node_id(
-                        node_to_be_updated,
-                        |_, node| {
-                            for dependent_node in &node.dependent_nodes {
-                                match dependent_node.upgrade() {
-                                    Some(x1) => {
-                                        let x2: &RefCell<Node<ENV,Any>> = x1.borrow();
-                                        let x3: Ref<Node<ENV,Any>> = x2.borrow();
-                                        let x4: &Node<ENV,Any> = x3.borrow();
-                                        ts.add_dependency(node_to_be_updated.clone(), x4.id.clone());
-                                    },
-                                    None => ()
-                                }
-                            }
+                for node_id in &frp_context.nodes_to_be_updated {
+                    let rank = frp_context.unsafe_with_node_as_ref_by_node_id(
+                        node_id,
+                        |_: &FrpContext<ENV>, n| {
+                            n.rank.clone()
                         }
                     );
+                    node_id_rank_list.push((node_id.clone(), rank));
                 }
-            }
-            let mut node_ids_in_update_order: Vec<NodeID> = Vec::new();
-            loop {
-                let next_op = ts.pop();
-                match next_op {
-                    Some(node_id) => {
-                        node_ids_in_update_order.push(node_id)
-                    },
-                    None => {
-                        if ts.len() != 0 {
-                            panic!("cyclic dependency");
-                        }
-                        break;
-                    }
-                }
+                node_id_rank_list.sort_by(|&(_,ref rank1),&(_,ref rank2)| rank1.cmp(rank2));
+                node_ids_in_update_order = Vec::from_iter(node_id_rank_list.iter().map(|&(ref node_id,_)| node_id.clone()));
             }
             {
                 let frp_context = with_frp_context.with_frp_context(env);
