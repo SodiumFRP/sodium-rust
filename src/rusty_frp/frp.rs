@@ -717,7 +717,6 @@ pub trait IsStream<ENV,A> {
         let result_node_id = frp_context.next_cell_id();
         let update_fn: Box<Fn(&mut FrpContext<ENV>)> = Box::new(
             move |frp_context| {
-                let mut mark_it: bool = false;
                 frp_context.unsafe_with_node_as_mut_by_node_id(
                     &result_node_id,
                     move |frp_context: &FrpContext<ENV>, n| {
@@ -732,7 +731,6 @@ pub trait IsStream<ENV,A> {
                                 match &mut n.value {
                                     &mut Value::Direct(ref mut v) => {
                                         delayed_value(v.as_mut());
-                                        mark_it = true;
                                     },
                                     &mut Value::InDirect(_) => ()
                                 }
@@ -742,7 +740,6 @@ pub trait IsStream<ENV,A> {
                         }
                         match value {
                             Some(value2) => {
-                                mark_it = true;
                                 n.delayed_value_op = Some(Box::new(
                                     move |v: &mut Any| {
                                         match v.downcast_mut::<Option<A>>() {
@@ -760,9 +757,6 @@ pub trait IsStream<ENV,A> {
                         }
                     }
                 );
-                if mark_it {
-                    frp_context.mark_all_decendent_nodes_for_update(&result_node_id);
-                }
             }
         );
         let initial_value: Option<A> = None;
@@ -774,7 +768,11 @@ pub trait IsStream<ENV,A> {
                 depends_on_nodes: vec![self.node().clone()],
                 dependent_nodes: Vec::new(),
                 update_fn_op: Some(update_fn),
-                reset_value_after_propergate_op: None,
+                reset_value_after_propergate_op: Some(Box::new(
+                    |a: &mut Option<A>| {
+                        *a = None;
+                    }
+                )),
                 delayed_value_op: None,
                 rank: self.with_node_as_ref(|n| n.rank.clone()) + 1,
                 value: Value::Direct(Box::new(initial_value))
@@ -972,7 +970,12 @@ impl<ENV:'static> FrpContext<ENV> {
     }
 
     fn propergate(env: &mut ENV, with_frp_context: &WithFrpContext<ENV>) {
+        let mut limit = 50;
         loop {
+            limit = limit - 1;
+            if limit == 0 {
+                panic!("Propergation limit exceeded.");
+            }
             let node_ids_in_update_order: Vec<NodeID>;
             {
                 let mut node_id_rank_list: Vec<(NodeID,u32)> = Vec::new();
@@ -1043,6 +1046,13 @@ impl<ENV:'static> FrpContext<ENV> {
                         }
                     }
                 );
+                let mark_it = frp_context.unsafe_with_node_as_ref_by_node_id(
+                    node_id,
+                    |_: &FrpContext<ENV>, n| n.delayed_value_op.is_some()
+                );
+                if mark_it {
+                    frp_context.mark_all_decendent_nodes_for_update(node_id);
+                }
             }
             let again: bool;
             {
