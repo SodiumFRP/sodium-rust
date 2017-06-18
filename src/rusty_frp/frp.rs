@@ -174,7 +174,7 @@ macro_rules! lift_c {
         rank = rank + 1;
         let calc = move |frp_context: &FrpContext<_>| { f2( $($cell.sample(frp_context),)* ) };
         let initial_value = calc(frp_context);
-        let update_fn: Box<Fn(&mut FrpContext<_>) + 'static> = Box::new(
+        let update_fn: Box<Fn(&mut FrpContext<_>)->bool + 'static> = Box::new(
             move |frp_context| {
                 let value = calc(frp_context);
                 frp_context.unsafe_with_node_as_mut_by_node_id(
@@ -183,6 +183,7 @@ macro_rules! lift_c {
                         n.value = Value::Direct(Box::new(value));
                     }
                 );
+                return true;
             }
         );
         let result_node = Cell::of(frp_context.insert_node(
@@ -347,6 +348,7 @@ pub trait IsCell<ENV,A> {
                             }
                         }
                     );
+                    return true;
                 })),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
@@ -410,7 +412,8 @@ pub trait IsCell<ENV,A> {
                                 &mut Value::InDirect(_) => panic!("Expected direct value")
                             }
                         }
-                    )
+                    );
+                    return true;
                 })),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
@@ -676,7 +679,7 @@ pub trait IsStream<ENV,A> {
                 dependent_nodes: Vec::new(),
                 update_fn_op: Some(Box::new(
                     move |frp_context: &mut FrpContext<ENV>| {
-                        frp_context.unsafe_with_node_as_mut_by_node_id(
+                        return frp_context.unsafe_with_node_as_mut_by_node_id(
                             &node_id,
                             |frp_context: &FrpContext<ENV>, n| {
                                 let v_op = frp_context.unsafe_sample(
@@ -686,11 +689,12 @@ pub trait IsStream<ENV,A> {
                                 match v_op {
                                     Some(v) => {
                                         n.value = Value::Direct(Box::new(v) as Box<Any>);
+                                        return true;
                                     },
-                                    None => ()
+                                    None => return false
                                 }
                             }
-                        )
+                        );
                     }
                 )),
                 reset_value_after_propergate_op: None,
@@ -715,29 +719,18 @@ pub trait IsStream<ENV,A> {
     {
         let node_id = self.node_id().clone();
         let result_node_id = frp_context.next_cell_id();
-        let update_fn: Box<Fn(&mut FrpContext<ENV>)> = Box::new(
+        let update_fn: Box<Fn(&mut FrpContext<ENV>)->bool> = Box::new(
             move |frp_context| {
-                frp_context.unsafe_with_node_as_mut_by_node_id(
+                let changed = frp_context.unsafe_with_node_as_mut_by_node_id(
                     &result_node_id,
                     move |frp_context: &FrpContext<ENV>, n| {
+                        let mut changed = false;
                         let value = frp_context.unsafe_sample(
                             &node_id,
                             |_: &FrpContext<ENV>, v_op: &Option<A>| {
                                 v_op.clone()
                             }
                         );
-                        match &n.delayed_value_op {
-                            &Some(ref delayed_value) => {
-                                match &mut n.value {
-                                    &mut Value::Direct(ref mut v) => {
-                                        delayed_value(v.as_mut());
-                                    },
-                                    &mut Value::InDirect(_) => ()
-                                }
-                            },
-                            &None => {
-                            }
-                        }
                         match value {
                             Some(value2) => {
                                 n.delayed_value_op = Some(Box::new(
@@ -755,8 +748,10 @@ pub trait IsStream<ENV,A> {
                                 n.delayed_value_op = None;
                             }
                         }
+                        return changed;
                     }
                 );
+                return changed;
             }
         );
         let initial_value: Option<A> = None;
@@ -798,7 +793,7 @@ struct Node<ENV,A:?Sized> {
     observer_map: HashMap<u32,Box<Fn(&mut ENV,&A)>>,
     depends_on_nodes: Vec<Rc<RefCell<Node<ENV,Any>>>>,
     dependent_nodes: Vec<Weak<RefCell<Node<ENV,Any>>>>,
-    update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)>>,
+    update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)->bool>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
     delayed_value_op: Option<Box<Fn(&mut A)>>,
     rank: u32,
@@ -1046,12 +1041,26 @@ impl<ENV:'static> FrpContext<ENV> {
                         }
                     }
                 );
-                let mark_it = frp_context.unsafe_with_node_as_ref_by_node_id(
+                let mark_it = frp_context.unsafe_with_node_as_mut_by_node_id(
                     node_id,
-                    |_: &FrpContext<ENV>, n| n.delayed_value_op.is_some()
+                    |_: &FrpContext<ENV>, n| {
+                        match &n.delayed_value_op {
+                            &Some(ref delayed_value) => {
+                                match &mut n.value {
+                                    &mut Value::Direct(ref mut v) => {
+                                        delayed_value(v.as_mut());
+                                        true
+                                    },
+                                    &mut Value::InDirect(_) => false
+                                }
+                            },
+                            &None => false
+                        }
+                    }
                 );
                 if mark_it {
                     frp_context.mark_all_decendent_nodes_for_update(node_id);
+                    frp_context.nodes_to_be_updated.remove(node_id);
                 }
             }
             let again: bool;
@@ -1065,8 +1074,8 @@ impl<ENV:'static> FrpContext<ENV> {
         }
     }
 
-    fn update_node(&mut self, node_id: &NodeID) {
-        let mut update_fn_op: Option<*const Fn(&mut FrpContext<ENV>)> = None;
+    fn update_node(&mut self, node_id: &NodeID)->bool {
+        let mut update_fn_op: Option<*const Fn(&mut FrpContext<ENV>)->bool> = None;
         self.unsafe_with_node_as_ref_by_node_id(
             node_id,
             |_,n| {
@@ -1078,10 +1087,11 @@ impl<ENV:'static> FrpContext<ENV> {
         );
         match update_fn_op {
             Some(update_fn) => {
-                unsafe { (*update_fn)(self) };
+                return unsafe { (*update_fn)(self) };
             },
             None => ()
         }
+        return true;
     }
 
     fn mark_all_decendent_nodes_for_update(&mut self, node_id: &NodeID) {
@@ -1367,6 +1377,7 @@ impl<ENV:'static> FrpContext<ENV> {
                                 n.rank = max(cell_thunk_cell_a2.with_node_as_ref(|n| n.rank.clone()), inner_cell.with_node_as_ref(|n| n.rank.clone())) + 1;
                             }
                         );
+                        return true;
                     })
                 ),
                 reset_value_after_propergate_op: None,
