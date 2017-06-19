@@ -196,6 +196,7 @@ macro_rules! lift_c {
                 update_fn_op: Some(update_fn),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
+                is_delayed: false,
                 rank: rank,
                 value: Value::Direct(Box::new(initial_value))
             }
@@ -352,6 +353,7 @@ pub trait IsCell<ENV,A> {
                 })),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
+                is_delayed: false,
                 rank: self.with_node_as_ref(|n| n.rank.clone() + 1),
                 value: Value::Direct(Box::new(initial_value))
             }
@@ -417,6 +419,7 @@ pub trait IsCell<ENV,A> {
                 })),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
+                is_delayed: false,
                 rank: max(self.with_node_as_ref(|n| n.rank.clone()), cf.with_node_as_ref(|n| n.rank.clone())) + 1,
                 value: Value::Direct(Box::new(initial_value))
             }
@@ -699,6 +702,7 @@ pub trait IsStream<ENV,A> {
                 )),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
+                is_delayed: false,
                 rank: self.with_node_as_ref(|n| n.rank.clone()) + 1,
                 value: Value::Direct(Box::new(value))
             }
@@ -769,6 +773,7 @@ pub trait IsStream<ENV,A> {
                     }
                 )),
                 delayed_value_op: None,
+                is_delayed: true,
                 rank: self.with_node_as_ref(|n| n.rank.clone()) + 1,
                 value: Value::Direct(Box::new(initial_value))
             }
@@ -796,6 +801,7 @@ struct Node<ENV,A:?Sized> {
     update_fn_op: Option<Box<Fn(&mut FrpContext<ENV>)->bool>>,
     reset_value_after_propergate_op: Option<Box<Fn(&mut A)>>,
     delayed_value_op: Option<Box<Fn(&mut A)>>,
+    is_delayed: bool,
     rank: u32,
     value: Value<A>
 }
@@ -865,6 +871,7 @@ impl<ENV,A> Node<ENV,A> {
                 )),
                 None => None
             },
+            is_delayed: self.is_delayed,
             rank: self.rank,
             value: value
         }
@@ -1059,8 +1066,26 @@ impl<ENV:'static> FrpContext<ENV> {
                     }
                 );
                 if mark_it {
-                    frp_context.mark_all_decendent_nodes_for_update(node_id);
-                    frp_context.nodes_to_be_updated.remove(node_id);
+                    let mut decendent_ids: Vec<NodeID> = Vec::new();
+                    frp_context.unsafe_with_node_as_ref_by_node_id(
+                        node_id,
+                        |frp_context:&FrpContext<ENV>,n| {
+                            for dependent_node in &n.dependent_nodes {
+                                match dependent_node.upgrade() {
+                                    Some(tmp) => {
+                                        let tmp2: &RefCell<Node<ENV,Any>> = tmp.borrow();
+                                        let tmp3: Ref<Node<ENV,Any>> = tmp2.borrow();
+                                        let tmp4: &Node<ENV,Any> = tmp3.borrow();
+                                        decendent_ids.push(tmp4.id.clone());
+                                    },
+                                    None => ()
+                                }
+                            }
+                        }
+                    );
+                    for decendent_id in decendent_ids {
+                        frp_context.mark_all_decendent_nodes_for_update(&decendent_id);
+                    }
                 }
             }
             let again: bool;
@@ -1105,6 +1130,9 @@ impl<ENV:'static> FrpContext<ENV> {
         let mut dependent_node_ids: Vec<NodeID> = Vec::new();
         self.nodes_to_be_updated.insert(node_id.clone());
         visited.insert(node_id.clone());
+        if self.unsafe_with_node_as_ref_by_node_id(&node_id, |_:&FrpContext<ENV>, n| n.is_delayed.clone()) {
+            return;
+        }
         self.unsafe_with_node_as_ref_by_node_id(
             &node_id,
             |_: &FrpContext<ENV>, n: &Node<ENV,Any>| {
@@ -1286,6 +1314,7 @@ impl<ENV:'static> FrpContext<ENV> {
                 update_fn_op: None,
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
+                is_delayed: false,
                 rank: 0,
                 value: Value::Direct(Box::new(value))
             }
@@ -1382,6 +1411,7 @@ impl<ENV:'static> FrpContext<ENV> {
                 ),
                 reset_value_after_propergate_op: None,
                 delayed_value_op: None,
+                is_delayed: false,
                 rank: max(cell_thunk_cell_a2.with_node_as_ref(|n| n.rank.clone()), initial_inner_cell.with_node_as_ref(|n| n.rank.clone())) + 1,
                 value: Value::InDirect(initial_inner_cell.node_id())
             }
