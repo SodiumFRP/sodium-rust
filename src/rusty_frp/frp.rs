@@ -1449,6 +1449,12 @@ impl<ENV:'static> FrpContext<ENV> {
             }
         ));
         self.unsafe_with_node_as_mut_by_node_id(
+            &cell_thunk_cell_a2.node_id(),
+            |_: &FrpContext<ENV>, n| {
+                n.dependent_nodes.push(Rc::downgrade(c.node()));
+            }
+        );
+        self.unsafe_with_node_as_mut_by_node_id(
             &initial_inner_cell.node_id(),
             |_: &FrpContext<ENV>, n| {
                 n.dependent_nodes.push(Rc::downgrade(c.node()));
