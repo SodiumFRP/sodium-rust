@@ -897,7 +897,6 @@ test("mapCLateListen", () => {
         assert_eq!(vec![String::from("A"), String::from("B"), String::from("c"), String::from("d"), String::from("E"), String::from("F"), String::from("f"), String::from("F"), String::from("g"), String::from("H"), String::from("I")], env.out);
     }
 
-    /*
     #[test]
     fn switch_s() {
         struct SS {
@@ -928,22 +927,22 @@ test("mapCLateListen", () => {
         }
         let with_frp_context = WithFrpContextForEnv {};
         let sss: StreamSink<Env,SS> = env.frp_context.new_stream_sink();
-        let sa_1 = env.frp_context.map_s(&sss, |s| s.a.clone());
-        let sa = env.frp_context.filter_some(&sa_1);
-        let sb_1 = env.frp_context.map_s(&sss, |s| s.b.clone());
-        let sb = env.frp_context.filter_some(&sb_1);
-        let csw_str_1 = env.frp_context.map_s(&sss, |s| s.sw.clone());
-        let csw_str_2 = env.frp_context.filter_some(&csw_str_1);
-        let csw_str = env.frp_context.hold(String::from("sa"), &csw_str_2);
+        let sa_1 = sss.map(&mut env.frp_context, |s| s.a.clone());
+        let sa = env.frp_context.filter_option(&sa_1);
+        let sb_1 = sss.map(&mut env.frp_context, |s| s.b.clone());
+        let sb = env.frp_context.filter_option(&sb_1);
+        let csw_str_1 = sss.map(&mut env.frp_context, |s| s.sw.clone());
+        let csw_str_2 = env.frp_context.filter_option(&csw_str_1);
+        let csw_str = csw_str_2.hold(&mut env.frp_context, String::from("sa"));
         let sa = sa.clone();
         let sb = sb.clone();
-        let csw: Cell<Env,Stream<Env,String>> = env.frp_context.map_c(&csw_str, move |s| if s == "sa" { sa } else { sb });
-        let so_1 = env.frp_context.map_c(
-            &csw,
+        let csw: Cell<Env,Stream<Env,String>> = csw_str.map(&mut env.frp_context, move |s| if s == "sa" { sa.clone() } else { sb.clone() });
+        let so_1 = csw.map(
+            &mut env.frp_context,
             move |x| {
                 let k: Box<Fn(&mut FrpContext<Env>)->Stream<Env,String>>;
                 let x2 = x.clone();
-                k = Box::new(move |_| { x2 });
+                k = Box::new(move |_| { x2.clone() });
                 return k;
             }
         );
@@ -960,6 +959,8 @@ test("mapCLateListen", () => {
         sss.send(&mut env, &with_frp_context, SS::of(Some(String::from("I")), Some(String::from("i")), Some(String::from("sa"))));
         assert_eq!(vec![String::from("A"), String::from("B"), String::from("C"), String::from("d"), String::from("e"), String::from("F"), String::from("G"), String::from("h"), String::from("I")], env.out);
     }
+
+    /*
 /*
 class SS2 {
     s : StreamSink<number> = new StreamSink<number>();
