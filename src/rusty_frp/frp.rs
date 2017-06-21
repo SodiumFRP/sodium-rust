@@ -1373,6 +1373,24 @@ impl<ENV:'static> FrpContext<ENV> {
         StreamSink::of(ca.node().clone())
     }
 
+    pub fn switch_s<A,CSA>(&mut self, cell_thunk_stream_a: &CSA) -> Stream<ENV,A>
+    where
+    A:'static,
+    CSA:IsCell<ENV,Box<Fn(&mut FrpContext<ENV>)->Stream<ENV,A>>>
+    {
+        let ccaop: Cell<ENV,Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,Option<A>>>> = cell_thunk_stream_a.map(
+            self,
+            |k: &Box<Fn(&mut FrpContext<ENV>)->Stream<ENV,A>>| {
+                let k2: *const Fn(&mut FrpContext<ENV>)->Stream<ENV,A> = k.as_ref();
+                let k3: Box<Fn(&mut FrpContext<ENV>)->Cell<ENV,Option<A>>>;
+                k3 = Box::new(move |frp_context| { unsafe { (*k2)(frp_context).as_cell() } });
+                k3
+            }
+        );
+        let c: Cell<ENV,Option<A>> = self.switch_c(&ccaop);
+        c.as_stream()
+    }
+
     pub fn switch_c<A,CCA>(&mut self, cell_thunk_cell_a: &CCA) -> Cell<ENV,A>
     where
     A:'static,
