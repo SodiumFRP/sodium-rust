@@ -1008,25 +1008,28 @@ impl<ENV:'static> FrpContext<ENV> {
                 let env2: *mut ENV = env;
                 let frp_context = with_frp_context.with_frp_context(env);
                 for node_id in &node_ids_in_update_order {
-                    let mut value_op: Option<*const Any> = None;
-                    frp_context.unsafe_sample2(
-                        node_id,
-                        |_: &FrpContext<ENV>, value| {
-                            value_op = Some(value);
-                        }
-                    );
-                    match value_op {
-                        Some(value) => {
-                            frp_context.unsafe_with_node_as_ref_by_node_id(
-                                node_id,
-                                |_, n| {
-                                    for (_,observer) in &n.observer_map {
-                                        observer(unsafe { &mut *env2 }, unsafe { &*value });
+                    let is_delayed = frp_context.unsafe_with_node_as_ref_by_node_id(node_id, |_:&FrpContext<ENV>,n| n.is_delayed);
+                    if !is_delayed {
+                        let mut value_op: Option<*const Any> = None;
+                        frp_context.unsafe_sample2(
+                            node_id,
+                            |_: &FrpContext<ENV>, value| {
+                                value_op = Some(value);
+                            }
+                        );
+                        match value_op {
+                            Some(value) => {
+                                frp_context.unsafe_with_node_as_ref_by_node_id(
+                                    node_id,
+                                    |_, n| {
+                                        for (_,observer) in &n.observer_map {
+                                            observer(unsafe { &mut *env2 }, unsafe { &*value });
+                                        }
                                     }
-                                }
-                            );
-                        },
-                        None => ()
+                                );
+                            },
+                            None => ()
+                        }
                     }
                 }
             }
@@ -1085,6 +1088,35 @@ impl<ENV:'static> FrpContext<ENV> {
                     );
                     for decendent_id in decendent_ids {
                         frp_context.mark_all_decendent_nodes_for_update(&decendent_id);
+                    }
+                }
+            }
+            {
+                let env2: *mut ENV = env;
+                let frp_context = with_frp_context.with_frp_context(env);
+                for node_id in &node_ids_in_update_order {
+                    let is_delayed = frp_context.unsafe_with_node_as_ref_by_node_id(node_id, |_:&FrpContext<ENV>,n| n.is_delayed);
+                    if is_delayed {
+                        let mut value_op: Option<*const Any> = None;
+                        frp_context.unsafe_sample2(
+                            node_id,
+                            |_: &FrpContext<ENV>, value| {
+                                value_op = Some(value);
+                            }
+                        );
+                        match value_op {
+                            Some(value) => {
+                                frp_context.unsafe_with_node_as_ref_by_node_id(
+                                    node_id,
+                                    |_, n| {
+                                        for (_,observer) in &n.observer_map {
+                                            observer(unsafe { &mut *env2 }, unsafe { &*value });
+                                        }
+                                    }
+                                );
+                            },
+                            None => ()
+                        }
                     }
                 }
             }
