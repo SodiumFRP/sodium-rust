@@ -1,3 +1,4 @@
+pub mod sodium;
 pub mod rusty_frp;
 
 #[cfg(test)]
