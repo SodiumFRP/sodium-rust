@@ -25,7 +25,7 @@ pub struct WeakStream<A> {
 pub trait IsStream<A: Clone + 'static> {
     fn to_stream_ref(&self) -> &Stream<A>;
 
-    fn listen(&self, sodium_ctx: &mut SodiumCtx, handler: HandlerRef<A>) -> Listener {
+    fn listen<F>(&self, sodium_ctx: &mut SodiumCtx, handler: F) -> Listener where F: Fn(&A) + 'static {
         let l0 = self.listen_weak(sodium_ctx, handler);
         let mut l_id = RefCell::new(0);
         let l_id2 = l_id.clone();
@@ -42,22 +42,20 @@ pub trait IsStream<A: Clone + 'static> {
         l
     }
 
-    fn listen_once(&self, sodium_ctx: &mut SodiumCtx, handler: HandlerRef<A>) -> Listener {
+    fn listen_once<F>(&self, sodium_ctx: &mut SodiumCtx, handler: F) -> Listener where F: Fn(&A) + 'static {
         let listener: Rc<RefCell<Option<Listener>>> = Rc::new(RefCell::new(None));
         let listener2 = listener.clone();
         let result = self.listen(
             sodium_ctx,
-            HandlerRef::new(
-                move |sodium_ctx: &mut SodiumCtx, a: &A| {
-                    let mut tmp = listener2.borrow_mut();
-                    let tmp2 = &mut *tmp;
-                    match tmp2 {
-                        &mut Some(ref mut tmp3) => tmp3.unlisten(),
-                        &mut None => ()
-                    }
-                    handler.run(sodium_ctx, a);
+            move |a: &A| {
+                let mut tmp = listener2.borrow_mut();
+                let tmp2 = &mut *tmp;
+                match tmp2 {
+                    &mut Some(ref mut tmp3) => tmp3.unlisten(),
+                    &mut None => ()
                 }
-            )
+                handler(a);
+            }
         );
         *listener.borrow_mut() = Some(result.clone());
         result
@@ -72,14 +70,14 @@ pub trait IsStream<A: Clone + 'static> {
         )
     }
 
-    fn listen_weak(&self, sodium_ctx: &mut SodiumCtx, action: HandlerRef<A>) -> Listener {
+    fn listen_weak<F>(&self, sodium_ctx: &mut SodiumCtx, action: F) -> Listener where F: Fn(&A) + 'static {
         let null_node = sodium_ctx.null_node();
         return self.listen_(
             sodium_ctx,
             null_node,
             TransactionHandlerRef::new(
                 move |sodium_ctx, trans2, a| {
-                    action.run(sodium_ctx, a)
+                    action(a)
                 }
             )
         );

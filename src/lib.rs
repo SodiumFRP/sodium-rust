@@ -11,7 +11,11 @@ mod tests {
     use rusty_frp::StreamSink;
     use rusty_frp::IsStream;
     use rusty_frp::WithFrpContext;
-
+    use sodium;
+    use std::cell::RefCell;
+    use std::ops::Deref;
+    use std::ops::DerefMut;
+    use std::rc::Rc;
 
     #[test]
     fn test_delay() {
@@ -236,6 +240,29 @@ function test(name : string, t : () => void)
 }*/
 
 */
+    #[test]
+    fn sodium_map() {
+        let mut sodium_ctx = sodium::SodiumCtx::new();
+        let sodium_ctx = &mut sodium_ctx;
+        struct Env {
+            out: Vec<u32>
+        }
+        let env = Rc::new(RefCell::new(Env { out: Vec::new() }));
+        let s: sodium::StreamSink<u32> = sodium::StreamSink::new(sodium_ctx);
+        let s2 = sodium::IsStream::map(&s, sodium_ctx, |a| a + 1);
+        {
+            let env = env.clone();
+            sodium::IsStream::listen(
+                &s2,
+                sodium_ctx,
+                move |value: &u32|
+                    env.borrow_mut().out.push(value.clone())
+            );
+        }
+        s.send(sodium_ctx, &7);
+        assert_eq!(env.borrow().out, vec![8]);
+    }
+
     #[test]
     fn map() {
         struct Env {
