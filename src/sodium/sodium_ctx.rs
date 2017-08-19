@@ -33,6 +33,21 @@ pub struct SodiumCtxData {
 }
 
 impl SodiumCtx {
+    pub fn new() -> SodiumCtx {
+        SodiumCtx {
+            data: Rc::new(RefCell::new(SodiumCtxData {
+                null_node: Rc::new(RefCell::new(Node::new_(0, 0))),
+                next_id: 1,
+                next_seq: 1,
+                current_transaction_op: Rc::new(RefCell::new(None)),
+                in_callback: 0,
+                on_start_hooks: Vec::new(),
+                running_on_start_hooks: false,
+                keep_listeners_alive: HashMap::new()
+            }))
+        }
+    }
+
     pub fn with_data_ref<F,A>(&self, f: F) -> A where F: FnOnce(&SodiumCtxData)->A {
         let self_: &RefCell<SodiumCtxData> = self.data.borrow();
         let self__: Ref<SodiumCtxData> = self_.borrow();

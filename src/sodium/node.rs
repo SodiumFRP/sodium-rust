@@ -37,6 +37,14 @@ impl Node {
             listeners: Vec::new()
         }
     }
+
+    pub fn new_(id: u32, rank: u64) -> Node {
+        Node {
+            id: id,
+            rank: rank,
+            listeners: Vec::new()
+        }
+    }
 }
 
 pub struct GhostNode {
