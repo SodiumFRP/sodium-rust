@@ -137,6 +137,10 @@ pub trait IsStream<A: Clone + 'static> {
         unimplemented!();
     }
 
+    fn or_else<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A> where SA: IsStream<A> {
+        unimplemented!();
+    }
+
     fn unsafe_add_cleanup(&self, listener: Listener) -> Stream<A> {
         let mut data = self.to_stream_ref().data.borrow_mut();
         let data_: &mut StreamData<A> = &mut *data;

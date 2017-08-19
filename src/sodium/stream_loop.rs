@@ -30,6 +30,12 @@ impl<A: 'static + Clone> StreamLoop<A> {
     }
 
     pub fn loop_(&mut self, sodium_ctx: &mut SodiumCtx, ea_out: Stream<A>) {
+        let self_ = self.stream.clone();
+        let ea_out2 = ea_out.or_else(sodium_ctx, &self.stream);
+        self.loop__(sodium_ctx, ea_out2);
+    }
+
+    fn loop__(&mut self, sodium_ctx: &mut SodiumCtx, ea_out: Stream<A>) {
         if self.assigned {
             panic!("StreamLoop looped more than once");
         }
