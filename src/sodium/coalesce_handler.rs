@@ -48,33 +48,37 @@ impl<A: 'static + Clone> CoalesceHandler<A> {
         let self_ = self.clone();
         let mut data = self.data.borrow_mut();
         let data = &mut data;
+        let accum_op_was_none = data.accum_op.is_none();
         data.accum_op = match &data.accum_op {
             &Some(ref accum) => {
                 Some((data.f)(accum, a))
             }
             &None => {
-                trans1.prioritized(
-                    sodium_ctx,
-                    data.out.stream.data.borrow().node.clone(),
-                    HandlerRefMut::new(
-                        move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction| {
-                            let mut data = self_.data.borrow_mut();
-                            match &data.accum_op {
-                                &Some(ref accum) => {
-                                    data.out.send(
-                                        sodium_ctx,
-                                        trans2,
-                                        accum
-                                    )
-                                },
-                                &None => ()
-                            }
-                            data.accum_op = None;
-                        }
-                    )
-                );
-                None
+                Some(a.clone())
             }
+        };
+        if accum_op_was_none {
+            trans1.prioritized(
+                sodium_ctx,
+                data.out.stream.data.borrow().node.clone(),
+                HandlerRefMut::new(
+                    move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction| {
+                        let mut data = self_.data.borrow_mut();
+                        match &data.accum_op {
+                            &Some(ref accum) => {
+                                data.out.send(
+                                    sodium_ctx,
+                                    trans2,
+                                    accum
+                                )
+                            },
+                            &None => ()
+                        }
+                        data.accum_op = None;
+                    }
+                )
+            );
         }
+
     }
 }

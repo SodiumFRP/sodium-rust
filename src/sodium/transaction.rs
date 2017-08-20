@@ -119,9 +119,17 @@ impl Transaction {
             }
         }
         if trans_was.deref().borrow().is_none() {
-            let trans =
-                sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-            trans.deref().borrow_mut().deref_mut().as_mut().unwrap().close(sodium_ctx);
+            let trans: Rc<RefCell<Option<Transaction>>> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
+            let trans2: &RefCell<Option<Transaction>> = trans.deref();
+            let mut trans3: RefMut<Option<Transaction>> = trans2.borrow_mut();
+            let trans4: &mut Option<Transaction> = trans3.deref_mut();
+            match trans4 {
+                &mut Some(ref mut trans5) => {
+                    let trans6: &mut Transaction = trans5;
+                    trans6.close(sodium_ctx);
+                },
+                &mut None => ()
+            }
         }
         sodium_ctx.with_data_mut(|ctx| ctx.current_transaction_op = trans_was);
     }
@@ -142,9 +150,17 @@ impl Transaction {
             r = code(sodium_ctx, trans4.as_mut().unwrap());
         }
         if trans_was.deref().borrow().is_none() {
-            let trans =
-                sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-            trans.deref().borrow_mut().deref_mut().as_mut().unwrap().close(sodium_ctx);
+            let trans: Rc<RefCell<Option<Transaction>>> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
+            let trans2: &RefCell<Option<Transaction>> = trans.deref();
+            let mut trans3: RefMut<Option<Transaction>> = trans2.borrow_mut();
+            let trans4: &mut Option<Transaction> = trans3.deref_mut();
+            match trans4 {
+                &mut Some(ref mut trans5) => {
+                    let trans6: &mut Transaction = trans5;
+                    trans6.close(sodium_ctx);
+                },
+                &mut None => ()
+            }
         }
         sodium_ctx.with_data_mut(|ctx| ctx.current_transaction_op = trans_was);
         r
