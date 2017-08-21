@@ -11,6 +11,8 @@ use sodium::Target;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
 use std::cell::RefCell;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::rc::Rc;
 use std::rc::Weak;
 
@@ -136,6 +138,39 @@ pub trait IsStream<A: Clone + 'static> {
     }
 
     fn or_else<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A> where SA: IsStream<A> {
+        unimplemented!();
+    }
+
+    fn merge_<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A> where SA: IsStream<A> {
+        let out = StreamWithSend::<A>::new(sodium_ctx);
+        let left = Rc::new(RefCell::new(Node::new(sodium_ctx, 0))) as Rc<RefCell<IsNode>>;
+        let right = out.to_stream_ref().data.borrow().node.clone() as Rc<RefCell<IsNode>>;
+        let (node_target, _) = left.borrow_mut().link_to(
+            sodium_ctx,
+            right.clone(),
+            TransactionHandlerRef::new(
+                |_: &mut SodiumCtx, _: &mut Transaction, _: &A| ()
+            )
+        );
+        let h;
+        {
+            let out = out.clone();
+            h = TransactionHandlerRef::new(
+                move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &A| {
+                    out.send(sodium_ctx, trans, a);
+                }
+            );
+        }
+        let l1 = self.listen_(sodium_ctx, left.clone(), h.clone());
+        let l2 = self.listen_(sodium_ctx, right, h);
+        /*
+        out.unsafe_add_cleanup(l1).unsafe_add_cleanup(l2).unsafe_add_cleanup(Listener::new(
+            sodium_ctx,
+            move || {
+                left.borrow_mut().unlink_to(node_target);
+            }
+        ));*/
+
         unimplemented!();
     }
 
