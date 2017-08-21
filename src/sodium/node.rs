@@ -54,7 +54,9 @@ pub struct GhostNode {
 pub struct Target {
     pub id: u32,
     pub node: Rc<RefCell<IsNode>>,
-    pub action: WeakTransactionHandlerRef<Any>
+    // action here is really a strong reference to a weak reference, meaning it is still a weak
+    // reference overall. This had to be done so we can use "Any" here.
+    pub action: TransactionHandlerRef<Any>
 }
 
 impl Clone for Target {
@@ -87,10 +89,23 @@ impl IsNode for GhostNode {
 
 impl Target {
     pub fn new<A:'static>(sodium_ctx: &mut SodiumCtx, node: Rc<RefCell<IsNode>>, action: TransactionHandlerRef<A>) -> Target {
+        let action = action.downgrade();
         Target {
             id: sodium_ctx.new_id(),
             node: node,
-            action: action.into_any().downgrade()
+            action: TransactionHandlerRef::new(
+                move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &Any| {
+                    match action.upgrade() {
+                        Some(action) => {
+                            match a.downcast_ref::<A>() {
+                                Some(a) => action.run(sodium_ctx, trans, a),
+                                None => ()
+                            }
+                        },
+                        None => ()
+                    }
+                }
+            )
         }
     }
 }

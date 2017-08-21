@@ -60,12 +60,8 @@ impl<A:'static + Clone> StreamWithSend<A> {
                 HandlerRefMut::new(
                     move |sodium_ctx: &mut SodiumCtx, trans2| {
                         sodium_ctx.with_data_mut(|ctx| ctx.in_callback = ctx.in_callback + 1);
-                        match target2.action.upgrade() {
-                            Some(action) => {
-                                action.run(sodium_ctx, trans2, &a2 as &Any);
-                            },
-                            None => ()
-                        }
+                        // Note: action here is a strong reference to a weak reference.
+                        target2.action.run(sodium_ctx, trans2, &a2 as &Any);
                         sodium_ctx.with_data_mut(|ctx| ctx.in_callback = ctx.in_callback - 1);
                     }
                 )
