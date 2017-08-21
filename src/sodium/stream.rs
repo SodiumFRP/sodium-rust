@@ -163,15 +163,12 @@ pub trait IsStream<A: Clone + 'static> {
         }
         let l1 = self.listen_(sodium_ctx, left.clone(), h.clone());
         let l2 = self.listen_(sodium_ctx, right, h);
-        /*
         out.unsafe_add_cleanup(l1).unsafe_add_cleanup(l2).unsafe_add_cleanup(Listener::new(
             sodium_ctx,
             move || {
-                left.borrow_mut().unlink_to(node_target);
+                left.borrow_mut().unlink_to(&node_target);
             }
-        ));*/
-
-        unimplemented!();
+        ))
     }
 
     fn unsafe_add_cleanup(&self, listener: Listener) -> Stream<A> {
@@ -245,7 +242,7 @@ impl<A:'static> ListenerImpl<A> {
                 let self___ = &mut *self__;
                 if !self___.done {
                     let stream_data = self___.event.data.borrow();
-                    IsNode::unlink_to(&mut *stream_data.node.borrow_mut(), self___.target.clone());
+                    IsNode::unlink_to(&mut *stream_data.node.borrow_mut(), &self___.target);
                     self___.done = true;
                 }
             }

@@ -124,7 +124,7 @@ impl IsNode {
         (t, changed)
     }
 
-    pub fn unlink_to(&mut self, target: Target) {
+    pub fn unlink_to(&mut self, target: &Target) {
         let id = target.id.clone();
         self.downcast_to_node_mut().listeners.retain(
             move |target| {
