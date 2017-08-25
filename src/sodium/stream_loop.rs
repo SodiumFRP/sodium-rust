@@ -20,7 +20,7 @@ impl<A: 'static + Clone> IsStream<A> for StreamLoop<A> {
 impl<A: 'static + Clone> StreamLoop<A> {
 
     pub fn new(sodium_ctx: &mut SodiumCtx) -> StreamLoop<A> {
-        if sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.borrow().is_none()) {
+        if sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.is_none()) {
             panic!("StreamLoop/CellLoop must be used within an explicit transaction");
         }
         StreamLoop {
