@@ -273,7 +273,7 @@ impl Transaction {
         for action in last_q {
             action();
         }
-        while self.with_data_ref(|data| data.post_q.is_empty()) {
+        while self.with_data_ref(|data| !data.post_q.is_empty()) {
             let mut post_q = HashMap::new();
             self.with_data_mut(|data| swap(&mut post_q, &mut data.post_q));
             for (ix, h) in post_q.drain() {
