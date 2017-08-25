@@ -337,6 +337,31 @@ test("mapTo", () => {
 */
 */
     #[test]
+    fn sodium_merge_non_simultaneous() {
+        struct Env {
+            out: Vec<u32>
+        }
+        let mut env = Rc::new(RefCell::new(Env { out: Vec::new() }));
+        let mut sodium_ctx = sodium::SodiumCtx::new();
+        let sodium_ctx = &mut sodium_ctx;
+        let s1: sodium::StreamSink<u32> = sodium::StreamSink::new(sodium_ctx);
+        let s2: sodium::StreamSink<u32> = sodium::StreamSink::new(sodium_ctx);
+        let s3 = sodium::IsStream::or_else(&s2, sodium_ctx, &s1);
+        {
+            let env = env.clone();
+            sodium::IsStream::listen(
+                &s3,
+                sodium_ctx,
+                move |value| env.borrow_mut().out.push(value.clone())
+            );
+        }
+        s1.send(sodium_ctx, &7);
+        s2.send(sodium_ctx, &9);
+        s1.send(sodium_ctx, &8);
+        assert_eq!(vec!(7,9,8), env.borrow().out);
+    }
+
+    #[test]
     fn merge_non_simultaneous() {
         struct Env {
             frp_context: FrpContext<Env>,

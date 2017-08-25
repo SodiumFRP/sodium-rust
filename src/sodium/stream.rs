@@ -1,4 +1,5 @@
 use sodium::Cell;
+use sodium::CoalesceHandler;
 use sodium::HandlerRef;
 use sodium::HandlerRefMut;
 use sodium::Lazy;
@@ -138,7 +139,7 @@ pub trait IsStream<A: Clone + 'static> {
     }
 
     fn or_else<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A> where SA: IsStream<A> {
-        unimplemented!();
+        self.merge(sodium_ctx, s, |a,_| a.clone())
     }
 
     fn merge_<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A> where SA: IsStream<A> {
@@ -169,6 +170,28 @@ pub trait IsStream<A: Clone + 'static> {
                 left.borrow_mut().unlink_to(&node_target);
             }
         ))
+    }
+
+    fn merge<SA,F>(&self, sodium_ctx: &mut SodiumCtx, s: &SA, f: F) -> Stream<A> where SA: IsStream<A>, F: Fn(&A,&A)->A + 'static {
+        Transaction::apply(
+            sodium_ctx,
+            |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction| {
+                self.merge_(sodium_ctx, s).coalesce_(sodium_ctx,trans, f)
+            }
+        )
+    }
+
+    fn coalesce_<F>(&self, sodium_ctx: &mut SodiumCtx, trans1: &mut Transaction, f: F) -> Stream<A> where F: Fn(&A,&A)->A + 'static {
+        let out = StreamWithSend::new(sodium_ctx);
+        let h = CoalesceHandler::new(f, &out);
+        let l = self.listen2(
+            sodium_ctx,
+            out.to_stream_ref().data.borrow().node.clone(),
+            trans1,
+            h.to_transaction_handler(),
+            false
+        );
+        out.unsafe_add_cleanup(l)
     }
 
     fn unsafe_add_cleanup(&self, listener: Listener) -> Stream<A> {
