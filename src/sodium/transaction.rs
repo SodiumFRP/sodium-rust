@@ -2,7 +2,6 @@ use sodium::HandlerRefMut;
 use sodium::IsNode;
 use sodium::Node;
 use sodium::SodiumCtx;
-use std::borrow::BorrowMut;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
@@ -13,6 +12,7 @@ use std::collections::BinaryHeap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::mem::swap;
+use std::mem::replace;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::rc::Rc;
@@ -70,6 +70,18 @@ impl PartialEq for Entry {
 }
 
 pub struct Transaction {
+    pub data: Rc<RefCell<TransactionData>>
+}
+
+impl Clone for Transaction {
+    fn clone(&self) -> Self {
+        Transaction {
+            data: self.data.clone()
+        }
+    }
+}
+
+pub struct TransactionData {
     pub to_regen: bool,
     pub prioritized_q: BinaryHeap<Entry>,
     pub entries: BTreeSet<Entry>,
@@ -79,13 +91,23 @@ pub struct Transaction {
 
 impl Transaction {
 
+    pub fn with_data_ref<F,A>(&self, f: F)->A where F: FnOnce(&TransactionData)->A {
+        f(&self.data.borrow())
+    }
+
+    pub fn with_data_mut<F,A>(&self, f: F)->A where F: FnOnce(&mut TransactionData)->A {
+        f(&mut self.data.borrow_mut())
+    }
+
     pub fn new() -> Transaction {
         Transaction {
-            to_regen: false,
-            prioritized_q: BinaryHeap::new(),
-            entries: BTreeSet::new(),
-            last_q: Vec::new(),
-            post_q: HashMap::new()
+            data: Rc::new(RefCell::new(TransactionData {
+                to_regen: false,
+                prioritized_q: BinaryHeap::new(),
+                entries: BTreeSet::new(),
+                last_q: Vec::new(),
+                post_q: HashMap::new()
+            }))
         }
     }
 
@@ -93,10 +115,10 @@ impl Transaction {
         let trans_was = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
         Transaction::start_if_necessary(sodium_ctx);
         let r = code(sodium_ctx);
-        if trans_was.deref().borrow().is_none() {
+        if trans_was.is_none() {
             let trans =
                 sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-            trans.deref().borrow_mut().deref_mut().as_mut().unwrap().close(sodium_ctx);
+            trans.unwrap().close(sodium_ctx);
         }
         sodium_ctx.with_data_mut(|ctx| ctx.current_transaction_op = trans_was);
         r
@@ -106,11 +128,8 @@ impl Transaction {
         let trans_was = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
         Transaction::start_if_necessary(sodium_ctx);
         {
-            let trans: Rc<RefCell<Option<Transaction>>> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-            let trans2: &RefCell<Option<Transaction>> = trans.deref();
-            let mut trans3: RefMut<Option<Transaction>> = trans2.borrow_mut();
-            let trans4: &mut Option<Transaction> = trans3.deref_mut();
-            match trans4 {
+            let mut trans: Option<Transaction> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
+            match &mut trans {
                 &mut Some(ref mut trans5) => {
                     let trans6: &mut Transaction = trans5;
                     code.run(sodium_ctx, trans6);
@@ -118,12 +137,9 @@ impl Transaction {
                 &mut None => ()
             }
         }
-        if trans_was.deref().borrow().is_none() {
-            let trans: Rc<RefCell<Option<Transaction>>> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-            let trans2: &RefCell<Option<Transaction>> = trans.deref();
-            let mut trans3: RefMut<Option<Transaction>> = trans2.borrow_mut();
-            let trans4: &mut Option<Transaction> = trans3.deref_mut();
-            match trans4 {
+        if trans_was.is_none() {
+            let mut trans: Option<Transaction> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
+            match &mut trans {
                 &mut Some(ref mut trans5) => {
                     let trans6: &mut Transaction = trans5;
                     trans6.close(sodium_ctx);
@@ -143,18 +159,12 @@ impl Transaction {
         Transaction::start_if_necessary(sodium_ctx);
         let r;
         {
-            let trans: Rc<RefCell<Option<Transaction>>> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-            let trans2: &RefCell<Option<Transaction>> = trans.deref();
-            let mut trans3: RefMut<Option<Transaction>> = trans2.borrow_mut();
-            let trans4: &mut Option<Transaction> = trans3.deref_mut();
-            r = code(sodium_ctx, trans4.as_mut().unwrap());
+            let mut trans: Option<Transaction> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
+            r = code(sodium_ctx, &mut trans.unwrap());
         }
-        if trans_was.deref().borrow().is_none() {
-            let trans: Rc<RefCell<Option<Transaction>>> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-            let trans2: &RefCell<Option<Transaction>> = trans.deref();
-            let mut trans3: RefMut<Option<Transaction>> = trans2.borrow_mut();
-            let trans4: &mut Option<Transaction> = trans3.deref_mut();
-            match trans4 {
+        if trans_was.is_none() {
+            let mut trans: Option<Transaction> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
+            match &mut trans {
                 &mut Some(ref mut trans5) => {
                     let trans6: &mut Transaction = trans5;
                     trans6.close(sodium_ctx);
@@ -167,7 +177,7 @@ impl Transaction {
     }
 
     pub fn start_if_necessary(sodium_ctx: &mut SodiumCtx) {
-        if sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.deref().borrow().is_none()) {
+        if sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.is_none()) {
             if !sodium_ctx.with_data_ref(|ctx| ctx.running_on_start_hooks) {
                 sodium_ctx.with_data_mut(|ctx| ctx.running_on_start_hooks = true);
                 let mut on_start_hooks = Vec::new();
@@ -178,34 +188,38 @@ impl Transaction {
                 sodium_ctx.with_data_mut(|ctx| swap(&mut ctx.on_start_hooks, &mut on_start_hooks));
                 sodium_ctx.with_data_mut(|ctx| ctx.running_on_start_hooks = false);
             }
-            sodium_ctx.with_data_mut(|ctx| ctx.current_transaction_op = Rc::new(RefCell::new(
-                Some(Transaction::new())
-            )));
+            sodium_ctx.with_data_mut(|ctx| ctx.current_transaction_op = Some(Transaction::new()));
         }
     }
 
     pub fn prioritized(&mut self, sodium_ctx: &mut SodiumCtx, rank: Rc<RefCell<IsNode>>, action: HandlerRefMut<Transaction>) {
         let e = Entry::new(sodium_ctx, rank, action);
-        self.prioritized_q.push(e.clone());
-        self.entries.insert(e);
+        self.with_data_mut(|data| {
+            data.prioritized_q.push(e.clone());
+            data.entries.insert(e);
+        });
     }
 
     pub fn last<F>(&mut self, action: F) where F: Fn() + 'static {
-        self.last_q.push(Box::new(action));
+        self.with_data_mut(|data| {
+            data.last_q.push(Box::new(action));
+        });
     }
 
     pub fn post_(&mut self, child_ix: i32, action: HandlerRefMut<Option<Transaction>>) {
-        let existing_op = self.post_q.remove(&child_ix);
-        let neu = match existing_op {
-            Some(existing) => HandlerRefMut::new(
-                move |sodium_ctx, transaction_op| {
-                    existing.run(sodium_ctx, transaction_op);
-                    action.run(sodium_ctx, transaction_op);
-                }
-            ),
-            None => action
-        };
-        self.post_q.insert(child_ix, neu);
+        self.with_data_mut(move |data| {
+            let existing_op = data.post_q.remove(&child_ix);
+            let neu = match existing_op {
+                Some(existing) => HandlerRefMut::new(
+                    move |sodium_ctx, transaction_op| {
+                        existing.run(sodium_ctx, transaction_op);
+                        action.run(sodium_ctx, transaction_op);
+                    }
+                ),
+                None => action
+            };
+            data.post_q.insert(child_ix, neu);
+        });
     }
 
     pub fn post<F>(&mut self, sodium_ctx: &mut SodiumCtx, action: F) where F: Fn() + 'static {
@@ -229,48 +243,54 @@ impl Transaction {
     }
 
     pub fn check_regen(&mut self) {
-        if self.to_regen {
-            self.to_regen = false;
-            self.prioritized_q.clear();
-            for e in &self.entries {
-                self.prioritized_q.push(e.clone());
+        self.with_data_mut(|data| {
+            if data.to_regen {
+                data.to_regen = false;
+                data.prioritized_q.clear();
+                for e in &data.entries {
+                    data.prioritized_q.push(e.clone());
+                }
             }
-        }
+        });
     }
 
     pub fn close(&mut self, sodium_ctx: &mut SodiumCtx) {
         loop {
             self.check_regen();
-            match self.prioritized_q.pop() {
+            match self.with_data_mut(|data| data.prioritized_q.pop()) {
                 Some(e) => {
-                    self.entries.remove(&e);
+                    {
+                        let e = e.clone();
+                        self.with_data_mut(move |data| data.entries.remove(&e));
+                    }
                     e.action.run(sodium_ctx, self);
                 },
                 None => break
             }
         }
-        for action in &self.last_q {
+        let mut last_q = Vec::new();
+        self.with_data_mut(|data| swap(&mut last_q, &mut data.last_q));
+        for action in last_q {
             action();
         }
-        self.last_q.clear();
-        while !self.post_q.is_empty() {
-            for (ix, h) in self.post_q.drain() {
+        while self.with_data_ref(|data| !data.post_q.is_empty()) {
+            let mut post_q = HashMap::new();
+            self.with_data_mut(|data| swap(&mut post_q, &mut data.post_q));
+            for (ix, h) in post_q.drain() {
                 let parent = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
                 if ix >= 0 {
-                    let trans_op = Rc::new(RefCell::new(Some(Transaction::new())));
+                    let trans_op = Some(Transaction::new());
                     sodium_ctx.with_data_mut(|ctx| ctx.current_transaction_op = trans_op.clone());
                     {
-                        let tmp1: &RefCell<Option<Transaction>> = trans_op.deref();
-                        let mut tmp2: RefMut<Option<Transaction>> = tmp1.borrow_mut();
-                        let tmp3: &mut Option<Transaction> = tmp2.borrow_mut();
-                        h.run(sodium_ctx, tmp3);
-                        match tmp3 {
+                        let mut tmp1: Option<Transaction> = trans_op.clone();
+                        h.run(sodium_ctx, &mut tmp1);
+                        match &mut tmp1 {
                             &mut Some(ref mut trans) => trans.close(sodium_ctx),
                             &mut None => ()
                         }
                     }
                 } else {
-                    sodium_ctx.with_data_mut(|ctx| ctx.current_transaction_op = Rc::new(RefCell::new(None)));
+                    sodium_ctx.with_data_mut(|ctx| ctx.current_transaction_op = None);
                     h.run(sodium_ctx, &mut None);
                 }
                 sodium_ctx.with_data_mut(|ctx| ctx.current_transaction_op = parent);
