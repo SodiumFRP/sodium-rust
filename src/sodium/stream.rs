@@ -163,7 +163,7 @@ pub trait IsStream<A: Clone + 'static> {
             );
         }
         let l1 = self.listen_(sodium_ctx, left.clone(), h.clone());
-        let l2 = self.listen_(sodium_ctx, right, h);
+        let l2 = s.listen_(sodium_ctx, right, h);
         out.unsafe_add_cleanup(l1).unsafe_add_cleanup(l2).unsafe_add_cleanup(Listener::new(
             sodium_ctx,
             move || {
