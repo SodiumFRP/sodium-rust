@@ -11,7 +11,7 @@ use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub trait IsCell<A> {
+pub trait IsCell<A: Clone + 'static> {
     fn to_cell_ref(&self) -> &Cell<A>;
 
     fn with_cell_data_ref<F,R>(&self, f: F) -> R where F: FnOnce(&CellData<A>)->R {
@@ -24,6 +24,57 @@ pub trait IsCell<A> {
         let mut data2 = (*self.to_cell_ref().data).borrow_mut();
         let data3 = data2.borrow_mut();
         f(data3)
+    }
+
+    fn new_value_(&self) -> A {
+        let value_op = self.with_cell_data_ref(|data| data.value_update.clone());
+        match value_op {
+            Some(value) => value,
+            None => self.sample_no_trans_()
+        }
+    }
+
+    fn sample(&self) -> A {
+        unimplemented!();
+    }
+
+    fn sample_lazy(&self) -> Lazy<A> {
+        unimplemented!();
+    }
+
+    fn sample_lazy_(&self, trans: &mut Transaction) -> Lazy<A> {
+        unimplemented!();
+    }
+
+    fn sample_no_trans_(&self) -> A {
+        unimplemented!();
+    }
+
+    fn updates_(&self, trans: &mut Transaction) -> Stream<A> {
+        unimplemented!();
+    }
+
+    fn value_(&self, trans: &mut Transaction) -> Stream<A> {
+        unimplemented!();
+    }
+
+    fn map<F,B:'static + Clone>(&self, sodium_ctx: &mut SodiumCtx, f: F) -> Cell<B> where F: Fn(&A)->B + 'static {
+        Transaction::apply(
+            sodium_ctx,
+            move |sodium_ctx, trans| {
+                let f2 = Rc::new(f);
+                let f3 = f2.clone();
+                let tmp =
+                    self.sample_lazy_(trans)
+                        .map(move |a| f2(a));
+                self.updates_(trans)
+                    .map(sodium_ctx, move |a| f3(a))
+                    .hold_lazy_(
+                        trans,
+                        tmp
+                    )
+            }
+        )
     }
 }
 
@@ -39,7 +90,7 @@ pub struct CellData<A> {
     lazy_init_value: Option<Lazy<A>>
 }
 
-impl<A> IsCell<A> for Cell<A> {
+impl<A: Clone + 'static> IsCell<A> for Cell<A> {
     fn to_cell_ref(&self) -> &Cell<A> {
         self
     }
@@ -120,53 +171,6 @@ impl<A:'static + Clone> Cell<A> {
             )
         );
         r
-    }
-
-    pub fn new_value_(&self) -> A {
-        unimplemented!();
-    }
-
-    pub fn sample(&self) -> A {
-        unimplemented!();
-    }
-
-    pub fn sample_lazy(&self) -> Lazy<A> {
-        unimplemented!();
-    }
-
-    pub fn sample_lazy_(&self, trans: &mut Transaction) -> Lazy<A> {
-        unimplemented!();
-    }
-
-    pub fn sample_no_trans_(&self) -> A {
-        unimplemented!();
-    }
-
-    pub fn updates_(&self, trans: &mut Transaction) -> Stream<A> {
-        unimplemented!();
-    }
-
-    pub fn value_(&self, trans: &mut Transaction) -> Stream<A> {
-        unimplemented!();
-    }
-
-    pub fn map<F,B:'static + Clone>(&self, sodium_ctx: &mut SodiumCtx, f: F) -> Cell<B> where F: Fn(&A)->B + 'static {
-        Transaction::apply(
-            sodium_ctx,
-            move |sodium_ctx, trans| {
-                let f2 = Rc::new(f);
-                let f3 = f2.clone();
-                let tmp =
-                    self.sample_lazy_(trans)
-                        .map(move |a| f2(a));
-                self.updates_(trans)
-                    .map(sodium_ctx, move |a| f3(a))
-                    .hold_lazy_(
-                        trans,
-                        tmp
-                    )
-            }
-        )
     }
 }
 
