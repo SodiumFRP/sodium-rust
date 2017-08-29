@@ -34,8 +34,13 @@ pub trait IsCell<A: Clone + 'static> {
         }
     }
 
-    fn sample(&self) -> A {
-        unimplemented!();
+    fn sample(&self, sodium_ctx: &mut SodiumCtx) -> A {
+        Transaction::apply(
+            sodium_ctx,
+            |sodium_ctx, trans| {
+                self.sample_no_trans_()
+            }
+        )
     }
 
     fn sample_lazy(&self) -> Lazy<A> {
@@ -47,7 +52,7 @@ pub trait IsCell<A: Clone + 'static> {
     }
 
     fn sample_no_trans_(&self) -> A {
-        unimplemented!();
+        self.with_cell_data_ref(|data| data.value.clone())
     }
 
     fn updates_(&self, trans: &mut Transaction) -> Stream<A> {
