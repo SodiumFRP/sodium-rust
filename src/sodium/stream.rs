@@ -134,6 +134,13 @@ pub trait IsStream<A: Clone + 'static> {
         return self.map(sodium_ctx, move |_| b.clone());
     }
 
+    fn hold(&self, sodium_ctx: &mut SodiumCtx, init_value: A) -> Cell<A> {
+        Transaction::apply(
+            sodium_ctx,
+            |sodium_ctx, trans| Cell::new_(sodium_ctx, self.to_stream_ref().clone(), init_value)
+        )
+    }
+
     fn hold_lazy_(&self, trans: &mut Transaction, initial_value: Lazy<A>) -> Cell<A> {
         unimplemented!();
     }
