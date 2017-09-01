@@ -201,6 +201,31 @@ pub trait IsStream<A: Clone + 'static> {
         out.unsafe_add_cleanup(l)
     }
 
+    fn last_firing_only_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) -> Stream<A> {
+        self.coalesce_(sodium_ctx, trans, |_,a| a.clone())
+    }
+
+    fn filter<F>(&self, sodium_ctx: &mut SodiumCtx, predicate: F) -> Stream<A> where F: Fn(&A)->bool + 'static {
+        let out = StreamWithSend::new(sodium_ctx);
+        let l;
+        {
+            let out = out.clone();
+            let out_node = out.stream.data.borrow().node.clone();
+            l = self.listen_(
+                sodium_ctx,
+                out_node,
+                TransactionHandlerRef::new(
+                    move |sodium_ctx, trans, a| {
+                        if predicate(a) {
+                            out.send(sodium_ctx, trans, a);
+                        }
+                    }
+                )
+            );
+        }
+        out.unsafe_add_cleanup(l)
+    }
+
     fn unsafe_add_cleanup(&self, listener: Listener) -> Stream<A> {
         let mut data = self.to_stream_ref().data.borrow_mut();
         let data_: &mut StreamData<A> = &mut *data;
