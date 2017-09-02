@@ -16,6 +16,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::rc::Rc;
 use std::rc::Weak;
+use std::marker::PhantomData;
 
 pub struct Stream<A> {
     pub data: Rc<RefCell<StreamData<A>>>
@@ -218,6 +219,28 @@ pub trait IsStream<A: Clone + 'static> {
                     move |sodium_ctx, trans, a| {
                         if predicate(a) {
                             out.send(sodium_ctx, trans, a);
+                        }
+                    }
+                )
+            );
+        }
+        out.unsafe_add_cleanup(l)
+    }
+
+    fn filter_option<S>(self_: &S, sodium_ctx: &mut SodiumCtx) -> Stream<A> where S: IsStream<Option<A>> {
+        let out = StreamWithSend::new(sodium_ctx);
+        let l;
+        {
+            let out = out.clone();
+            let out_node = out.stream.data.borrow().node.clone();
+            l = self_.listen_(
+                sodium_ctx,
+                out_node,
+                TransactionHandlerRef::new(
+                    move |sodium_ctx, trans, oa| {
+                        match oa {
+                            &Some(ref a) => out.send(sodium_ctx, trans, a),
+                            &None => ()
                         }
                     }
                 )
