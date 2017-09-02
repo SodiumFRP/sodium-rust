@@ -16,7 +16,6 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::rc::Rc;
 use std::rc::Weak;
-use std::marker::PhantomData;
 
 pub struct Stream<A> {
     pub data: Rc<RefCell<StreamData<A>>>
