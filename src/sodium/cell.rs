@@ -1,15 +1,19 @@
 use sodium::HandlerRefMut;
+use sodium::node::IsNode;
 use sodium::IsStream;
 use sodium::Lazy;
 use sodium::Listener;
 use sodium::SodiumCtx;
 use sodium::Stream;
+use sodium::StreamWithSend;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
 use std::borrow::Borrow;
 use std::borrow::BorrowMut;
+use std::cell::Ref;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::ops::Deref;
 
 pub trait IsCell<A: Clone + 'static> {
     fn to_cell_ref(&self) -> &Cell<A>;
@@ -56,11 +60,24 @@ pub trait IsCell<A: Clone + 'static> {
     }
 
     fn updates_(&self, trans: &mut Transaction) -> Stream<A> {
-        unimplemented!();
+        self.with_cell_data_ref(|data| data.str.clone())
     }
 
-    fn value_(&self, trans: &mut Transaction) -> Stream<A> {
-        unimplemented!();
+    fn value_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) -> Stream<A> {
+        let s_spark = StreamWithSend::new(sodium_ctx);
+        let s_spark_node = s_spark.stream.data.deref().borrow().node.clone();
+        {
+            let s_spark = s_spark.clone();
+            trans.prioritized(
+                sodium_ctx,
+                s_spark_node,
+                HandlerRefMut::new(
+                    move |sodium_ctx, trans2| s_spark.send(sodium_ctx, trans2, &())
+                )
+            );
+        }
+        let s_initial = s_spark.snapshot(self.to_cell_ref());
+        s_initial.merge(sodium_ctx, &self.updates_(trans), |_,a| a.clone())
     }
 
     fn map<F,B:'static + Clone>(&self, sodium_ctx: &mut SodiumCtx, f: F) -> Cell<B> where F: Fn(&A)->B + 'static {

@@ -2,6 +2,7 @@ use sodium::Cell;
 use sodium::CoalesceHandler;
 use sodium::HandlerRef;
 use sodium::HandlerRefMut;
+use sodium::IsCell;
 use sodium::Lazy;
 use sodium::Listener;
 use sodium::Node;
@@ -142,6 +143,10 @@ pub trait IsStream<A: Clone + 'static> {
     }
 
     fn hold_lazy_(&self, trans: &mut Transaction, initial_value: Lazy<A>) -> Cell<A> {
+        unimplemented!();
+    }
+
+    fn snapshot<CB,B>(&self, c: &CB) -> Stream<B> where CB: IsCell<B>, B: Clone + 'static {
         unimplemented!();
     }
 

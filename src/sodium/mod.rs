@@ -1,4 +1,5 @@
 pub use self::cell::Cell;
+pub use self::cell::IsCell;
 pub use self::coalesce_handler::CoalesceHandler;
 pub use self::handler::HandlerRef;
 pub use self::handler::HandlerRefMut;
