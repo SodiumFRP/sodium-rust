@@ -47,8 +47,13 @@ pub trait IsCell<A: Clone + 'static> {
         )
     }
 
-    fn sample_lazy(&self) -> Lazy<A> {
-        unimplemented!();
+    fn sample_lazy(&self, sodium_ctx: &mut SodiumCtx) -> Lazy<A> {
+        let me = self.to_cell_ref().clone();
+        Transaction::apply(
+            sodium_ctx,
+            move |sodium_ctx, trans|
+                me.sample_lazy_(sodium_ctx, trans)
+        )
     }
 
     fn sample_lazy_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) -> Lazy<A> {
