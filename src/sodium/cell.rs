@@ -51,8 +51,33 @@ pub trait IsCell<A: Clone + 'static> {
         unimplemented!();
     }
 
-    fn sample_lazy_(&self, trans: &mut Transaction) -> Lazy<A> {
-        unimplemented!();
+    fn sample_lazy_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) -> Lazy<A> {
+        let me = self.to_cell_ref().clone();
+        let s = LazySample::new(me.clone());
+        {
+            let s = s.clone();
+            trans.last(
+                move || {
+                    let mut s = s.data.deref().borrow_mut();
+                    s.value_op = Some(
+                        me.data.deref().borrow()
+                            .value_update.clone().unwrap_or_else(|| me.sample_no_trans_())
+                    );
+                    s.cell_op = None;
+                }
+            );
+        }
+        let sodium_ctx = sodium_ctx.clone();
+        Lazy::new(move || {
+            let s = s.data.deref().borrow();
+            match &s.value_op {
+                &Some(ref value) => return value.clone(),
+                &None => ()
+            }
+            let mut sodium_ctx = sodium_ctx.clone();
+            let sodium_ctx = &mut sodium_ctx;
+            s.cell_op.as_ref().unwrap().sample(sodium_ctx)
+        })
     }
 
     fn sample_no_trans_(&self) -> A {
@@ -87,7 +112,7 @@ pub trait IsCell<A: Clone + 'static> {
                 let f2 = Rc::new(f);
                 let f3 = f2.clone();
                 let tmp =
-                    self.sample_lazy_(trans)
+                    self.sample_lazy_(sodium_ctx, trans)
                         .map(move |a| f2(a));
                 self.updates_(trans)
                     .map(sodium_ctx, move |a| f3(a))
@@ -193,6 +218,36 @@ impl<A:'static + Clone> Cell<A> {
             )
         );
         r
+    }
+}
+
+struct LazySample<A> {
+    data: Rc<RefCell<LazySampleData<A>>>
+}
+
+impl<A> Clone for LazySample<A> {
+    fn clone(&self) -> Self {
+        LazySample {
+            data: self.data.clone()
+        }
+    }
+}
+
+struct LazySampleData<A> {
+    cell_op: Option<Cell<A>>,
+    value_op: Option<A>
+}
+
+impl<A> LazySample<A> {
+    fn new(cell: Cell<A>) -> LazySample<A> {
+        LazySample {
+            data: Rc::new(RefCell::new(
+                LazySampleData {
+                    cell_op: Some(cell),
+                    value_op: None
+                }
+            ))
+        }
     }
 }
 
