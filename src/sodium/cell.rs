@@ -256,6 +256,67 @@ impl<A> LazySample<A> {
     }
 }
 
+struct ApplyHandler<A,B> {
+    data: Rc<RefCell<ApplyHandlerData<A,B>>>
+}
+
+impl<A,B> Clone for ApplyHandler<A,B> {
+    fn clone(&self) -> Self {
+        ApplyHandler {
+            data: self.data.clone()
+        }
+    }
+}
+
+struct ApplyHandlerData<A,B> {
+    f_op: Option<Rc<Fn(&A)->B>>,
+    a_op: Option<Rc<A>>,
+    out: StreamWithSend<Lazy<B>>
+}
+
+impl<A:'static,B:'static> ApplyHandler<A,B> {
+    fn new(out: StreamWithSend<Lazy<B>>) -> ApplyHandler<A,B> {
+        ApplyHandler {
+            data: Rc::new(RefCell::new(
+                ApplyHandlerData {
+                    f_op: None,
+                    a_op: None,
+                    out: out
+                }
+            ))
+        }
+    }
+
+    fn run(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) {
+        let out = self.data.deref().borrow().out.clone();
+        let out_node = out.stream.data.deref().borrow().node.clone();
+        let self_ = self.clone();
+        trans.prioritized(
+            sodium_ctx,
+            out_node,
+            HandlerRefMut::new(
+                move |sodium_ctx, trans2| {
+                    let data = self_.data.deref().borrow();
+                    match &data.f_op {
+                        &Some(ref f) => {
+                            match &data.a_op {
+                                &Some(ref a) => {
+                                    let f2 = f.clone();
+                                    let a2 = a.clone();
+                                    let b = Lazy::new(move || (*f2)(&*a2));
+                                    data.out.send(sodium_ctx, trans2, &b);
+                                },
+                                &None => ()
+                            }
+                        },
+                        &None => ()
+                    }
+                }
+            )
+        );
+    }
+}
+
 /*
 package nz.sodium;
 
