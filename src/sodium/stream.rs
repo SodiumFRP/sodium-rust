@@ -93,9 +93,7 @@ pub trait IsStream<A: Clone + 'static> {
         let node_target;
         let regen;
         {
-            let mut node = self__.node_mut();
-            let node2: &mut HasNode = &mut *node;
-            let (node_target2, regen2) = node2.link_to(sodium_ctx, target.clone(), action.clone());
+            let (node_target2, regen2) = (self__ as &mut HasNode).link_to(sodium_ctx, target.clone(), action.clone());
             node_target = node_target2;
             regen = regen2;
         }
