@@ -1,3 +1,4 @@
+use sodium::HasNode;
 use sodium::IsStream;
 use sodium::SodiumCtx;
 use sodium::Stream;
@@ -5,6 +6,8 @@ use sodium::StreamData;
 use sodium::StreamWithSend;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct StreamLoop<A> {
     stream: StreamWithSend<A>,
@@ -51,7 +54,7 @@ impl<A: 'static + Clone> StreamLoop<A> {
                 me_.unsafe_add_cleanup(
                     ea_out.listen_(
                         sodium_ctx,
-                        me_data_.node.clone(),
+                        me_.data.clone() as Rc<RefCell<HasNode>>,
                         TransactionHandlerRef::new(
                             move |sodium_ctx, trans, a| {
                                 let me_ = me2.upgrade();

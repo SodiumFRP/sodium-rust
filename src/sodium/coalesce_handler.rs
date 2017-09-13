@@ -1,4 +1,5 @@
 use sodium::HandlerRefMut;
+use sodium::HasNode;
 use sodium::SodiumCtx;
 use sodium::StreamWithSend;
 use sodium::Transaction;
@@ -60,7 +61,7 @@ impl<A: 'static + Clone> CoalesceHandler<A> {
         if accum_op_was_none {
             trans1.prioritized(
                 sodium_ctx,
-                data.out.stream.data.borrow().node.clone(),
+                data.out.stream.data.clone() as Rc<RefCell<HasNode>>,
                 HandlerRefMut::new(
                     move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction| {
                         let mut data = self_.data.borrow_mut();

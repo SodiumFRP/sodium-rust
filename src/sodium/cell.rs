@@ -1,5 +1,5 @@
 use sodium::HandlerRefMut;
-use sodium::node::IsNode;
+use sodium::node::HasNode;
 use sodium::IsStream;
 use sodium::Lazy;
 use sodium::Listener;
@@ -95,7 +95,7 @@ pub trait IsCell<A: Clone + 'static> {
 
     fn value_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) -> Stream<A> {
         let s_spark = StreamWithSend::new(sodium_ctx);
-        let s_spark_node = s_spark.stream.data.deref().borrow().node.clone();
+        let s_spark_node = s_spark.stream.data.clone() as Rc<RefCell<HasNode>>;
         {
             let s_spark = s_spark.clone();
             trans.prioritized(
@@ -289,7 +289,7 @@ impl<A:'static,B:'static> ApplyHandler<A,B> {
 
     fn run(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) {
         let out = self.data.deref().borrow().out.clone();
-        let out_node = out.stream.data.deref().borrow().node.clone();
+        let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
         let self_ = self.clone();
         trans.prioritized(
             sodium_ctx,

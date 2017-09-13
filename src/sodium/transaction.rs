@@ -1,5 +1,5 @@
 use sodium::HandlerRefMut;
-use sodium::IsNode;
+use sodium::HasNode;
 use sodium::Node;
 use sodium::SodiumCtx;
 use std::cell::Ref;
@@ -18,13 +18,13 @@ use std::ops::DerefMut;
 use std::rc::Rc;
 
 pub struct Entry {
-    pub rank: Rc<RefCell<IsNode>>,
+    pub rank: Rc<RefCell<HasNode>>,
     pub action: HandlerRefMut<Transaction>,
     pub seq: u64
 }
 
 impl Entry {
-    fn new(sodium_ctx: &mut SodiumCtx, rank: Rc<RefCell<IsNode>>, action: HandlerRefMut<Transaction>) -> Entry {
+    fn new(sodium_ctx: &mut SodiumCtx, rank: Rc<RefCell<HasNode>>, action: HandlerRefMut<Transaction>) -> Entry {
         Entry {
             rank: rank,
             action: action,
@@ -45,8 +45,8 @@ impl Clone for Entry {
 
 impl Ord for Entry {
     fn cmp(&self, other: &Entry) -> Ordering {
-        let c = (*self.rank.borrow()).downcast_to_node_ref().rank.cmp(
-            &((*other.rank.borrow()).downcast_to_node_ref().rank)
+        let c = (*self.rank.borrow()).node_ref().rank.cmp(
+            &((*other.rank.borrow()).node_ref().rank)
         );
         match c {
             Ordering::Equal => self.seq.cmp(&other.seq),
@@ -192,7 +192,7 @@ impl Transaction {
         }
     }
 
-    pub fn prioritized(&mut self, sodium_ctx: &mut SodiumCtx, rank: Rc<RefCell<IsNode>>, action: HandlerRefMut<Transaction>) {
+    pub fn prioritized(&mut self, sodium_ctx: &mut SodiumCtx, rank: Rc<RefCell<HasNode>>, action: HandlerRefMut<Transaction>) {
         let e = Entry::new(sodium_ctx, rank, action);
         self.with_data_mut(|data| {
             data.prioritized_q.push(e.clone());

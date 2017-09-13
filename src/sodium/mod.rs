@@ -5,7 +5,7 @@ pub use self::handler::HandlerRef;
 pub use self::handler::HandlerRefMut;
 pub use self::lazy::Lazy;
 pub use self::listener::Listener;
-pub use self::node::IsNode;
+pub use self::node::HasNode;
 pub use self::node::Node;
 pub use self::node::Target;
 pub use self::sodium_ctx::SodiumCtx;

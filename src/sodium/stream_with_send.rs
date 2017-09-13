@@ -1,6 +1,6 @@
 use sodium::HandlerRefMut;
 use sodium::IsStream;
-use sodium::IsNode;
+use sodium::HasNode;
 use sodium::Node;
 use sodium::SodiumCtx;
 use sodium::Stream;
@@ -36,28 +36,31 @@ impl<A:'static + Clone> StreamWithSend<A> {
     pub fn send(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &A) {
         let targets;
         {
-            let self2 = self.to_stream_ref().clone();
-            let mut self_ = self.to_stream_ref().data.borrow_mut();
-            let self__: &mut StreamData<A> = &mut *self_;
-            if self__.firings.is_empty() {
-                trans.last(move || {
-                    let mut self_ = self2.data.borrow_mut();
-                    let self__: &mut StreamData<A> = &mut *self_;
-                    self__.firings.clear();
-                })
+            {
+                let self2 = self.to_stream_ref().clone();
+                let mut self_ = self.to_stream_ref().data.borrow_mut();
+                let self__: &mut StreamData<A> = &mut *self_;
+                if self__.firings.is_empty() {
+                    trans.last(move || {
+                        let mut self_ = self2.data.borrow_mut();
+                        let self__: &mut StreamData<A> = &mut *self_;
+                        self__.firings.clear();
+                    })
+                }
+                self__.firings.push(a.clone());
             }
-            self__.firings.push(a.clone());
-            let mut node = self__.node.borrow_mut();
-            let node2: &mut IsNode = &mut *node;
-            let node3 = node2.downcast_to_node_mut();
-            targets = node3.listeners.clone();
+            let node = self.to_stream_ref().data.clone();
+            let mut node2 = node.borrow();
+            let node3: &HasNode = &*node2;
+            let node4 = node2.node_ref();
+            targets = node4.listeners.clone();
         }
         for target in targets {
             let target2;
             {
                 let mut target_node = target.node.borrow_mut();
-                let target_node2: &mut IsNode = &mut *target_node;
-                let target_node3: &mut Node = target_node2.downcast_to_node_mut();
+                let target_node2: &mut HasNode = &mut *target_node;
+                let target_node3: &mut Node = target_node2.node_mut();
                 target2 = target.clone();
             }
             let a2 = a.clone();
