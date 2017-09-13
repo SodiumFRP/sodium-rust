@@ -1,5 +1,6 @@
 use sodium::HandlerRefMut;
-use sodium::node::HasNode;
+use sodium::HasNode;
+use sodium::Node;
 use sodium::IsStream;
 use sodium::Lazy;
 use sodium::Listener;
@@ -125,6 +126,32 @@ pub trait IsCell<A: Clone + 'static> {
                         trans,
                         tmp
                     )
+            }
+        )
+    }
+
+    fn apply<CF,CA,F,B:'static + Clone>(sodium_ctx: &mut SodiumCtx, cf: &CF, ca: &CA) -> Cell<B>
+    where
+    CF: IsCell<Rc<F>>,
+    CA: IsCell<A>,
+    F: Fn(&A)->B + 'static
+    {
+        Transaction::apply(
+            sodium_ctx,
+            |sodium_ctx, trans| {
+                let out: StreamWithSend<Lazy<B>> = StreamWithSend::new(sodium_ctx);
+                let out_target = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+                let mut in_target = Node::new(sodium_ctx, 0);
+                let (node_target,_) = (in_target.node_mut() as &mut HasNode).link_to::<Lazy<B>>(
+                    sodium_ctx,
+                    out_target,
+                    TransactionHandlerRef::new(
+                        |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &Lazy<B>| {}
+                    )
+                );
+                let h: ApplyHandler<A,B> = ApplyHandler::new(out);
+                // TODO: Finish this
+                unimplemented!();
             }
         )
     }
