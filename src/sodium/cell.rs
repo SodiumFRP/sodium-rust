@@ -87,7 +87,7 @@ pub trait IsCell<A: Clone + 'static> {
     }
 
     fn sample_no_trans_(&self) -> A {
-        self.with_cell_data_ref(|data| data.value.clone())
+        self.with_cell_data_ref(|data| data.value.clone().unwrap())
     }
 
     fn updates_(&self, trans: &mut Transaction) -> Stream<A> {
@@ -208,15 +208,15 @@ pub trait IsCell<A: Clone + 'static> {
 }
 
 pub struct Cell<A> {
-    data: Rc<RefCell<CellData<A>>>
+    pub data: Rc<RefCell<CellData<A>>>
 }
 
 pub struct CellData<A> {
-    str: Stream<A>,
-    value: A,
-    value_update: Option<A>,
-    cleanup: Option<Listener>,
-    lazy_init_value: Option<Lazy<A>>
+    pub str: Stream<A>,
+    pub value: Option<A>,
+    pub value_update: Option<A>,
+    pub cleanup: Option<Listener>,
+    pub lazy_init_value: Option<Lazy<A>>
 }
 
 impl<A: Clone + 'static> IsCell<A> for Cell<A> {
@@ -239,7 +239,7 @@ impl<A:'static + Clone> Cell<A> {
             data: Rc::new(RefCell::new(
                 CellData {
                     str: Stream::new(sodium_ctx),
-                    value: value,
+                    value: Some(value),
                     value_update: None,
                     cleanup: None,
                     lazy_init_value: None
@@ -253,7 +253,7 @@ impl<A:'static + Clone> Cell<A> {
             data: Rc::new(RefCell::new(
                 CellData {
                     str: str,
-                    value: init_value,
+                    value: Some(init_value),
                     value_update: None,
                     cleanup: None,
                     lazy_init_value: None
@@ -282,7 +282,7 @@ impl<A:'static + Clone> Cell<A> {
                                             trans2.last(
                                                 move || {
                                                     self___.with_cell_data_mut(|data| {
-                                                        data.value = data.value_update.clone().unwrap();
+                                                        data.value = data.value_update.clone();
                                                         data.lazy_init_value = None;
                                                         data.value_update = None;
                                                     });
