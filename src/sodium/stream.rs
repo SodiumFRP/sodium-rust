@@ -146,7 +146,11 @@ pub trait IsStream<A: Clone + 'static> {
         )
     }
 
-    fn hold_lazy_(&self, trans: &mut Transaction, initial_value: Lazy<A>) -> Cell<A> {
+    fn hold_lazy(&self, sodium_ctx: &mut SodiumCtx, initial_value: Lazy<A>) -> Cell<A> {
+        unimplemented!();
+    }
+
+    fn hold_lazy_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, initial_value: Lazy<A>) -> Cell<A> {
         unimplemented!();
     }
 

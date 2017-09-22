@@ -123,6 +123,7 @@ pub trait IsCell<A: Clone + 'static> {
                 self.updates_(trans)
                     .map(sodium_ctx, move |a| f3(a))
                     .hold_lazy_(
+                        sodium_ctx,
                         trans,
                         tmp
                     )
@@ -141,17 +142,66 @@ pub trait IsCell<A: Clone + 'static> {
             |sodium_ctx, trans| {
                 let out: StreamWithSend<Lazy<B>> = StreamWithSend::new(sodium_ctx);
                 let out_target = out.stream.data.clone() as Rc<RefCell<HasNode>>;
-                let mut in_target = Node::new(sodium_ctx, 0);
-                let (node_target,_) = (in_target.node_mut() as &mut HasNode).link_to::<Lazy<B>>(
+                let mut in_target = Rc::new(RefCell::new(Node::new(sodium_ctx, 0))) as Rc<RefCell<HasNode>>;
+                let (node_target,_) = ((*in_target).borrow_mut().node_mut() as &mut HasNode).link_to::<Lazy<B>>(
                     sodium_ctx,
                     out_target,
                     TransactionHandlerRef::new(
                         |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &Lazy<B>| {}
                     )
                 );
-                let h: ApplyHandler<A,B> = ApplyHandler::new(out);
-                // TODO: Finish this
-                unimplemented!();
+                let h: ApplyHandler<A,B> = ApplyHandler::new(out.clone());
+                let l1;
+                {
+                    let h = h.clone();
+                    l1 =
+                        cf
+                            .value_(sodium_ctx, trans)
+                            .listen_(sodium_ctx, in_target.clone(), TransactionHandlerRef::new(
+                                move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, f: &Rc<F>| {
+                                    (*h.data).borrow_mut().f_op = Some(f.clone());
+                                    let run_it = match &(*h.data).borrow_mut().a_op {
+                                        &Some(ref a) => true,
+                                        &None => false
+                                    };
+                                    if run_it {
+                                        h.run(sodium_ctx, trans2)
+                                    }
+                                }
+                            ));
+                }
+                let l2 =
+                    ca
+                        .value_(sodium_ctx, trans)
+                        .listen_(sodium_ctx, in_target.clone(), TransactionHandlerRef::new(
+                            move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
+                                (*h.data).borrow_mut().a_op = Some(a.clone());
+                                let run_it = match &(*h.data).borrow_mut().f_op {
+                                    &Some(ref f) => true,
+                                    &None => false
+                                };
+                                if run_it {
+                                    h.run(sodium_ctx, trans2)
+                                }
+                            }
+                        ));
+                let cf: Cell<Rc<F>> = cf.to_cell_ref().clone();
+                let ca: Cell<A> = ca.to_cell_ref().clone();
+                out.last_firing_only_(sodium_ctx, trans)
+                    .unsafe_add_cleanup(l1)
+                    .unsafe_add_cleanup(l2)
+                    .unsafe_add_cleanup(
+                        Listener::new(
+                            sodium_ctx,
+                            move || {
+                                (*in_target).borrow_mut().unlink_to(&node_target)
+                            }
+                        )
+                    )
+                    .map(sodium_ctx, |lazy_b| lazy_b.get())
+                    .hold_lazy(sodium_ctx, Lazy::new(move || {
+                        cf.sample_no_trans_()(&ca.sample_no_trans_())
+                    }))
             }
         )
     }
@@ -297,11 +347,11 @@ impl<A,B> Clone for ApplyHandler<A,B> {
 
 struct ApplyHandlerData<A,B> {
     f_op: Option<Rc<Fn(&A)->B>>,
-    a_op: Option<Rc<A>>,
+    a_op: Option<A>,
     out: StreamWithSend<Lazy<B>>
 }
 
-impl<A:'static,B:'static> ApplyHandler<A,B> {
+impl<A:'static + Clone,B:'static> ApplyHandler<A,B> {
     fn new(out: StreamWithSend<Lazy<B>>) -> ApplyHandler<A,B> {
         ApplyHandler {
             data: Rc::new(RefCell::new(
@@ -330,7 +380,7 @@ impl<A:'static,B:'static> ApplyHandler<A,B> {
                                 &Some(ref a) => {
                                     let f2 = f.clone();
                                     let a2 = a.clone();
-                                    let b = Lazy::new(move || (*f2)(&*a2));
+                                    let b = Lazy::new(move || (*f2)(&a2));
                                     data.out.send(sodium_ctx, trans2, &b);
                                 },
                                 &None => ()
