@@ -254,12 +254,12 @@ impl<A:'static + Clone> Cell<A> {
         }
     }
 
-    pub fn new_(sodium_ctx: &mut SodiumCtx, str: Stream<A>, init_value: A) -> Cell<A> {
+    pub fn new_(sodium_ctx: &mut SodiumCtx, str: Stream<A>, init_value: Option<A>) -> Cell<A> {
         let r = Cell {
             data: Rc::new(RefCell::new(
                 CellData {
                     str: str,
-                    value: Some(init_value),
+                    value: init_value,
                     value_update: None,
                     cleanup: None,
                     lazy_init_value: None

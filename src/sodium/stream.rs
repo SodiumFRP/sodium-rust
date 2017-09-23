@@ -142,7 +142,7 @@ pub trait IsStream<A: Clone + 'static> {
     fn hold(&self, sodium_ctx: &mut SodiumCtx, init_value: A) -> Cell<A> {
         Transaction::apply(
             sodium_ctx,
-            |sodium_ctx, trans| Cell::new_(sodium_ctx, self.to_stream_ref().clone(), init_value)
+            |sodium_ctx, trans| Cell::new_(sodium_ctx, self.to_stream_ref().clone(), Some(init_value))
         )
     }
 
