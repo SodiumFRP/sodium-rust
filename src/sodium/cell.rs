@@ -87,7 +87,13 @@ pub trait IsCell<A: Clone + 'static> {
     }
 
     fn sample_no_trans_(&self) -> A {
-        self.with_cell_data_ref(|data| data.value.clone().unwrap())
+        self.with_cell_data_mut(|data: &mut CellData<A>| {
+            if data.value.is_none() && data.lazy_init_value.is_some() {
+                data.value = Some(data.lazy_init_value.as_ref().unwrap().get());
+                data.lazy_init_value = None;
+            }
+            data.value.clone().unwrap()
+        })
     }
 
     fn updates_(&self, trans: &mut Transaction) -> Stream<A> {

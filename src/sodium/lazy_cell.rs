@@ -10,13 +10,7 @@ impl<A: Clone + 'static> IsCell<A> for LazyCell<A> {
         &self.cell
     }
 
-    fn sample_no_trans_(&self) -> A {
-        let mut data = (*self.cell.data).borrow_mut();
-        let data = &mut data;
-        if data.value.is_none() && data.lazy_init_value.is_some() {
-            data.value = Some(data.lazy_init_value.as_ref().unwrap().get());
-            data.lazy_init_value = None;
-        }
-        data.value.clone().unwrap()
-    }
+    // Implementation moved to Cell, because a cast from LazyCell to Cell will not use the correct
+    // sample_no_trans_ implementation.
+    //fn sample_no_trans_(&self) -> A;
 }
