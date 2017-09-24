@@ -208,6 +208,29 @@ pub trait IsStream<A: Clone + 'static> {
         )
     }
 
+    fn snapshot3<CB,CC,CD,B,C,D,E,F>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, cd: &CD, f: F) -> Stream<E>
+        where CB: IsCell<B>,
+              CC: IsCell<C>,
+              CD: IsCell<D>,
+              B: Clone + 'static,
+              C: Clone + 'static,
+              D: Clone + 'static,
+              E: Clone + 'static,
+              F: Fn(&A,&B,&C,&D)->E + 'static
+    {
+        let sodium_ctx2 = sodium_ctx.clone();
+        let cc = cc.to_cell_ref().clone();
+        let cd = cd.to_cell_ref().clone();
+        self.snapshot(
+            sodium_ctx,
+            cb,
+            move |a, b| {
+                let mut sodium_ctx = sodium_ctx2.clone();
+                let sodium_ctx = &mut sodium_ctx;
+                f(a, b, &cc.sample(sodium_ctx), &cd.sample(sodium_ctx))
+            }
+        )
+    }
 
     fn or_else<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A> where SA: IsStream<A> {
         self.merge(sodium_ctx, s, |a,_| a.clone())
