@@ -159,8 +159,32 @@ pub trait IsStream<A: Clone + 'static> {
         LazyCell::new(sodium_ctx, self.to_stream_ref().clone(), initial_value).to_cell_ref().clone()
     }
 
-    fn snapshot<CB,B>(&self, c: &CB) -> Stream<B> where CB: IsCell<B>, B: Clone + 'static {
-        unimplemented!();
+    fn snapshot_to<CB,B>(&self, sodium_ctx: &mut SodiumCtx, c: &CB) -> Stream<B> where CB: IsCell<B>, B: Clone + 'static {
+        self.snapshot(sodium_ctx, c, |a, b| b.clone())
+    }
+
+    fn snapshot<CB,B,C,F>(&self, sodium_ctx: &mut SodiumCtx, c: &CB, f: F) -> Stream<C>
+        where CB: IsCell<B>,
+              B: Clone + 'static,
+              C: Clone + 'static,
+              F: Fn(&A,&B)->C + 'static
+    {
+        let out = StreamWithSend::new(sodium_ctx);
+        let l;
+        {
+            let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+            let out = out.clone();
+            let c = c.to_cell_ref().clone();
+            l = self.listen_(
+                sodium_ctx,
+                out_node,
+                TransactionHandlerRef::new(
+                    move |sodium_ctx, trans, a|
+                        out.send(sodium_ctx, trans, &f(a, &c.sample_no_trans_()))
+                )
+            );
+        }
+        out.unsafe_add_cleanup(l)
     }
 
     fn or_else<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A> where SA: IsStream<A> {
