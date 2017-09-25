@@ -554,7 +554,9 @@ impl<A: Clone + 'static> Stream<A> {
         if len == 0 {
             Stream::new(sodium_ctx)
         } else if len == 1 {
-            ss[0].clone()
+            ss[start].clone()
+        } else if len == 2 {
+            ss[start].merge(sodium_ctx, &ss[start+1], f)
         } else {
             // Cloning Closure Trick
             let f2 = Rc::new(f);
