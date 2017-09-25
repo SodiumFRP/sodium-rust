@@ -370,7 +370,7 @@ pub trait IsStream<A: Clone + 'static> {
         out.unsafe_add_cleanup(l)
     }
 
-    fn filter_option<S>(self_: &S, sodium_ctx: &mut SodiumCtx) -> Stream<A> where S: IsStream<Option<A>> {
+    fn filter_option<S>(sodium_ctx: &mut SodiumCtx, self_: &S) -> Stream<A> where S: IsStream<Option<A>> {
         let out = StreamWithSend::new(sodium_ctx);
         let l;
         {
@@ -390,6 +390,22 @@ pub trait IsStream<A: Clone + 'static> {
             );
         }
         out.unsafe_add_cleanup(l)
+    }
+
+    fn gate<CB>(&self, sodium_ctx: &mut SodiumCtx, c: &CB) -> Stream<A> where CB: IsCell<bool> {
+        let s =
+            self.snapshot(
+                sodium_ctx,
+                c,
+                |a: &A, pred: &bool| {
+                    if *pred {
+                        Some(a.clone())
+                    } else {
+                        None
+                    }
+                }
+            );
+        Stream::filter_option(sodium_ctx, &s)
     }
 
     fn unsafe_add_cleanup(&self, listener: Listener) -> Stream<A> {
