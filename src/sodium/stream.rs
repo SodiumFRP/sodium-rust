@@ -550,40 +550,42 @@ impl<A: Clone + 'static> Stream<A> {
     fn merge_<F>(sodium_ctx: &mut SodiumCtx, ss: &Vec<Stream<A>>, start: usize, end: usize, f: F) -> Stream<A>
         where F: Fn(&A,&A)->A + 'static
     {
+        Stream::merge__(sodium_ctx, ss, start, end, &Rc::new(f))
+    }
+
+    fn merge__<F>(sodium_ctx: &mut SodiumCtx, ss: &Vec<Stream<A>>, start: usize, end: usize, f: &Rc<F>) -> Stream<A>
+        where F: Fn(&A,&A)->A + 'static
+    {
         let len = end - start;
         if len == 0 {
             Stream::new(sodium_ctx)
         } else if len == 1 {
             ss[start].clone()
         } else if len == 2 {
-            ss[start].merge(sodium_ctx, &ss[start+1], f)
+            let f2 = f.clone();
+            let f3 = move |a: &A, b: &A| f2(a, b);
+            ss[start].merge(sodium_ctx, &ss[start+1], f3)
         } else {
-            // Cloning Closure Trick
-            let f2 = Rc::new(f);
-            let f3 = f2.clone();
-            let f4 = f3.clone();
-            let f5 = move |a: &A, b: &A| f2(a, b);
-            let f6 = move |a: &A, b: &A| f3(a, b);
-            let f7 = move |a: &A, b: &A| f4(a, b);
-            //
+            let f2 = f.clone();
+            let f3 = move |a: &A, b: &A| f2(a, b);
             let mid = (start + end) / 2;
             let s1 =
-                Stream::merge_(
+                Stream::merge__(
                     sodium_ctx,
                     &ss,
                     start,
                     mid,
-                    f5
+                    f
                 );
             let s2 =
-                Stream::merge_(
+                Stream::merge__(
                     sodium_ctx,
                     &ss,
                     mid,
                     end,
-                    f6
+                    f
                 );
-            s1.merge(sodium_ctx, &s2, f7)
+            s1.merge(sodium_ctx, &s2, f3)
         }
     }
 }
