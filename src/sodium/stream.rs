@@ -232,6 +232,63 @@ pub trait IsStream<A: Clone + 'static> {
         )
     }
 
+    fn snapshot4<CB,CC,CD,CE,B,C,D,E,F,FN>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, cd: &CD, ce: &CE, f: FN) -> Stream<F>
+        where CB: IsCell<B>,
+              CC: IsCell<C>,
+              CD: IsCell<D>,
+              CE: IsCell<E>,
+              B: Clone + 'static,
+              C: Clone + 'static,
+              D: Clone + 'static,
+              E: Clone + 'static,
+              F: Clone + 'static,
+              FN: Fn(&A,&B,&C,&D,&E)->F + 'static
+    {
+        let sodium_ctx2 = sodium_ctx.clone();
+        let cc = cc.to_cell_ref().clone();
+        let cd = cd.to_cell_ref().clone();
+        let ce = ce.to_cell_ref().clone();
+        self.snapshot(
+            sodium_ctx,
+            cb,
+            move |a, b| {
+                let mut sodium_ctx = sodium_ctx2.clone();
+                let sodium_ctx = &mut sodium_ctx;
+                f(a, b, &cc.sample(sodium_ctx), &cd.sample(sodium_ctx), &ce.sample(sodium_ctx))
+            }
+        )
+    }
+
+    fn snapshot5<CB,CC,CD,CE,CF,B,C,D,E,F,G,FN>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, cd: &CD, ce: &CE, cf: &CF, f: FN) -> Stream<G>
+        where CB: IsCell<B>,
+              CC: IsCell<C>,
+              CD: IsCell<D>,
+              CE: IsCell<E>,
+              CF: IsCell<F>,
+              B: Clone + 'static,
+              C: Clone + 'static,
+              D: Clone + 'static,
+              E: Clone + 'static,
+              F: Clone + 'static,
+              G: Clone + 'static,
+              FN: Fn(&A,&B,&C,&D,&E,&F)->G + 'static
+    {
+        let sodium_ctx2 = sodium_ctx.clone();
+        let cc = cc.to_cell_ref().clone();
+        let cd = cd.to_cell_ref().clone();
+        let ce = ce.to_cell_ref().clone();
+        let cf = cf.to_cell_ref().clone();
+        self.snapshot(
+            sodium_ctx,
+            cb,
+            move |a, b| {
+                let mut sodium_ctx = sodium_ctx2.clone();
+                let sodium_ctx = &mut sodium_ctx;
+                f(a, b, &cc.sample(sodium_ctx), &cd.sample(sodium_ctx), &ce.sample(sodium_ctx), &cf.sample(sodium_ctx))
+            }
+        )
+    }
+
     fn or_else<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A> where SA: IsStream<A> {
         self.merge(sodium_ctx, s, |a,_| a.clone())
     }
