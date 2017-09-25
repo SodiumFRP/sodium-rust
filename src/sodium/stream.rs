@@ -510,6 +510,64 @@ impl<A: Clone + 'static> Stream<A> {
             data: Rc::downgrade(&self.data)
         }
     }
+
+    pub fn or_else<IT>(sodium_ctx: &mut SodiumCtx, ss: IT) -> Stream<A>
+        where IT: Iterator<Item=Stream<A>>
+    {
+        Stream::merge(
+            sodium_ctx,
+            ss,
+            |left, right|
+                left.clone()
+        )
+    }
+
+    pub fn merge<IT,F>(sodium_ctx: &mut SodiumCtx, ss: IT, f: F) -> Stream<A>
+        where IT: Iterator<Item=Stream<A>>,
+              F: Fn(&A,&A)->A + 'static
+    {
+        let ss_vec: Vec<Stream<A>> = ss.collect();
+        let ss_vec_len = ss_vec.len();
+        Stream::merge_(sodium_ctx, &ss_vec, 0, ss_vec_len, f)
+    }
+
+    fn merge_<F>(sodium_ctx: &mut SodiumCtx, ss: &Vec<Stream<A>>, start: usize, end: usize, f: F) -> Stream<A>
+        where F: Fn(&A,&A)->A + 'static
+    {
+        let len = end - start;
+        if len == 0 {
+            Stream::new(sodium_ctx)
+        } else if len == 1 {
+            ss[0].clone()
+        } else {
+            // Cloning Closure Trick
+            let f2 = Rc::new(f);
+            let f3 = f2.clone();
+            let f4 = f3.clone();
+            let f5 = move |a: &A, b: &A| f2(a, b);
+            let f6 = move |a: &A, b: &A| f3(a, b);
+            let f7 = move |a: &A, b: &A| f4(a, b);
+            //
+            let mid = (start + end) / 2;
+            let s1 =
+                Stream::merge_(
+                    sodium_ctx,
+                    &ss,
+                    start,
+                    mid,
+                    f5
+                );
+            let s2 =
+                Stream::merge_(
+                    sodium_ctx,
+                    &ss,
+                    mid,
+                    end,
+                    f6
+                );
+            s1.merge(sodium_ctx, &s2, f7)
+        }
+    }
 }
 
 impl<A: Clone + 'static> WeakStream<A> {
