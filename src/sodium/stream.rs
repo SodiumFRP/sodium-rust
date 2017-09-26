@@ -9,6 +9,7 @@ use sodium::Listener;
 use sodium::Node;
 use sodium::HasNode;
 use sodium::SodiumCtx;
+use sodium::StreamLoop;
 use sodium::StreamWithSend;
 use sodium::Target;
 use sodium::Transaction;
@@ -406,6 +407,37 @@ pub trait IsStream<A: Clone + 'static> {
                 }
             );
         Stream::filter_option(sodium_ctx, &s)
+    }
+
+    fn collect<B,S,F>(&self, sodium_ctx: &mut SodiumCtx, init_state: S, f: F) -> Stream<B>
+        where B: Clone + 'static,
+              S: Clone + 'static,
+              F: Fn(&A,&S)->(B,S) + 'static
+    {
+        self.collect_lazy(sodium_ctx, Lazy::new(move || init_state.clone()), f)
+    }
+
+    fn collect_lazy<B,S,F>(&self, sodium_ctx: &mut SodiumCtx, init_state: Lazy<S>, f: F) -> Stream<B>
+        where B: Clone + 'static,
+              S: Clone + 'static,
+              F: Fn(&A,&S)->(B,S) + 'static
+    {
+        let ea = self.to_stream_ref().clone();
+        let f = Rc::new(f);
+        Transaction::run(
+            sodium_ctx,
+            move |sodium_ctx| {
+                let mut es = StreamLoop::new(sodium_ctx);
+                let s = es.hold_lazy(sodium_ctx, init_state.clone());
+                let f = f.clone();
+                let f2 = move |a: &A, s: &S| f(a,s);
+                let ebs = ea.snapshot(sodium_ctx, &s, f2);
+                let eb = ebs.map(sodium_ctx, |&(ref b,ref s)| b.clone());
+                let es_out = ebs.map(sodium_ctx, |&(ref b,ref s)| s.clone());
+                es.loop_(sodium_ctx, es_out);
+                eb
+            }
+        )
     }
 
     fn unsafe_add_cleanup(&self, listener: Listener) -> Stream<A> {
