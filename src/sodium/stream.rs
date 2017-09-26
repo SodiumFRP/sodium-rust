@@ -440,6 +440,33 @@ pub trait IsStream<A: Clone + 'static> {
         )
     }
 
+    fn accum<S,F>(&self, sodium_ctx: &mut SodiumCtx, init_state: S, f: F) -> Cell<S>
+        where S: Clone + 'static,
+              F: Fn(&A,&S)->S + 'static
+    {
+        self.accum_lazy(sodium_ctx, Lazy::new(move || init_state.clone()), f)
+    }
+
+    fn accum_lazy<S,F>(&self, sodium_ctx: &mut SodiumCtx, init_state: Lazy<S>, f: F) -> Cell<S>
+        where S: Clone + 'static,
+              F: Fn(&A,&S)->S + 'static
+    {
+        let ea = self.to_stream_ref().clone();
+        let f = Rc::new(f);
+        Transaction::run(
+            sodium_ctx,
+            move |sodium_ctx| {
+                let mut es = StreamLoop::new(sodium_ctx);
+                let s = es.hold_lazy(sodium_ctx, init_state.clone());
+                let f = f.clone();
+                let f2 = move |a: &A,s: &S| f(a,s);
+                let es_out = ea.snapshot(sodium_ctx, &s, f2);
+                es.loop_(sodium_ctx, es_out.clone());
+                es_out.hold_lazy(sodium_ctx, init_state.clone())
+            }
+        )
+    }
+
     fn unsafe_add_cleanup(&self, listener: Listener) -> Stream<A> {
         let mut data = self.to_stream_ref().data.borrow_mut();
         let data_: &mut StreamData<A> = &mut *data;
