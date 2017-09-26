@@ -467,6 +467,40 @@ pub trait IsStream<A: Clone + 'static> {
         )
     }
 
+    fn once(&self, sodium_ctx: &mut SodiumCtx) -> Stream<A> {
+        let out = StreamWithSend::new(sodium_ctx);
+        let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+        let l_cell = Rc::new(RefCell::new(None));
+        let l;
+        {
+            let out = out.clone();
+            let l_cell = l_cell.clone();
+            l = self.listen_(
+                sodium_ctx,
+                out_node,
+                TransactionHandlerRef::new(
+                    move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &A| {
+                        let has_listener = l_cell.borrow().is_some();
+                        if has_listener {
+                            out.send(sodium_ctx, trans, a);
+                            {
+                                let l = l_cell.borrow();
+                                let l: &Option<Listener> = &l;
+                                match l.as_ref() {
+                                    Some(l2) => l2.unlisten(),
+                                    None => ()
+                                }
+                            }
+                            *l_cell.borrow_mut() = None;
+                        }
+                    }
+                )
+            );
+        }
+        *l_cell.borrow_mut() = Some(l.clone());
+        out.unsafe_add_cleanup(l)
+    }
+
     fn unsafe_add_cleanup(&self, listener: Listener) -> Stream<A> {
         let mut data = self.to_stream_ref().data.borrow_mut();
         let data_: &mut StreamData<A> = &mut *data;
