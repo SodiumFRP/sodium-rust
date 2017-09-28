@@ -369,6 +369,33 @@ pub trait IsCell<A: Clone + 'static> {
         Cell::apply(sodium_ctx, &cf3, cc)
     }
 
+    fn switch_c<CCA,CA>(sodium_ctx: &mut SodiumCtx, cca: &CCA) -> Cell<A>
+        where CCA: IsCell<CA>,
+               CA: IsCell<A> + Clone + 'static
+    {
+        Transaction::apply(
+            sodium_ctx,
+            |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction| {
+                let za;
+                {
+                    let mut sodium_ctx = sodium_ctx.clone();
+                    za =
+                        cca
+                            .sample_lazy(&mut sodium_ctx)
+                            .map(move|ca| {
+                                let mut sodium_ctx = sodium_ctx.clone();
+                                let sodium_ctx = &mut sodium_ctx;
+                                ca.sample(sodium_ctx)
+                            });
+                }
+                //let out = StreamWithSend::new(sodium_ctx);
+                //let current_listener: Option<RefCell<Listener>> = None;
+                // TODO: Finish this.
+                unimplemented!();
+            }
+        )
+    }
+
     fn listen<F>(&self, sodium_ctx: &mut SodiumCtx, action: F) -> Listener
         where F: Fn(&A) + 'static
     {
