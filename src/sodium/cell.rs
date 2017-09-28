@@ -217,6 +217,32 @@ pub trait IsCell<A: Clone + 'static> {
         Cell::apply2_(sodium_ctx, &cf, cd, ce)
     }
 
+    fn lift6<B,C,D,E,F,G,CB,CC,CD,CE,CF,FN>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, cd: &CD, ce: &CE, cf: &CF, fn_: FN) -> Cell<G>
+        where B: Clone + 'static,
+              C: Clone + 'static,
+              D: Clone + 'static,
+              E: Clone + 'static,
+              F: Clone + 'static,
+              G: Clone + 'static,
+              CB: IsCell<B>,
+              CC: IsCell<C>,
+              CD: IsCell<D>,
+              CE: IsCell<E>,
+              CF: IsCell<F>,
+              FN: Fn(&A,&B,&C,&D,&E,&F)->G + 'static
+    {
+        let fn_ = Rc::new(fn_);
+        let slightly_curried_f = move |a: &A, b: &B, c: &C| {
+            let a = a.clone();
+            let b = b.clone();
+            let c = c.clone();
+            let fn_ = fn_.clone();
+            Rc::new(move |d: &D, e: &E, f: &F| fn_(&a, &b, &c, d, e, f))
+        };
+        let cfn = self.lift3(sodium_ctx, cb, cc, slightly_curried_f);
+        Cell::apply3_(sodium_ctx, &cfn, cd, ce, cf)
+    }
+
     fn apply<CF,CA,F,B:'static + Clone>(sodium_ctx: &mut SodiumCtx, cf: &CF, ca: &CA) -> Cell<B>
     where
     CF: IsCell<Rc<F>>,
@@ -314,6 +340,33 @@ pub trait IsCell<A: Clone + 'static> {
             );
         let cf3 = Cell::apply(sodium_ctx, &cf2, ca);
         Cell::apply(sodium_ctx, &cf3, cb)
+    }
+
+    fn apply3_<CF,CA,CB,CC,B,C,D,F>(sodium_ctx: &mut SodiumCtx, cf: &CF, ca: &CA, cb: &CB, cc: &CC) -> Cell<D>
+        where CF: IsCell<Rc<F>>,
+              CA: IsCell<A>,
+              CB: IsCell<B>,
+              CC: IsCell<C>,
+              B: Clone + 'static,
+              C: Clone + 'static,
+              D: Clone + 'static,
+              F: Fn(&A,&B,&C)->D + 'static
+    {
+        let cf2 =
+            cf.map(
+                sodium_ctx,
+                |f: &Rc<F>| {
+                    let f = f.clone();
+                    Rc::new(move |a: &A, b: &B| {
+                        let a = a.clone();
+                        let b = b.clone();
+                        let f = f.clone();
+                        Rc::new(move |c: &C| f(&a, &b, c))
+                    })
+                }
+            );
+        let cf3 = Cell::apply2_(sodium_ctx, &cf2, ca, cb);
+        Cell::apply(sodium_ctx, &cf3, cc)
     }
 }
 
