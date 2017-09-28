@@ -368,6 +368,18 @@ pub trait IsCell<A: Clone + 'static> {
         let cf3 = Cell::apply2_(sodium_ctx, &cf2, ca, cb);
         Cell::apply(sodium_ctx, &cf3, cc)
     }
+
+    fn listen<F>(&self, sodium_ctx: &mut SodiumCtx, action: F) -> Listener
+        where F: Fn(&A) + 'static
+    {
+        Transaction::apply(
+            sodium_ctx,
+            |sodium_ctx, trans| {
+                self.value_(sodium_ctx, trans)
+                    .listen(sodium_ctx, action)
+            }
+        )
+    }
 }
 
 pub struct Cell<A> {
