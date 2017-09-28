@@ -137,6 +137,22 @@ pub trait IsCell<A: Clone + 'static> {
         )
     }
 
+    fn lift2<B,C,CB,F>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, f: F) -> Cell<C>
+        where B: Clone + 'static,
+              C: Clone + 'static,
+              CB: IsCell<B>,
+              F: Fn(&A,&B)->C + 'static
+    {
+        let f = Rc::new(f);
+        let curried_f = move |a: &A| {
+            let a = a.clone();
+            let f = f.clone();
+            Rc::new(move |b: &B| f(&a, b))
+        };
+        let cf = self.map(sodium_ctx, curried_f);
+        return Cell::apply(sodium_ctx, &cf, cb);
+    }
+
     fn apply<CF,CA,F,B:'static + Clone>(sodium_ctx: &mut SodiumCtx, cf: &CF, ca: &CA) -> Cell<B>
     where
     CF: IsCell<Rc<F>>,
