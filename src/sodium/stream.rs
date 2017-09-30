@@ -33,17 +33,17 @@ pub trait IsStream<A: Clone + 'static> {
 
     fn listen<F>(&self, sodium_ctx: &mut SodiumCtx, handler: F) -> Listener where F: Fn(&A) + 'static {
         let l0 = self.listen_weak(sodium_ctx, handler);
-        let mut l_id = RefCell::new(0);
+        let mut l_id = Rc::new(RefCell::new(0));
         let l_id2 = l_id.clone();
         let sodium_ctx2 = sodium_ctx.clone();
         let l = Listener::new(
             sodium_ctx,
             move || {
                 l0.unlisten();
-                sodium_ctx2.with_data_mut(|ctx| ctx.keep_listeners_alive.remove(&*l_id2.borrow()));
+                sodium_ctx2.with_data_mut(|ctx| ctx.keep_listeners_alive.remove(&(*l_id2.borrow())));
             }
         );
-        *l_id.get_mut() = l.id;
+        *(*l_id).borrow_mut() = l.id;
         sodium_ctx.with_data_mut(|ctx| ctx.keep_listeners_alive.insert(l.id.clone(), l.clone()));
         l
     }
