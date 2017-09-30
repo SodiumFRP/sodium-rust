@@ -1,9 +1,9 @@
 use sodium::Cell;
 use sodium::IsCell;
 use sodium::SodiumCtx;
+use tests::assert_memory_freed;
 use std::cell::RefCell;
 use std::rc::Rc;
-use tests::assert_memory_freed;
 
 #[test]
 fn constant_cell() {
