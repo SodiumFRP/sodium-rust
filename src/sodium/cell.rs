@@ -449,6 +449,102 @@ pub trait IsCell<A: Clone + 'static> {
         )
     }
 
+    fn switch_s<CSA,SA>(sodium_ctx: &mut SodiumCtx, csa: CSA) -> Stream<A>
+        where CSA: IsCell<SA>,
+              SA: IsStream<A> + Clone + 'static
+    {
+        Transaction::apply(
+            sodium_ctx,
+            |sodium_ctx, trans| {
+                Cell::switch_s_::<CSA,SA>(sodium_ctx, trans, csa)
+            }
+        )
+    }
+
+    fn switch_s_<CSA,SA>(sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, csa: CSA) -> Stream<A>
+        where CSA: IsCell<SA>,
+              SA: IsStream<A> + Clone + 'static
+    {
+        let out = StreamWithSend::new(sodium_ctx);
+        let h2;
+        {
+            let out = out.clone();
+            h2 = TransactionHandlerRef::new(
+                move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
+                    let mut out = out.clone();
+                    out.send(sodium_ctx, trans2, a)
+                }
+            );
+        }
+        let current_listener: Rc<RefCell<Option<Listener>>> = Rc::new(RefCell::new(None));
+        let h1;
+        {
+            let current_listener = current_listener.clone();
+            let out = out.clone();
+            h1 = TransactionHandlerRef::new(
+                move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, sa: &SA| {
+                    let sodium_ctx = sodium_ctx.clone();
+                    let trans3 = trans2.clone();
+                    let out = out.clone();
+                    let h2 = h2.clone();
+                    let current_listener = current_listener.clone();
+                    let sa = sa.clone();
+                    trans2.last(
+                        move || {
+                            let mut sodium_ctx = sodium_ctx.clone();
+                            let sodium_ctx = &mut sodium_ctx;
+                            let mut trans3 = trans3.clone();
+                            let trans3 = &mut trans3;
+                            let out = out.clone();
+                            let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+                            let mut current_listener = (*current_listener).borrow_mut();
+                            match current_listener.as_ref() {
+                                Some(current_listener) =>
+                                    current_listener.unlisten(),
+                                None => ()
+                            }
+                            *current_listener =
+                                Some(
+                                    sa.listen2(
+                                        sodium_ctx,
+                                        out_node,
+                                        trans3,
+                                        h2.clone(),
+                                        true
+                                    )
+                                );
+                        }
+                    )
+                }
+            );
+        }
+        let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+        let l1 = csa.updates_(trans).listen2(
+            sodium_ctx,
+            out_node,
+            trans,
+            h1,
+            false
+        );
+        out
+            .unsafe_add_cleanup(l1)
+            .unsafe_add_cleanup(
+                Listener::new(
+                    sodium_ctx,
+                    move || {
+                        let mut current_listener = (*current_listener).borrow_mut();
+                        match current_listener.as_ref() {
+                            Some(current_listener) => {
+                                current_listener.unlisten();
+                            },
+                            None => ()
+                        }
+                        *current_listener = None;
+                    }
+                )
+            )
+    }
+
     fn listen<F>(&self, sodium_ctx: &mut SodiumCtx, action: F) -> Listener
         where F: Fn(&A) + 'static
     {
