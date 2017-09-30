@@ -24,24 +24,23 @@ pub trait HasNode {
     fn node_mut(&mut self) -> &mut Node;
 }
 
+pub static mut NUM_NODES: u32 = 0;
+
 pub struct Node {
     pub id: u32,
     pub rank: u64,
-    pub listeners: Vec<Target>,
-    pub weak_sodium_ctx_op: Option<Weak<RefCell<SodiumCtxData>>>
+    pub listeners: Vec<Target>
 }
 
 impl Node {
     pub fn new(sodium_ctx: &mut SodiumCtx, rank: u64) -> Node {
-        {
-            let mut sodium_ctx = (*sodium_ctx.data).borrow_mut();
-            sodium_ctx.num_nodes = sodium_ctx.num_nodes + 1;
+        unsafe {
+            NUM_NODES = NUM_NODES + 1;
         }
         Node {
             id: sodium_ctx.new_id(),
             rank: rank,
-            listeners: Vec::new(),
-            weak_sodium_ctx_op: Some(Rc::downgrade(&sodium_ctx.data))
+            listeners: Vec::new()
         }
     }
 
@@ -49,25 +48,15 @@ impl Node {
         Node {
             id: id,
             rank: rank,
-            listeners: Vec::new(),
-            weak_sodium_ctx_op: None
+            listeners: Vec::new()
         }
     }
 }
 
 impl Drop for Node {
     fn drop(&mut self) {
-        match self.weak_sodium_ctx_op.as_ref() {
-            Some(weak_sodium_ctx) => {
-                match weak_sodium_ctx.upgrade() {
-                    Some(sodium_ctx) => {
-                        let mut sodium_ctx = (*sodium_ctx).borrow_mut();
-                        sodium_ctx.num_nodes = sodium_ctx.num_nodes - 1;
-                    },
-                    None => ()
-                }
-            },
-            None => ()
+        unsafe {
+            NUM_NODES = NUM_NODES - 1;
         }
     }
 }

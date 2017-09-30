@@ -13,6 +13,7 @@ pub use self::lazy_cell::LazyCell;
 pub use self::listener::Listener;
 pub use self::node::HasNode;
 pub use self::node::Node;
+pub use self::node::NUM_NODES;
 pub use self::node::Target;
 pub use self::operational::Operational;
 pub use self::sodium_ctx::SodiumCtx;

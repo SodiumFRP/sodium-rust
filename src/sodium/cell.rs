@@ -628,7 +628,7 @@ impl<A> Clone for Cell<A> {
 }
 
 impl<A:'static + Clone> Cell<A> {
-    pub fn constant(sodium_ctx: &mut SodiumCtx, value: A) -> Cell<A> {
+    pub fn new(sodium_ctx: &mut SodiumCtx, value: A) -> Cell<A> {
         Cell {
             data: Rc::new(RefCell::new(
                 CellData {
