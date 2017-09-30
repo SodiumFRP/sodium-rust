@@ -388,10 +388,63 @@ pub trait IsCell<A: Clone + 'static> {
                                 ca.sample(sodium_ctx)
                             });
                 }
-                //let out = StreamWithSend::new(sodium_ctx);
-                //let current_listener: Option<RefCell<Listener>> = None;
-                // TODO: Finish this.
-                unimplemented!();
+                let out = StreamWithSend::new(sodium_ctx);
+                let current_listener: Rc<RefCell<Option<Listener>>> = Rc::new(RefCell::new(None));
+                let h;
+                {
+                    let out = out.clone();
+                    let current_listener = current_listener.clone();
+                    h = TransactionHandlerRef::new(
+                        move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, ca: &CA| {
+                            let out = out.clone();
+                            let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+                            let mut current_listener = (*current_listener).borrow_mut();
+                            match current_listener.as_ref() {
+                                Some(current_listener) =>
+                                    current_listener.unlisten(),
+                                None => ()
+                            }
+                            *current_listener =
+                                Some(
+                                    ca
+                                        .value_(sodium_ctx, trans)
+                                        .listen2(
+                                            sodium_ctx,
+                                            out_node,
+                                            trans,
+                                            TransactionHandlerRef::new(
+                                                move |sodium_ctx, trans2, a| {
+                                                    let mut out = out.clone();
+                                                    out.send(sodium_ctx, trans2, a);
+                                                }
+                                            ),
+                                            false
+                                        )
+                                );
+                        }
+                    );
+                }
+                let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+                let l1 = cca.value_(sodium_ctx, trans).listen_(sodium_ctx, out_node, h);
+                out
+                    .last_firing_only_(sodium_ctx, trans)
+                    .unsafe_add_cleanup(l1)
+                    .unsafe_add_cleanup(
+                        Listener::new(
+                            sodium_ctx,
+                            move || {
+                                let mut current_listener = (*current_listener).borrow_mut();
+                                match current_listener.as_ref() {
+                                    Some(current_listener) => {
+                                        current_listener.unlisten();
+                                    },
+                                    None => ()
+                                }
+                                *current_listener = None;
+                            }
+                        )
+                    )
+                    .hold_lazy(sodium_ctx, za)
             }
         )
     }
