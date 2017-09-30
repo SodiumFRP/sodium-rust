@@ -3,6 +3,8 @@ pub use self::cell::CellData;
 pub use self::cell::IsCell;
 pub use self::cell::HasCellData;
 pub use self::cell::HasCellDataRc;
+pub use self::cell_loop::CellLoop;
+pub use self::cell_sink::CellSink;
 pub use self::coalesce_handler::CoalesceHandler;
 pub use self::handler::HandlerRef;
 pub use self::handler::HandlerRefMut;
@@ -25,6 +27,7 @@ pub use self::transaction_handler::WeakTransactionHandlerRef;
 
 mod cell;
 mod cell_loop;
+mod cell_sink;
 mod coalesce_handler;
 mod handler;
 mod lazy;

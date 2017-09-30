@@ -11,7 +11,7 @@ use sodium::TransactionHandlerRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-struct CellLoop<A> {
+pub struct CellLoop<A> {
     data: Rc<RefCell<CellLoopData<A>>>
 }
 
