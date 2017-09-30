@@ -1,16 +1,37 @@
 use sodium::Cell;
 use sodium::IsCell;
+use sodium::HasCellDataRc;
+use sodium::HasCellData;
 use sodium::Lazy;
 use sodium::SodiumCtx;
 use sodium::Stream;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct LazyCell<A> {
     pub cell: Cell<A>
 }
 
-impl<A: Clone + 'static> IsCell<A> for LazyCell<A> {
-    fn to_cell_ref(&self) -> &Cell<A> {
-        &self.cell
+/*
+trait HasCellDataRc<A> {
+    fn cell_data(&self) -> Rc<RefCell<HasCellData<A>>>;
+}
+
+impl<A: 'static> HasCellDataRc<A> for Cell<A> {
+    fn cell_data(&self) -> Rc<RefCell<HasCellData<A>>> {
+        self.data.clone() as Rc<RefCell<HasCellData<A>>>
+    }
+}
+
+trait HasCellData<A> {
+    fn cell_data_ref(&self) -> &CellData<A>;
+    fn cell_data_mut(&mut self) -> &mut CellData<A>;
+}
+*/
+
+impl<A: Clone + 'static> HasCellDataRc<A> for LazyCell<A> {
+    fn cell_data(&self) -> Rc<RefCell<HasCellData<A>>> {
+        self.cell.data.clone()
     }
 
     // Implementation moved to Cell, because a cast from LazyCell to Cell will not use the correct

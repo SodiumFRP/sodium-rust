@@ -17,18 +17,20 @@ use std::rc::Rc;
 use std::ops::Deref;
 
 pub trait IsCell<A: Clone + 'static> {
-    fn to_cell_ref(&self) -> &Cell<A>;
+    fn to_cell(&self) -> Cell<A>;
 
     fn with_cell_data_ref<F,R>(&self, f: F) -> R where F: FnOnce(&CellData<A>)->R {
-        let data2 = (*self.to_cell_ref().data).borrow();
+        let data1 = self.to_cell();
+        let data2 = (*data1.data).borrow();
         let data3 = data2.borrow();
-        f(data3)
+        f(data3.cell_data_ref())
     }
 
     fn with_cell_data_mut<F,R>(&self, f: F) -> R where F: FnOnce(&mut CellData<A>)->R {
-        let mut data2 = (*self.to_cell_ref().data).borrow_mut();
+        let data1 = self.to_cell();
+        let mut data2 = (*data1.data).borrow_mut();
         let data3 = data2.borrow_mut();
-        f(data3)
+        f(data3.cell_data_mut())
     }
 
     fn new_value_(&self) -> A {
@@ -49,7 +51,7 @@ pub trait IsCell<A: Clone + 'static> {
     }
 
     fn sample_lazy(&self, sodium_ctx: &mut SodiumCtx) -> Lazy<A> {
-        let me = self.to_cell_ref().clone();
+        let me = self.to_cell();
         Transaction::apply(
             sodium_ctx,
             move |sodium_ctx, trans|
@@ -58,7 +60,7 @@ pub trait IsCell<A: Clone + 'static> {
     }
 
     fn sample_lazy_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) -> Lazy<A> {
-        let me = self.to_cell_ref().clone();
+        let me = self.to_cell();
         let s = LazySample::new(me.clone());
         {
             let s = s.clone();
@@ -67,6 +69,7 @@ pub trait IsCell<A: Clone + 'static> {
                     let mut s = s.data.deref().borrow_mut();
                     s.value_op = Some(
                         me.data.deref().borrow()
+                            .cell_data_ref()
                             .value_update.clone().unwrap_or_else(|| me.sample_no_trans_())
                     );
                     s.cell_op = None;
@@ -113,7 +116,7 @@ pub trait IsCell<A: Clone + 'static> {
                 )
             );
         }
-        let s_initial = s_spark.snapshot_to(sodium_ctx, self.to_cell_ref());
+        let s_initial = s_spark.snapshot_to(sodium_ctx, &self.to_cell());
         s_initial.merge(sodium_ctx, &self.updates_(trans), |_,a| a.clone())
     }
 
@@ -297,8 +300,8 @@ pub trait IsCell<A: Clone + 'static> {
                                 }
                             }
                         ));
-                let cf: Cell<Rc<F>> = cf.to_cell_ref().clone();
-                let ca: Cell<A> = ca.to_cell_ref().clone();
+                let cf: Cell<Rc<F>> = cf.to_cell();
+                let ca: Cell<A> = ca.to_cell();
                 out.last_firing_only_(sodium_ctx, trans)
                     .unsafe_add_cleanup(l1)
                     .unsafe_add_cleanup(l2)
@@ -559,7 +562,7 @@ pub trait IsCell<A: Clone + 'static> {
 }
 
 pub struct Cell<A> {
-    pub data: Rc<RefCell<CellData<A>>>
+    pub data: Rc<RefCell<HasCellData<A>>>
 }
 
 pub struct CellData<A> {
@@ -568,6 +571,30 @@ pub struct CellData<A> {
     pub value_update: Option<A>,
     pub cleanup: Option<Listener>,
     pub lazy_init_value: Option<Lazy<A>>
+}
+
+pub trait HasCellDataRc<A> {
+    fn cell_data(&self) -> Rc<RefCell<HasCellData<A>>>;
+}
+
+impl<A: 'static> HasCellDataRc<A> for Cell<A> {
+    fn cell_data(&self) -> Rc<RefCell<HasCellData<A>>> {
+        self.data.clone() as Rc<RefCell<HasCellData<A>>>
+    }
+}
+
+pub trait HasCellData<A> {
+    fn cell_data_ref(&self) -> &CellData<A>;
+    fn cell_data_mut(&mut self) -> &mut CellData<A>;
+}
+
+impl<A> HasCellData<A> for CellData<A> {
+    fn cell_data_ref(&self) -> &CellData<A> {
+        self
+    }
+    fn cell_data_mut(&mut self) -> &mut CellData<A> {
+        self
+    }
 }
 
 impl<A> Drop for CellData<A> {
@@ -579,9 +606,11 @@ impl<A> Drop for CellData<A> {
     }
 }
 
-impl<A: Clone + 'static> IsCell<A> for Cell<A> {
-    fn to_cell_ref(&self) -> &Cell<A> {
-        self
+impl<A: Clone + 'static,CA: HasCellDataRc<A>> IsCell<A> for CA {
+    fn to_cell(&self) -> Cell<A> {
+        Cell {
+            data: self.cell_data()
+        }
     }
 }
 

@@ -1,5 +1,8 @@
 pub use self::cell::Cell;
+pub use self::cell::CellData;
 pub use self::cell::IsCell;
+pub use self::cell::HasCellData;
+pub use self::cell::HasCellDataRc;
 pub use self::coalesce_handler::CoalesceHandler;
 pub use self::handler::HandlerRef;
 pub use self::handler::HandlerRefMut;
@@ -21,6 +24,7 @@ pub use self::transaction_handler::TransactionHandlerRef;
 pub use self::transaction_handler::WeakTransactionHandlerRef;
 
 mod cell;
+mod cell_loop;
 mod coalesce_handler;
 mod handler;
 mod lazy;

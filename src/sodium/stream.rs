@@ -157,7 +157,7 @@ pub trait IsStream<A: Clone + 'static> {
     }
 
     fn hold_lazy_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, initial_value: Lazy<A>) -> Cell<A> {
-        LazyCell::new(sodium_ctx, self.to_stream_ref().clone(), initial_value).to_cell_ref().clone()
+        LazyCell::new(sodium_ctx, self.to_stream_ref().clone(), initial_value).to_cell()
     }
 
     fn snapshot_to<CB,B>(&self, sodium_ctx: &mut SodiumCtx, c: &CB) -> Stream<B> where CB: IsCell<B>, B: Clone + 'static {
@@ -175,7 +175,7 @@ pub trait IsStream<A: Clone + 'static> {
         {
             let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
             let out = out.clone();
-            let c = c.to_cell_ref().clone();
+            let c = c.to_cell();
             l = self.listen_(
                 sodium_ctx,
                 out_node,
@@ -197,7 +197,7 @@ pub trait IsStream<A: Clone + 'static> {
               F: Fn(&A,&B,&C)->D + 'static
     {
         let sodium_ctx2 = sodium_ctx.clone();
-        let cc = cc.to_cell_ref().clone();
+        let cc = cc.to_cell();
         self.snapshot(
             sodium_ctx,
             cb,
@@ -220,8 +220,8 @@ pub trait IsStream<A: Clone + 'static> {
               F: Fn(&A,&B,&C,&D)->E + 'static
     {
         let sodium_ctx2 = sodium_ctx.clone();
-        let cc = cc.to_cell_ref().clone();
-        let cd = cd.to_cell_ref().clone();
+        let cc = cc.to_cell();
+        let cd = cd.to_cell();
         self.snapshot(
             sodium_ctx,
             cb,
@@ -246,9 +246,9 @@ pub trait IsStream<A: Clone + 'static> {
               FN: Fn(&A,&B,&C,&D,&E)->F + 'static
     {
         let sodium_ctx2 = sodium_ctx.clone();
-        let cc = cc.to_cell_ref().clone();
-        let cd = cd.to_cell_ref().clone();
-        let ce = ce.to_cell_ref().clone();
+        let cc = cc.to_cell();
+        let cd = cd.to_cell();
+        let ce = ce.to_cell();
         self.snapshot(
             sodium_ctx,
             cb,
@@ -275,10 +275,10 @@ pub trait IsStream<A: Clone + 'static> {
               FN: Fn(&A,&B,&C,&D,&E,&F)->G + 'static
     {
         let sodium_ctx2 = sodium_ctx.clone();
-        let cc = cc.to_cell_ref().clone();
-        let cd = cd.to_cell_ref().clone();
-        let ce = ce.to_cell_ref().clone();
-        let cf = cf.to_cell_ref().clone();
+        let cc = cc.to_cell();
+        let cd = cd.to_cell();
+        let ce = ce.to_cell();
+        let cf = cf.to_cell();
         self.snapshot(
             sodium_ctx,
             cb,
