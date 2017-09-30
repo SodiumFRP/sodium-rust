@@ -91,11 +91,7 @@ pub trait IsCell<A: Clone + 'static> {
 
     fn sample_no_trans_(&self) -> A {
         self.with_cell_data_mut(|data: &mut CellData<A>| {
-            if data.value.is_none() && data.lazy_init_value.is_some() {
-                data.value = Some(data.lazy_init_value.as_ref().unwrap().get());
-                data.lazy_init_value = None;
-            }
-            data.value.clone().unwrap()
+            data.sample_no_trans_()
         })
     }
 
@@ -586,6 +582,15 @@ impl<A: 'static> HasCellDataRc<A> for Cell<A> {
 pub trait HasCellData<A> {
     fn cell_data_ref(&self) -> &CellData<A>;
     fn cell_data_mut(&mut self) -> &mut CellData<A>;
+
+    fn sample_no_trans_(&mut self) -> A where A: Clone + 'static {
+        let data = self.cell_data_mut();
+        if data.value.is_none() && data.lazy_init_value.is_some() {
+            data.value = Some(data.lazy_init_value.as_ref().unwrap().get());
+            data.lazy_init_value = None;
+        }
+        data.value.clone().unwrap()
+    }
 }
 
 impl<A> HasCellData<A> for CellData<A> {
