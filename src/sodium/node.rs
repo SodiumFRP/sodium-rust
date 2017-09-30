@@ -1,4 +1,5 @@
 use sodium::SodiumCtx;
+use sodium::SodiumCtxData;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
 use sodium::WeakTransactionHandlerRef;
@@ -26,15 +27,21 @@ pub trait HasNode {
 pub struct Node {
     pub id: u32,
     pub rank: u64,
-    pub listeners: Vec<Target>
+    pub listeners: Vec<Target>,
+    pub weak_sodium_ctx_op: Option<Weak<RefCell<SodiumCtxData>>>
 }
 
 impl Node {
     pub fn new(sodium_ctx: &mut SodiumCtx, rank: u64) -> Node {
+        {
+            let mut sodium_ctx = (*sodium_ctx.data).borrow_mut();
+            sodium_ctx.num_nodes = sodium_ctx.num_nodes + 1;
+        }
         Node {
             id: sodium_ctx.new_id(),
             rank: rank,
-            listeners: Vec::new()
+            listeners: Vec::new(),
+            weak_sodium_ctx_op: Some(Rc::downgrade(&sodium_ctx.data))
         }
     }
 
@@ -42,7 +49,25 @@ impl Node {
         Node {
             id: id,
             rank: rank,
-            listeners: Vec::new()
+            listeners: Vec::new(),
+            weak_sodium_ctx_op: None
+        }
+    }
+}
+
+impl Drop for Node {
+    fn drop(&mut self) {
+        match self.weak_sodium_ctx_op.as_ref() {
+            Some(weak_sodium_ctx) => {
+                match weak_sodium_ctx.upgrade() {
+                    Some(sodium_ctx) => {
+                        let mut sodium_ctx = (*sodium_ctx).borrow_mut();
+                        sodium_ctx.num_nodes = sodium_ctx.num_nodes - 1;
+                    },
+                    None => ()
+                }
+            },
+            None => ()
         }
     }
 }
