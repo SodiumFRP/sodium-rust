@@ -1,9 +1,14 @@
 use sodium::Cell;
+use sodium::HandlerRefMut;
+use sodium::HasNode;
 use sodium::IsCell;
 use sodium::IsStream;
 use sodium::SodiumCtx;
 use sodium::Stream;
+use sodium::StreamWithSend;
 use sodium::Transaction;
+use sodium::TransactionHandlerRef;
+use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct Operational {}
@@ -37,55 +42,58 @@ impl Operational {
         where A: Clone + 'static,
               SA: IsStream<A>
     {
-        /*
+        let mut sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &mut sodium_ctx2;
         Operational::split(
             sodium_ctx,
             &s.map(
-                sodium_ctx,
-                |a| {
-                    Rc::new(vec![a].iter())
+                sodium_ctx2,
+                |a: &A| {
+                    Rc::new(vec![a.clone()])
                 }
             )
-        )*/
-        unimplemented!();
+        )
     }
 
     fn split<SC,C,A>(sodium_ctx: &mut SodiumCtx, s: &SC) -> Stream<A>
         where A: Clone + 'static,
-              C: Iterator<Item=A> + Clone + 'static,
+              C: IntoIterator<Item=A> + 'static + Clone,
               SC: IsStream<Rc<C>>
     {
-        unimplemented!();
-    }
-}
-
-/*
-	public static <A> Stream<A> defer(Stream<A> s)
-	{
-	    return split(s.map(new Lambda1<A,Iterable<A>>() {
-	        public Iterable<A> apply(A a) {
-                LinkedList<A> l = new LinkedList<A>();
-                l.add(a);
-                return l;
-            }
-        }));
-	}
-    public static <A, C extends Iterable<A>> Stream<A> split(Stream<C> s) {
-	    final StreamWithSend<A> out = new StreamWithSend<A>();
-	    Listener l1 = s.listen_(out.node, new TransactionHandler<C>() {
-	        public void run(Transaction trans, C as) {
-	            int childIx = 0;
-                for (final A a : as) {
-                    trans.post_(childIx, new Handler<Transaction>() {
-                        public void run(Transaction trans) {
-                            out.send(trans, a);
+        let out = StreamWithSend::new(sodium_ctx);
+        let l1;
+        {
+            let out = out.clone();
+            let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+            l1 = s.listen_(
+                sodium_ctx,
+                out_node,
+                TransactionHandlerRef::new(
+                    move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, c: &Rc<C>| {
+                        let mut child_ix = 0;
+                        for a in (**c).clone() {
+                            let a = a.clone();
+                            let out = out.clone();
+                            trans.post_(
+                                child_ix,
+                                HandlerRefMut::new(
+                                    move |sodium_ctx: &mut SodiumCtx, trans_op: &mut Option<Transaction>| {
+                                        let mut out = out.clone();
+                                        match trans_op {
+                                            &mut Some(ref mut trans) => {
+                                                out.send(sodium_ctx, trans, &a);
+                                            },
+                                            &mut None => ()
+                                        }
+                                    }
+                                )
+                            );
+                            child_ix = child_ix + 1;
                         }
-                    });
-                    childIx++;
-                }
-	        }
-	    });
-	    return out.unsafeAddCleanup(l1);
+                    }
+                )
+            );
+        }
+        out.unsafe_add_cleanup(l1)
     }
 }
-*/
