@@ -545,8 +545,8 @@ pub struct StreamData<A> {
 
 impl<A> Drop for StreamData<A> {
     fn drop(&mut self) {
-        for firing in &self.finalizers {
-            firing.unlisten();
+        for finalizer in &self.finalizers {
+            finalizer.unlisten();
         }
     }
 }

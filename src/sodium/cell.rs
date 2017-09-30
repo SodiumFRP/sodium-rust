@@ -570,6 +570,15 @@ pub struct CellData<A> {
     pub lazy_init_value: Option<Lazy<A>>
 }
 
+impl<A> Drop for CellData<A> {
+    fn drop(&mut self) {
+        match &self.cleanup {
+            &Some(ref cleanup) => cleanup.unlisten(),
+            &None => ()
+        }
+    }
+}
+
 impl<A: Clone + 'static> IsCell<A> for Cell<A> {
     fn to_cell_ref(&self) -> &Cell<A> {
         self
