@@ -29,7 +29,8 @@ pub struct SodiumCtxData {
     pub in_callback: u32,
     pub on_start_hooks: Vec<Box<Fn()>>,
     pub running_on_start_hooks: bool,
-    pub keep_listeners_alive: HashMap<u32,Listener>
+    pub keep_listeners_alive: HashMap<u32,Listener>,
+    pub num_nodes: u32
 }
 
 impl SodiumCtx {
@@ -43,7 +44,8 @@ impl SodiumCtx {
                 in_callback: 0,
                 on_start_hooks: Vec::new(),
                 running_on_start_hooks: false,
-                keep_listeners_alive: HashMap::new()
+                keep_listeners_alive: HashMap::new(),
+                num_nodes: 0
             }))
         }
     }

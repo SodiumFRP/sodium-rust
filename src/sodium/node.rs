@@ -24,39 +24,51 @@ pub trait HasNode {
     fn node_mut(&mut self) -> &mut Node;
 }
 
-pub static mut NUM_NODES: u32 = 0;
-
 pub struct Node {
     pub id: u32,
     pub rank: u64,
-    pub listeners: Vec<Target>
+    pub listeners: Vec<Target>,
+    pub weak_ctx_op: Option<Weak<RefCell<SodiumCtxData>>>
 }
 
 impl Node {
     pub fn new(sodium_ctx: &mut SodiumCtx, rank: u64) -> Node {
-        unsafe {
-            NUM_NODES = NUM_NODES + 1;
-        }
+        sodium_ctx.with_data_mut(
+            |data|
+                data.num_nodes = data.num_nodes + 1
+        );
         Node {
             id: sodium_ctx.new_id(),
             rank: rank,
-            listeners: Vec::new()
+            listeners: Vec::new(),
+            weak_ctx_op: Some(Rc::downgrade(&sodium_ctx.data))
         }
     }
 
+    // only for construction of NULL node that is contained in SodiumCtx
     pub fn new_(id: u32, rank: u64) -> Node {
         Node {
             id: id,
             rank: rank,
-            listeners: Vec::new()
+            listeners: Vec::new(),
+            weak_ctx_op: None
         }
     }
 }
 
 impl Drop for Node {
     fn drop(&mut self) {
-        unsafe {
-            NUM_NODES = NUM_NODES - 1;
+        match self.weak_ctx_op.as_ref() {
+            Some(weak_ctx) => {
+                match weak_ctx.upgrade() {
+                    Some(ctx) => {
+                        let mut data = (*ctx).borrow_mut();
+                        data.num_nodes = data.num_nodes - 1;
+                    },
+                    None => ()
+                }
+            },
+            None => ()
         }
     }
 }
