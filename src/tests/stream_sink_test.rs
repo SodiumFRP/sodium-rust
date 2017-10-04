@@ -30,6 +30,60 @@ fn map() {
     //assert_memory_freed(sodium_ctx);
 }
 
+#[test]
+fn map_to() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s = StreamSink::new(sodium_ctx);
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l =
+                s.map_to(sodium_ctx, "fusebox")
+                    .listen(
+                        sodium_ctx,
+                        move |a|
+                            (*out).borrow_mut().push(*a)
+                    );
+        }
+        s.send(sodium_ctx, &7);
+        s.send(sodium_ctx, &9);
+        assert_eq!(vec!["fusebox", "fusebox"], *(*out).borrow());
+        l.unlisten();
+    }
+    //assert_memory_freed(sodium_ctx);
+}
+
+#[test]
+fn merge_non_simultaneous() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s1 = StreamSink::new(sodium_ctx);
+        let s2 = StreamSink::new(sodium_ctx);
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l =
+                s2.or_else(sodium_ctx, &s1)
+                    .listen(
+                        sodium_ctx,
+                        move |a|
+                            (*out).borrow_mut().push(*a)
+                    );
+        }
+        s1.send(sodium_ctx, &7);
+        s2.send(sodium_ctx, &9);
+        s1.send(sodium_ctx, &8);
+        assert_eq!(vec![7, 9, 8], *(*out).borrow());
+        l.unlisten();
+    }
+    //assert_memory_freed(sodium_ctx);
+}
+
 /*
 import { expect } from 'chai';
 
