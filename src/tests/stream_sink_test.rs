@@ -1,6 +1,7 @@
 use sodium::IsStream;
 use sodium::SodiumCtx;
 use sodium::StreamSink;
+use sodium::Transaction;
 use tests::assert_memory_freed;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -79,6 +80,71 @@ fn merge_non_simultaneous() {
         s2.send(sodium_ctx, &9);
         s1.send(sodium_ctx, &8);
         assert_eq!(vec![7, 9, 8], *(*out).borrow());
+        l.unlisten();
+    }
+    //assert_memory_freed(sodium_ctx);
+}
+
+#[test]
+fn merge_simultaneous() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s1 = StreamSink::new_with_coalescer(sodium_ctx, |l, r| *r);
+        let s2 = StreamSink::new_with_coalescer(sodium_ctx, |l, r| *r);
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l =
+                s2.or_else(sodium_ctx, &s1)
+                    .listen(
+                        sodium_ctx,
+                        move |a|
+                            (*out).borrow_mut().push(*a)
+                    );
+        }
+        Transaction::run(
+            sodium_ctx,
+            |sodium_ctx| {
+                s1.send(sodium_ctx, &7);
+                s2.send(sodium_ctx, &60);
+            }
+        );
+        Transaction::run(
+            sodium_ctx,
+            |sodium_ctx| {
+                s1.send(sodium_ctx, &9);
+            }
+        );
+        Transaction::run(
+            sodium_ctx,
+            |sodium_ctx| {
+                s1.send(sodium_ctx, &7);
+                s1.send(sodium_ctx, &60);
+                s2.send(sodium_ctx, &8);
+                s2.send(sodium_ctx, &90);
+            }
+        );
+        Transaction::run(
+            sodium_ctx,
+            |sodium_ctx| {
+                s2.send(sodium_ctx, &8);
+                s2.send(sodium_ctx, &90);
+                s1.send(sodium_ctx, &7);
+                s1.send(sodium_ctx, &60);
+            }
+        );
+        Transaction::run(
+            sodium_ctx,
+            |sodium_ctx| {
+                s2.send(sodium_ctx, &8);
+                s1.send(sodium_ctx, &7);
+                s2.send(sodium_ctx, &90);
+                s1.send(sodium_ctx, &60);
+            }
+        );
+        assert_eq!(vec![60, 9, 90, 90, 90], *(*out).borrow());
         l.unlisten();
     }
     //assert_memory_freed(sodium_ctx);
