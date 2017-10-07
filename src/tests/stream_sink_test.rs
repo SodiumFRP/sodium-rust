@@ -28,7 +28,7 @@ fn map() {
         assert_eq!(vec![8], *(*out).borrow());
         l.unlisten();
     }
-    //assert_memory_freed(sodium_ctx);
+    assert_memory_freed(sodium_ctx);
 }
 
 #[test]
@@ -54,7 +54,7 @@ fn map_to() {
         assert_eq!(vec!["fusebox", "fusebox"], *(*out).borrow());
         l.unlisten();
     }
-    //assert_memory_freed(sodium_ctx);
+    assert_memory_freed(sodium_ctx);
 }
 
 #[test]

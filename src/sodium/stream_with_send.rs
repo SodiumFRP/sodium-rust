@@ -6,10 +6,15 @@ use sodium::SodiumCtx;
 use sodium::Stream;
 use sodium::StreamData;
 use sodium::Transaction;
+use sodium::WeakStream;
 use std::any::Any;
 
 pub struct StreamWithSend<A> {
     pub stream: Stream<A>
+}
+
+pub struct WeakStreamWithSend<A> {
+    pub stream: WeakStream<A>
 }
 
 impl<A> Clone for StreamWithSend<A> {
@@ -30,6 +35,12 @@ impl<A:'static + Clone> StreamWithSend<A> {
     pub fn new(sodium_ctx: &mut SodiumCtx) -> StreamWithSend<A> {
         StreamWithSend {
             stream: Stream::new(sodium_ctx)
+        }
+    }
+
+    pub fn downgrade(&self) -> WeakStreamWithSend<A> {
+        WeakStreamWithSend {
+            stream: self.stream.downgrade()
         }
     }
 
@@ -57,16 +68,23 @@ impl<A:'static + Clone> StreamWithSend<A> {
         }
         for target in targets {
             let target2;
+            let target_node2;
             {
-                let mut target_node = target.node.borrow_mut();
-                let target_node2: &mut HasNode = &mut *target_node;
-                let target_node3: &mut Node = target_node2.node_mut();
-                target2 = target.clone();
+                match target.node.upgrade() {
+                    Some(target_node) => {
+                        target_node2 = target_node.clone();
+                        let mut target_node = target_node.borrow_mut();
+                        let target_node2: &mut HasNode = &mut *target_node;
+                        let target_node3: &mut Node = target_node2.node_mut();
+                        target2 = target.clone();
+                    },
+                    None => continue
+                }
             }
             let a2 = a.clone();
             trans.prioritized(
                 sodium_ctx,
-                target.node.clone(),
+                target_node2,
                 HandlerRefMut::new(
                     move |sodium_ctx: &mut SodiumCtx, trans2| {
                         sodium_ctx.with_data_mut(|ctx| ctx.in_callback = ctx.in_callback + 1);
@@ -76,6 +94,25 @@ impl<A:'static + Clone> StreamWithSend<A> {
                     }
                 )
             )
+        }
+    }
+}
+
+impl<A: Clone + 'static> WeakStreamWithSend<A> {
+    pub fn upgrade(&self) -> Option<StreamWithSend<A>> {
+        self.stream
+            .upgrade()
+            .map(
+                |stream|
+                    StreamWithSend {
+                        stream: stream
+                    }
+            )
+    }
+
+    pub fn send(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &A) {
+        for stream_with_send in self.upgrade().iter() {
+            stream_with_send.send(sodium_ctx, trans, a);
         }
     }
 }

@@ -75,7 +75,7 @@ impl Drop for Node {
 
 pub struct Target {
     pub id: u32,
-    pub node: Rc<RefCell<HasNode>>,
+    pub node: Weak<RefCell<HasNode>>,
     // action here is really a strong reference to a weak reference, meaning it is still a weak
     // reference overall. This had to be done so we can use "Any" here.
     pub action: TransactionHandlerRef<Any>
@@ -105,7 +105,7 @@ impl Target {
         let action = action.downgrade();
         Target {
             id: sodium_ctx.new_id(),
-            node: node,
+            node: Rc::downgrade(&node),
             action: TransactionHandlerRef::new(
                 move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &Any| {
                     match action.upgrade() {
@@ -161,10 +161,15 @@ impl HasNode {
             rank = self_.rank.clone();
         }
         for target in listeners {
-            let node: &RefCell<HasNode> = target.node.borrow();
-            let mut node2: RefMut<HasNode> = node.borrow_mut();
-            let node3: &mut HasNode = node2.deref_mut();
-            node3.ensure_bigger_than(rank, visited);
+            match target.node.upgrade() {
+                Some(target_node) => {
+                    let node: &RefCell<HasNode> = target_node.borrow();
+                    let mut node2: RefMut<HasNode> = node.borrow_mut();
+                    let node3: &mut HasNode = node2.deref_mut();
+                    node3.ensure_bigger_than(rank, visited);
+                },
+                None => ()
+            }
         }
         return true;
     }

@@ -124,7 +124,7 @@ pub trait IsStream<A: Clone + 'static> {
     where F: Fn(&A)->B + 'static
     {
         let out = StreamWithSend::new(sodium_ctx);
-        let out2 = out.clone();
+        let out2 = out.downgrade();
         let l = self.listen_(
             sodium_ctx,
             out.stream.data.clone() as Rc<RefCell<HasNode>>,
@@ -567,7 +567,7 @@ struct ListenerImpl<A> {
     done: bool
 }
 
-impl<A:'static> ListenerImpl<A> {
+impl<A: Clone + 'static> ListenerImpl<A> {
     fn new(event: Stream<A>, action: TransactionHandlerRef<A>, target: Target) -> ListenerImpl<A>
     {
         ListenerImpl {
