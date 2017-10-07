@@ -174,7 +174,7 @@ pub trait IsStream<A: Clone + 'static> {
         let l;
         {
             let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
-            let out = out.clone();
+            let out = out.downgrade();
             let c = c.to_cell();
             l = self.listen_(
                 sodium_ctx,
@@ -307,7 +307,7 @@ pub trait IsStream<A: Clone + 'static> {
         );
         let h;
         {
-            let out = out.clone();
+            let out = out.downgrade();
             h = TransactionHandlerRef::new(
                 move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &A| {
                     out.send(sodium_ctx, trans, a);
@@ -335,7 +335,7 @@ pub trait IsStream<A: Clone + 'static> {
 
     fn coalesce_<F>(&self, sodium_ctx: &mut SodiumCtx, trans1: &mut Transaction, f: F) -> Stream<A> where F: Fn(&A,&A)->A + 'static {
         let out = StreamWithSend::new(sodium_ctx);
-        let h = CoalesceHandler::new(f, &out);
+        let h = CoalesceHandler::new(f, out.downgrade());
         let l = self.listen2(
             sodium_ctx,
             out.to_stream_ref().data.clone() as Rc<RefCell<HasNode>>,
@@ -354,8 +354,8 @@ pub trait IsStream<A: Clone + 'static> {
         let out = StreamWithSend::new(sodium_ctx);
         let l;
         {
-            let out = out.clone();
             let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+            let out = out.downgrade();
             l = self.listen_(
                 sodium_ctx,
                 out_node,
@@ -375,8 +375,8 @@ pub trait IsStream<A: Clone + 'static> {
         let out = StreamWithSend::new(sodium_ctx);
         let l;
         {
-            let out = out.clone();
             let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+            let out = out.downgrade();
             l = self_.listen_(
                 sodium_ctx,
                 out_node,
@@ -473,7 +473,7 @@ pub trait IsStream<A: Clone + 'static> {
         let l_cell = Rc::new(RefCell::new(None));
         let l;
         {
-            let out = out.clone();
+            let out = out.downgrade();
             let l_cell = l_cell.clone();
             l = self.listen_(
                 sodium_ctx,

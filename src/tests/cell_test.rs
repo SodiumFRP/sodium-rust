@@ -24,5 +24,5 @@ fn constant_cell() {
         assert_eq!(vec![12], *(*out).borrow());
         l.unlisten();
     }
-    //assert_memory_freed(sodium_ctx);
+    assert_memory_freed(sodium_ctx);
 }

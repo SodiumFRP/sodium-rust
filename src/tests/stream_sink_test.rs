@@ -82,7 +82,7 @@ fn merge_non_simultaneous() {
         assert_eq!(vec![7, 9, 8], *(*out).borrow());
         l.unlisten();
     }
-    //assert_memory_freed(sodium_ctx);
+    assert_memory_freed(sodium_ctx);
 }
 
 #[test]
@@ -147,7 +147,7 @@ fn merge_simultaneous() {
         assert_eq!(vec![60, 9, 90, 90, 90], *(*out).borrow());
         l.unlisten();
     }
-    //assert_memory_freed(sodium_ctx);
+    assert_memory_freed(sodium_ctx);
 }
 
 /*

@@ -24,6 +24,7 @@ pub use self::stream::WeakStream;
 pub use self::stream_sink::StreamSink;
 pub use self::stream_loop::StreamLoop;
 pub use self::stream_with_send::StreamWithSend;
+pub use self::stream_with_send::WeakStreamWithSend;
 pub use self::transaction::Transaction;
 pub use self::transaction_handler::TransactionHandlerRef;
 pub use self::transaction_handler::WeakTransactionHandlerRef;

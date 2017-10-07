@@ -9,6 +9,7 @@ use sodium::Stream;
 use sodium::StreamWithSend;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
+use sodium::WeakStreamWithSend;
 use std::borrow::Borrow;
 use std::borrow::BorrowMut;
 use std::cell::Ref;
@@ -261,7 +262,7 @@ pub trait IsCell<A: Clone + 'static> {
                         |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &Lazy<B>| {}
                     )
                 );
-                let h: ApplyHandler<A,B> = ApplyHandler::new(out.clone());
+                let h: ApplyHandler<A,B> = ApplyHandler::new(out.downgrade());
                 let l1;
                 {
                     let h = h.clone();
@@ -742,11 +743,11 @@ impl<A,B> Clone for ApplyHandler<A,B> {
 struct ApplyHandlerData<A,B> {
     f_op: Option<Rc<Fn(&A)->B>>,
     a_op: Option<A>,
-    out: StreamWithSend<Lazy<B>>
+    out: WeakStreamWithSend<Lazy<B>>
 }
 
 impl<A:'static + Clone,B:'static> ApplyHandler<A,B> {
-    fn new(out: StreamWithSend<Lazy<B>>) -> ApplyHandler<A,B> {
+    fn new(out: WeakStreamWithSend<Lazy<B>>) -> ApplyHandler<A,B> {
         ApplyHandler {
             data: Rc::new(RefCell::new(
                 ApplyHandlerData {
@@ -760,7 +761,13 @@ impl<A:'static + Clone,B:'static> ApplyHandler<A,B> {
 
     fn run(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) {
         let out = self.data.deref().borrow().out.clone();
-        let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+        let out_node;
+        match out.stream.upgrade() {
+            Some(stream) => {
+                out_node = stream.data.clone() as Rc<RefCell<HasNode>>;
+            },
+            None => return
+        }
         let self_ = self.clone();
         trans.prioritized(
             sodium_ctx,

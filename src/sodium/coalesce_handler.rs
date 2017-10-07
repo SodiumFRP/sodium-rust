@@ -1,9 +1,9 @@
 use sodium::HandlerRefMut;
 use sodium::HasNode;
 use sodium::SodiumCtx;
-use sodium::StreamWithSend;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
+use sodium::WeakStreamWithSend;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -21,16 +21,16 @@ impl<A> Clone for CoalesceHandler<A> {
 
 pub struct CoalesceHandlerData<A> {
     f: Rc<Fn(&A,&A)->A>,
-    out: StreamWithSend<A>,
+    out: WeakStreamWithSend<A>,
     accum_op: Option<A>
 }
 
 impl<A: 'static + Clone> CoalesceHandler<A> {
-    pub fn new<F>(f: F, out: &StreamWithSend<A>) -> CoalesceHandler<A> where F: Fn(&A,&A)->A + 'static {
+    pub fn new<F>(f: F, out: WeakStreamWithSend<A>) -> CoalesceHandler<A> where F: Fn(&A,&A)->A + 'static {
         CoalesceHandler {
             data: Rc::new(RefCell::new(CoalesceHandlerData {
                 f: Rc::new(f),
-                out: out.clone(),
+                out: out,
                 accum_op: None
             }))
         }
@@ -59,26 +59,31 @@ impl<A: 'static + Clone> CoalesceHandler<A> {
             }
         };
         if accum_op_was_none {
-            trans1.prioritized(
-                sodium_ctx,
-                data.out.stream.data.clone() as Rc<RefCell<HasNode>>,
-                HandlerRefMut::new(
-                    move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction| {
-                        let mut data = self_.data.borrow_mut();
-                        match &data.accum_op {
-                            &Some(ref accum) => {
-                                data.out.send(
-                                    sodium_ctx,
-                                    trans2,
-                                    accum
-                                )
-                            },
-                            &None => ()
-                        }
-                        data.accum_op = None;
-                    }
-                )
-            );
+            match data.out.upgrade() {
+                Some(out) => {
+                    trans1.prioritized(
+                        sodium_ctx,
+                        out.stream.data.clone() as Rc<RefCell<HasNode>>,
+                        HandlerRefMut::new(
+                            move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction| {
+                                let mut data = self_.data.borrow_mut();
+                                match &data.accum_op {
+                                    &Some(ref accum) => {
+                                        data.out.send(
+                                            sodium_ctx,
+                                            trans2,
+                                            accum
+                                        )
+                                    },
+                                    &None => ()
+                                }
+                                data.accum_op = None;
+                            }
+                        )
+                    );
+                },
+                None => ()
+            }
         }
 
     }

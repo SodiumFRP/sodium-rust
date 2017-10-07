@@ -41,7 +41,7 @@ impl<A: Clone + 'static> StreamSink<A> {
         let out = StreamWithSend::new(sodium_ctx);
         StreamSink {
             stream: out.clone(),
-            coalescer: CoalesceHandler::new(f, &out)
+            coalescer: CoalesceHandler::new(f, out.downgrade())
         }
     }
 

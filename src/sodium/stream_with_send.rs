@@ -25,6 +25,14 @@ impl<A> Clone for StreamWithSend<A> {
     }
 }
 
+impl<A> Clone for WeakStreamWithSend<A> {
+    fn clone(&self) -> Self {
+        WeakStreamWithSend {
+            stream: self.stream.clone()
+        }
+    }
+}
+
 impl<A:'static + Clone> IsStream<A> for StreamWithSend<A> {
     fn to_stream_ref(&self) -> &Stream<A> {
         &self.stream
