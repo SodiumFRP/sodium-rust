@@ -99,6 +99,9 @@ pub trait IsStream<A: Clone + 'static> {
             node_target = node_target2;
             regen = regen2;
         }
+        if regen {
+            trans.with_data_mut(|data| data.to_regen = true);
+        }
         let firings = self__.firings.clone();
         if !suppress_earlier_firings && !firings.is_empty() {
             let action = action.clone();
