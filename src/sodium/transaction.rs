@@ -137,25 +137,7 @@ impl Transaction {
     }
 
     pub fn apply<F,A>(sodium_ctx: &mut SodiumCtx, code: F) -> A where F: FnOnce(&mut SodiumCtx, &mut Transaction)->A {
-        let trans_was = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-        Transaction::start_if_necessary(sodium_ctx);
-        let r;
-        {
-            let mut trans: Option<Transaction> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-            r = code(sodium_ctx, &mut trans.unwrap());
-        }
-        if trans_was.is_none() {
-            let mut trans: Option<Transaction> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-            match &mut trans {
-                &mut Some(ref mut trans5) => {
-                    let trans6: &mut Transaction = trans5;
-                    trans6.close(sodium_ctx);
-                },
-                &mut None => ()
-            }
-        }
-        sodium_ctx.with_data_mut(|ctx| ctx.current_transaction_op = trans_was);
-        r
+        Transaction::run_trans(sodium_ctx, code)
     }
 
     pub fn start_if_necessary(sodium_ctx: &mut SodiumCtx) {
