@@ -111,43 +111,25 @@ impl Transaction {
         }
     }
 
-    pub fn run<F,A>(sodium_ctx: &mut SodiumCtx, code: F) -> A where F: Fn(&mut SodiumCtx)->A {
-        let trans_was = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-        Transaction::start_if_necessary(sodium_ctx);
-        let r = code(sodium_ctx);
-        if trans_was.is_none() {
-            let trans =
-                sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-            trans.unwrap().close(sodium_ctx);
-        }
-        sodium_ctx.with_data_mut(|ctx| ctx.current_transaction_op = trans_was);
-        r
+    pub fn run<F,A>(sodium_ctx: &mut SodiumCtx, code: F) -> A where F: FnOnce(&mut SodiumCtx)->A {
+        Transaction::run_trans(
+            sodium_ctx,
+            move |sodium_ctx, trans| {
+                code(sodium_ctx)
+            }
+        )
     }
 
-    pub fn run_trans(sodium_ctx: &mut SodiumCtx, code: HandlerRefMut<Transaction>) {
-        let trans_was = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
+    pub fn run_trans<F,A>(sodium_ctx: &mut SodiumCtx, code: F) -> A where F: FnOnce(&mut SodiumCtx, &mut Transaction)->A {
+        let trans_was_op = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
         Transaction::start_if_necessary(sodium_ctx);
-        {
-            let mut trans: Option<Transaction> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-            match &mut trans {
-                &mut Some(ref mut trans5) => {
-                    let trans6: &mut Transaction = trans5;
-                    code.run(sodium_ctx, trans6);
-                },
-                &mut None => ()
-            }
+        let mut trans = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone()).unwrap();
+        let r = code(sodium_ctx, &mut trans);
+        if trans_was_op.is_none() {
+            trans.close(sodium_ctx);
+            sodium_ctx.with_data_mut(|ctx| ctx.current_transaction_op = None);
         }
-        if trans_was.is_none() {
-            let mut trans: Option<Transaction> = sodium_ctx.with_data_ref(|ctx| ctx.current_transaction_op.clone());
-            match &mut trans {
-                &mut Some(ref mut trans5) => {
-                    let trans6: &mut Transaction = trans5;
-                    trans6.close(sodium_ctx);
-                },
-                &mut None => ()
-            }
-        }
-        sodium_ctx.with_data_mut(|ctx| ctx.current_transaction_op = trans_was);
+        r
     }
 
     pub fn on_start<F>(sodium_ctx: &mut SodiumCtx, r: F) where F: Fn() + 'static {
@@ -226,19 +208,17 @@ impl Transaction {
         let action2 = Rc::new(action);
         Transaction::run_trans(
             sodium_ctx,
-            HandlerRefMut::new(
-                move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction| {
-                    let action3 = action2.clone();
-                    trans.post_(
-                        -1,
-                        HandlerRefMut::new(
-                            move |_, _| {
-                                action3();
-                            }
-                        )
-                    );
-                }
-            )
+            move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction| {
+                let action3 = action2.clone();
+                trans.post_(
+                    -1,
+                    HandlerRefMut::new(
+                        move |_, _| {
+                            action3();
+                        }
+                    )
+                );
+            }
         );
     }
 

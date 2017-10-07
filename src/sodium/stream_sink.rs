@@ -46,18 +46,14 @@ impl<A: Clone + 'static> StreamSink<A> {
     }
 
     pub fn send(&self, sodium_ctx: &mut SodiumCtx, a: &A) {
-        let self_ = self.clone();
-        let a = a.clone();
         Transaction::run_trans(
             sodium_ctx,
-            HandlerRefMut::new(
-                move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction| {
-                    if sodium_ctx.with_data_ref(|ctx| ctx.in_callback > 0) {
-                        panic!("You are not allowed to use send() inside a Sodium callback");
-                    }
-                    self_.coalescer.run(sodium_ctx, trans, &a.clone());
+            |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction| {
+                if sodium_ctx.with_data_ref(|ctx| ctx.in_callback > 0) {
+                    panic!("You are not allowed to use send() inside a Sodium callback");
                 }
-            )
+                self.coalescer.run(sodium_ctx, trans, a);
+            }
         )
     }
 }

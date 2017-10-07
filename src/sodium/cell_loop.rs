@@ -72,41 +72,39 @@ impl<A: Clone + 'static> CellLoop<A> {
         let self_ = r.clone();
         Transaction::run_trans(
             sodium_ctx,
-            HandlerRefMut::new(
-                move |sodium_ctx: &mut SodiumCtx, trans1: &mut Transaction| {
-                    let sodium_ctx = sodium_ctx.clone();
-                    let self__ = self_.clone();
-                    self_.with_cell_data_mut(move |data: &mut CellData<A>| {
-                        let mut sodium_ctx2 = sodium_ctx.clone();
-                        let self__ = self__.clone();
-                        data.cleanup = Some(data.str.listen2(
-                            &mut sodium_ctx2,
-                            sodium_ctx.null_node(),
-                            trans1,
-                            TransactionHandlerRef::new(
-                                move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
-                                    let self___ = self__.clone();
-                                    self__.with_cell_data_mut(move |data| {
-                                        if data.value_update.is_none() {
-                                            trans2.last(
-                                                move || {
-                                                    self___.with_cell_data_mut(|data| {
-                                                        data.value = data.value_update.clone();
-                                                        data.lazy_init_value = None;
-                                                        data.value_update = None;
-                                                    });
-                                                }
-                                            );
-                                        }
-                                        data.value_update = Some(a.clone());
-                                    });
-                                }
-                            ),
-                            false
-                        ));
-                    })
-                }
-            )
+            move |sodium_ctx: &mut SodiumCtx, trans1: &mut Transaction| {
+                let sodium_ctx = sodium_ctx.clone();
+                let self__ = self_.clone();
+                self_.with_cell_data_mut(move |data: &mut CellData<A>| {
+                    let mut sodium_ctx2 = sodium_ctx.clone();
+                    let self__ = self__.clone();
+                    data.cleanup = Some(data.str.listen2(
+                        &mut sodium_ctx2,
+                        sodium_ctx.null_node(),
+                        trans1,
+                        TransactionHandlerRef::new(
+                            move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
+                                let self___ = self__.clone();
+                                self__.with_cell_data_mut(move |data| {
+                                    if data.value_update.is_none() {
+                                        trans2.last(
+                                            move || {
+                                                self___.with_cell_data_mut(|data| {
+                                                    data.value = data.value_update.clone();
+                                                    data.lazy_init_value = None;
+                                                    data.value_update = None;
+                                                });
+                                            }
+                                        );
+                                    }
+                                    data.value_update = Some(a.clone());
+                                });
+                            }
+                        ),
+                        false
+                    ));
+                })
+            }
         );
         r
     }
