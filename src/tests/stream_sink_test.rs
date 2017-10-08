@@ -150,6 +150,41 @@ fn merge_simultaneous() {
     assert_memory_freed(sodium_ctx);
 }
 
+#[test]
+fn coalesce() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s = StreamSink::new_with_coalescer(sodium_ctx, |a, b| *a + *b);
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = s.listen(
+                sodium_ctx,
+                move |a|
+                    out.borrow_mut().push(*a)
+            );
+        }
+        Transaction::run(
+            sodium_ctx,
+            |sodium_ctx| {
+                s.send(sodium_ctx, &2);
+            }
+        );
+        Transaction::run(
+            sodium_ctx,
+            |sodium_ctx| {
+                s.send(sodium_ctx, &8);
+                s.send(sodium_ctx, &40);
+            }
+        );
+        assert_eq!(vec![2, 48], *out.borrow());
+        l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
 /*
 import { expect } from 'chai';
 
