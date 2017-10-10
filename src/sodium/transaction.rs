@@ -50,10 +50,11 @@ impl Ord for Entry {
         let c = (*self.rank.borrow()).node_ref().rank.cmp(
             &((*other.rank.borrow()).node_ref().rank)
         );
-        match c {
+        let ordering = match c {
             Ordering::Equal => self.seq.cmp(&other.seq),
             _ => c
-        }
+        };
+        ordering.reverse()
     }
 }
 

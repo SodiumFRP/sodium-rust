@@ -272,42 +272,6 @@ fn merge() {
     assert_memory_freed(sodium_ctx);
 }
 
-#[test]
-fn internal_coalesce_test() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
-    {
-        let s = StreamWithSend::new(sodium_ctx);
-        let out = Rc::new(RefCell::new(Vec::new()));
-        let l;
-        {
-            let out = out.clone();
-            l = Transaction::run_trans(
-                sodium_ctx,
-                |sodium_ctx, trans| {
-                    s.coalesce_(sodium_ctx, trans, |_,r| *r)
-                        .listen(
-                            sodium_ctx,
-                            move |a|
-                                out.borrow_mut().push(*a)
-                        )
-                }
-            );
-        }
-        Transaction::run_trans(
-            sodium_ctx,
-            |sodium_ctx, trans| {
-                s.send(sodium_ctx, trans, &1);
-                s.send(sodium_ctx, trans, &2);
-                s.send(sodium_ctx, trans, &3);
-            }
-        );
-        assert_eq!(vec![6], *out.borrow());
-        l.unlisten();
-    }
-    assert_memory_freed(sodium_ctx);
-}
-
 /*
 import { expect } from 'chai';
 
