@@ -11,6 +11,8 @@ use std::cmp::PartialOrd;
 use std::collections::BinaryHeap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::mem::swap;
 use std::mem::replace;
 use std::ops::Deref;
@@ -66,6 +68,32 @@ impl Eq for Entry {}
 impl PartialEq for Entry {
     fn eq(&self, other: &Entry) -> bool {
         self.cmp(other) == Ordering::Equal
+    }
+}
+
+pub struct WrappedEntry {
+    pub entry: Entry
+}
+
+impl Clone for WrappedEntry {
+    fn clone(&self) -> Self {
+        WrappedEntry {
+            entry: self.entry.clone()
+        }
+    }
+}
+
+impl Hash for WrappedEntry {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.entry.seq.hash(state)
+    }
+}
+
+impl Eq for WrappedEntry {}
+
+impl PartialEq for WrappedEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.entry.seq.eq(&other.entry.seq)
     }
 }
 
