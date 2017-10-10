@@ -9,8 +9,8 @@ use std::cmp::Ordering;
 use std::cmp::PartialEq;
 use std::cmp::PartialOrd;
 use std::collections::BinaryHeap;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::mem::swap;
@@ -112,7 +112,7 @@ impl Clone for Transaction {
 pub struct TransactionData {
     pub to_regen: bool,
     pub prioritized_q: BinaryHeap<Entry>,
-    pub entries: BTreeSet<Entry>,
+    pub entries: HashSet<WrappedEntry>,
     pub last_q: Vec<Box<Fn()>>,
     pub post_q: HashMap<i32,HandlerRefMut<Option<Transaction>>>
 }
@@ -132,7 +132,7 @@ impl Transaction {
             data: Rc::new(RefCell::new(TransactionData {
                 to_regen: false,
                 prioritized_q: BinaryHeap::new(),
-                entries: BTreeSet::new(),
+                entries: HashSet::new(),
                 last_q: Vec::new(),
                 post_q: HashMap::new()
             }))
@@ -188,7 +188,7 @@ impl Transaction {
         let e = Entry::new(sodium_ctx, rank, action);
         self.with_data_mut(|data| {
             data.prioritized_q.push(e.clone());
-            data.entries.insert(e);
+            data.entries.insert(WrappedEntry { entry: e });
         });
     }
 
@@ -238,7 +238,7 @@ impl Transaction {
                 data.to_regen = false;
                 data.prioritized_q.clear();
                 for e in &data.entries {
-                    data.prioritized_q.push(e.clone());
+                    data.prioritized_q.push(e.entry.clone());
                 }
             }
         });
@@ -251,7 +251,7 @@ impl Transaction {
                 Some(e) => {
                     {
                         let e = e.clone();
-                        self.with_data_mut(move |data| data.entries.remove(&e));
+                        self.with_data_mut(move |data| data.entries.remove(&WrappedEntry { entry: e }));
                     }
                     e.action.run(sodium_ctx, self);
                 },
