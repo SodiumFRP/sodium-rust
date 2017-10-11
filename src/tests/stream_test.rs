@@ -1,3 +1,4 @@
+use sodium::CellSink;
 use sodium::IsStream;
 use sodium::SodiumCtx;
 use sodium::Stream;
@@ -309,6 +310,38 @@ fn loop_() {
         sa.send(sodium_ctx, &52);
         l.unlisten();
         assert_eq!(vec![2, 7], *out.borrow());
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+#[test]
+fn gate() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s = StreamSink::new(sodium_ctx);
+        let pred = CellSink::new(sodium_ctx, true);
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l =
+                s
+                    .gate(sodium_ctx, &pred)
+                    .listen(
+                        sodium_ctx,
+                        move |a|
+                            out.borrow_mut().push(*a)
+                    );
+        }
+        s.send(sodium_ctx, &"H");
+        pred.send(sodium_ctx, &false);
+        s.send(sodium_ctx, &"O");
+        pred.send(sodium_ctx, &true);
+        s.send(sodium_ctx, &"I");
+        l.unlisten();
+
+        assert_eq!(vec!["H", "I"], *out.borrow());
     }
     assert_memory_freed(sodium_ctx);
 }

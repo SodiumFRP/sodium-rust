@@ -20,7 +20,7 @@ impl<A: Clone + 'static> HasCellDataRc<A> for CellSink<A> {
 }
 
 impl<A: Clone + 'static> CellSink<A> {
-    fn new(sodium_ctx: &mut SodiumCtx, init_value: A) -> CellSink<A> {
+    pub fn new(sodium_ctx: &mut SodiumCtx, init_value: A) -> CellSink<A> {
         let str = StreamSink::new(sodium_ctx);
         CellSink {
             cell: Cell::new_(sodium_ctx, str.to_stream_ref().clone(), Some(init_value)),
@@ -28,7 +28,7 @@ impl<A: Clone + 'static> CellSink<A> {
         }
     }
 
-    fn new_with_coalescer<F>(sodium_ctx: &mut SodiumCtx, init_value: A, f: F) -> CellSink<A>
+    pub fn new_with_coalescer<F>(sodium_ctx: &mut SodiumCtx, init_value: A, f: F) -> CellSink<A>
         where F: Fn(&A,&A)->A + 'static
     {
         let str = StreamSink::new_with_coalescer(sodium_ctx, f);
@@ -38,7 +38,7 @@ impl<A: Clone + 'static> CellSink<A> {
         }
     }
 
-    fn send(&self, sodium_ctx: &mut SodiumCtx, a: &A) {
+    pub fn send(&self, sodium_ctx: &mut SodiumCtx, a: &A) {
         self.str.send(sodium_ctx, a)
     }
 }
