@@ -127,10 +127,7 @@ impl HasNode {
     pub fn link_to<A:'static>(&mut self, sodium_ctx: &mut SodiumCtx, target: Rc<RefCell<HasNode>>, action: TransactionHandlerRef<A>) -> (Target, bool) {
         let changed;
         {
-            let target2: &RefCell<HasNode> = target.borrow();
-            let mut target3: RefMut<HasNode> = target2.borrow_mut();
-            let target4: &mut HasNode = target3.deref_mut();
-            changed = target4.ensure_bigger_than(self.node_ref().rank, &mut HashSet::new());
+            changed = HasNode::ensure_bigger_than(target.clone(), self.node_ref().rank, &mut HashSet::new());
         }
         let t = Target::new(sodium_ctx, target, action);
         self.node_mut().listeners.push(t.clone());
@@ -147,11 +144,12 @@ impl HasNode {
         )
     }
 
-    pub fn ensure_bigger_than(&mut self, limit: u64, visited: &mut HashSet<u32>) -> bool {
+    pub fn ensure_bigger_than(self_: Rc<RefCell<Self>>, limit: u64, visited: &mut HashSet<u32>) -> bool {
         let listeners;
         let rank;
         {
-            let self_ = self.node_mut();
+            let mut self_ = (*self_).borrow_mut();
+            let self_ = self_.node_mut();
             if self_.rank > limit || visited.contains(&self_.id) {
                 return false;
             }
@@ -163,10 +161,7 @@ impl HasNode {
         for target in listeners {
             match target.node.upgrade() {
                 Some(target_node) => {
-                    let node: &RefCell<HasNode> = target_node.borrow();
-                    let mut node2: RefMut<HasNode> = node.borrow_mut();
-                    let node3: &mut HasNode = node2.deref_mut();
-                    node3.ensure_bigger_than(rank, visited);
+                    HasNode::ensure_bigger_than(target_node, rank, visited);
                 },
                 None => ()
             }
