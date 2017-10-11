@@ -1,6 +1,7 @@
 use sodium::IsStream;
 use sodium::SodiumCtx;
 use sodium::Stream;
+use sodium::StreamLoop;
 use sodium::StreamSink;
 use sodium::StreamWithSend;
 use sodium::Transaction;
@@ -268,6 +269,46 @@ fn merge() {
         sa.send(sodium_ctx, &52);
         assert_eq!(vec![2, 7], *out.borrow());
         l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+#[test]
+fn loop_() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let sa = StreamSink::new(sodium_ctx);
+        let sc = Transaction::run(
+            sodium_ctx,
+            |sodium_ctx| {
+                let mut sb = StreamLoop::new(sodium_ctx);
+                let sc_ =
+                    sa
+                        .map(sodium_ctx, |x| *x % 10)
+                        .merge(sodium_ctx, &sb, |x, y| *x + *y);
+                let sb_out =
+                    sa
+                        .map(sodium_ctx, |x| *x / 10)
+                        .filter(sodium_ctx, |x| *x != 0);
+                sb.loop_(sodium_ctx, sb_out);
+                sc_
+            }
+        );
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = sc.listen(
+                sodium_ctx,
+                move |a|
+                    out.borrow_mut().push(*a)
+            );
+        }
+        sa.send(sodium_ctx, &2);
+        sa.send(sodium_ctx, &52);
+        l.unlisten();
+        assert_eq!(vec![2, 7], *out.borrow());
     }
     assert_memory_freed(sodium_ctx);
 }
