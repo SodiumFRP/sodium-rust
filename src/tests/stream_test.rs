@@ -1,4 +1,5 @@
 use sodium::CellSink;
+use sodium::IsCell;
 use sodium::IsStream;
 use sodium::SodiumCtx;
 use sodium::Stream;
@@ -346,341 +347,65 @@ fn gate() {
     assert_memory_freed(sodium_ctx);
 }
 
+#[test]
+fn collect() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let ea = StreamSink::new(sodium_ctx);
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let sum = ea.collect(sodium_ctx, 0, |a,s| (*a + *s + 100, *a + *s));
+        let l;
+        {
+            let out = out.clone();
+            l =
+                sum.listen(
+                    sodium_ctx,
+                    move |a|
+                        out.borrow_mut().push(*a)
+                );
+        }
+        ea.send(sodium_ctx, &5);
+        ea.send(sodium_ctx, &7);
+        ea.send(sodium_ctx, &1);
+        ea.send(sodium_ctx, &2);
+        ea.send(sodium_ctx, &3);
+        l.unlisten();
+        assert_eq!(vec![105, 112, 113, 115, 118], *out.borrow());
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+#[test]
+fn accum() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let ea = StreamSink::new(sodium_ctx);
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let sum = ea.accum(sodium_ctx, 100, |a, s| *a + *s);
+        let l;
+        {
+            let out = out.clone();
+            l =
+                sum.listen(
+                    sodium_ctx,
+                    move |a|
+                        out.borrow_mut().push(*a)
+                );
+        }
+        ea.send(sodium_ctx, &5);
+        ea.send(sodium_ctx, &7);
+        ea.send(sodium_ctx, &1);
+        ea.send(sodium_ctx, &2);
+        ea.send(sodium_ctx, &3);
+        l.unlisten();
+        assert_eq!(vec![100, 105, 112, 113, 115, 118], *out.borrow());
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
 /*
-import { expect } from 'chai';
-
-import {
-  lambda1,
-  StreamSink,
-  StreamLoop,
-  CellSink,
-  Transaction,
-  Tuple2,
-  Operational,
-  Cell,
-  CellLoop,
-  getTotalRegistrations
-} from '../../lib/Sodium';
-
-export class StreamSinkTest {
-
-    afterEach() {
-      if (getTotalRegistrations() != 0) {
-        throw new Error('listeners were not deregistered');
-      }
-    };
-
-    'should test map()' (done) {
-      const s = new StreamSink<number>();
-      const out: number[] = [];
-      const kill = s.map(a => a + 1)
-        .listen(a => {
-          out.push(a);
-          done();
-        });
-      s.send(7);
-      kill();
-
-      expect([8]).to.deep.equal(out);
-    };
-
-    'should throw an error send_with_no_listener_1' () {
-      const s = new StreamSink<number>();
-
-      try {
-        s.send(7);
-      } catch (e) {
-        expect(e.message).to.equal('send() was invoked before listeners were registered');
-      }
-
-    };
-
-    'should (not?) throw an error send_with_no_listener_2' () {
-      const s = new StreamSink<number>();
-      const out: number[] = [];
-      const kill = s.map(a => a + 1)
-        .listen(a => out.push(a));
-
-      s.send(7);
-      kill();
-
-      try {
-        // TODO: the message below is bit misleading, need to verify with Stephen B.
-        //       - "this should not throw, because once() uses this mechanism"
-        s.send(9);
-      } catch (e) {
-        expect(e.message).to.equal('send() was invoked before listeners were registered');
-      }
-    };
-
-    'should map_tack' (done) {
-      const s = new StreamSink<number>(),
-        t = new StreamSink<string>(),
-        out: number[] = [],
-        kill = s.map(lambda1((a: number) => a + 1, [t]))
-          .listen(a => {
-            out.push(a);
-            done();
-          });
-
-      s.send(7);
-      t.send("banana");
-      kill();
-
-      expect([8]).to.deep.equal(out);
-    };
-
-    'should test mapTo()' (done) {
-      const s = new StreamSink<number>(),
-        out: string[] = [],
-        kill = s.mapTo("fusebox")
-          .listen(a => {
-            out.push(a);
-            if(out.length === 2) {
-              done();
-            }
-          });
-
-      s.send(7);
-      s.send(9);
-      kill();
-
-      expect(['fusebox', 'fusebox']).to.deep.equal(out);
-    };
-
-    'should do mergeNonSimultaneous' (done) {
-      const s1 = new StreamSink<number>(),
-        s2 = new StreamSink<number>(),
-        out: number[] = [];
-
-      const kill = s2.orElse(s1)
-        .listen(a => {
-          out.push(a);
-          if(out.length === 3) {
-            done();
-          }
-        });
-
-      s1.send(7);
-      s2.send(9);
-      s1.send(8);
-      kill();
-
-      expect([7, 9, 8]).to.deep.equal(out);
-    };
-
-    'should do mergeSimultaneous' (done) {
-      const s1 = new StreamSink<number>((l: number, r: number) => { return r; }),
-        s2 = new StreamSink<number>((l: number, r: number) => { return r; }),
-        out: number[] = [],
-        kill = s2.orElse(s1)
-          .listen(a => {
-            out.push(a);
-            if(out.length === 5) {
-              done();
-            }
-          });
-
-      Transaction.run<void>(() => {
-        s1.send(7);
-        s2.send(60);
-      });
-      Transaction.run<void>(() => {
-        s1.send(9);
-      });
-      Transaction.run<void>(() => {
-        s1.send(7);
-        s1.send(60);
-        s2.send(8);
-        s2.send(90);
-      });
-      Transaction.run<void>(() => {
-        s2.send(8);
-        s2.send(90);
-        s1.send(7);
-        s1.send(60);
-      });
-      Transaction.run<void>(() => {
-        s2.send(8);
-        s1.send(7);
-        s2.send(90);
-        s1.send(60);
-      });
-      kill();
-
-      expect([60, 9, 90, 90, 90]).to.deep.equal(out);
-    };
-
-    'should do coalesce' (done) {
-      const s = new StreamSink<number>((a, b) => a + b),
-        out: number[] = [],
-        kill = s.listen(a => {
-          out.push(a);
-          if(out.length === 2) {
-            done();
-          }
-        });
-
-      Transaction.run<void>(() => {
-        s.send(2);
-      });
-      Transaction.run<void>(() => {
-        s.send(8);
-        s.send(40);
-      });
-      kill();
-
-      expect([2, 48]).to.deep.equal(out);
-    };
-
-    'should test filter()' (done) {
-      const s = new StreamSink<number>(),
-        out: number[] = [],
-        kill = s.filter(a => a < 10)
-          .listen(a => {
-            out.push(a);
-            if(out.length === 2) {
-              done();
-            }
-          });
-
-      s.send(2);
-      s.send(16);
-      s.send(9);
-      kill();
-
-      expect([2, 9]).to.deep.equal(out);
-    };
-
-    'should test filterNotNull()' (done) {
-      const s = new StreamSink<string>(),
-        out: string[] = [],
-        kill = s.filterNotNull()
-          .listen(a => {
-            out.push(a);
-            if(out.length === 2) {
-              done();
-            }
-          });
-
-      s.send("tomato");
-      s.send(null);
-      s.send("peach");
-      kill();
-
-      expect(["tomato", "peach"]).to.deep.equal(out);
-    };
-
-    'should test merge()' (done) {
-      const sa = new StreamSink<number>(),
-        sb = sa.map(x => Math.floor(x / 10))
-          .filter(x => x != 0),
-        sc = sa.map(x => x % 10)
-          .merge(sb, (x, y) => x + y),
-        out: number[] = [],
-        kill = sc.listen(a => {
-          out.push(a);
-          if(out.length === 2) {
-            done();
-          }
-        });
-
-      sa.send(2);
-      sa.send(52);
-      kill();
-
-      expect([2, 7]).to.deep.equal(out);
-    };
-
-    'should test loop()' (done) {
-      const sa = new StreamSink<number>(),
-        sc = Transaction.run(() => {
-          const sb = new StreamLoop<number>(),
-            sc_ = sa.map(x => x % 10).merge(sb,
-              (x, y) => x + y),
-            sb_out = sa.map(x => Math.floor(x / 10))
-              .filter(x => x != 0);
-          sb.loop(sb_out);
-          return sc_;
-        }),
-        out: number[] = [],
-        kill = sc.listen(a => {
-          out.push(a);
-          if(out.length === 2) {
-            done();
-          }
-        });
-
-      sa.send(2);
-      sa.send(52);
-      kill();
-
-      expect([2, 7]).to.deep.equal(out);
-    };
-
-    'should test gate()' (done) {
-      const s = new StreamSink<string>(),
-        pred = new CellSink<boolean>(true),
-        out: string[] = [],
-        kill = s.gate(pred).listen(a => {
-          out.push(a);
-          if(out.length === 2) {
-            done();
-          }
-        });
-
-      s.send("H");
-      pred.send(false);
-      s.send('O');
-      pred.send(true);
-      s.send('I');
-      kill();
-
-      expect(["H", "I"]).to.deep.equal(out);
-    };
-
-    'should test collect()' (done) {
-      const ea = new StreamSink<number>(),
-        out: number[] = [],
-        sum = ea.collect(0, (a, s) => new Tuple2(a + s + 100, a + s)),
-        kill = sum.listen(a => {
-          out.push(a);
-          if(out.length === 5) {
-            done();
-          }
-        });
-
-      ea.send(5);
-      ea.send(7);
-      ea.send(1);
-      ea.send(2);
-      ea.send(3);
-      kill();
-
-      expect([105, 112, 113, 115, 118]).to.deep.equal(out);
-    };
-
-    'should test accum()' (done) {
-      const ea = new StreamSink<number>(),
-        out: number[] = [],
-        sum = ea.accum(100, (a, s) => a + s),
-        kill = sum.listen(a => {
-          out.push(a);
-          if(out.length === 6) {
-            done();
-          }
-        });
-
-      ea.send(5);
-      ea.send(7);
-      ea.send(1);
-      ea.send(2);
-      ea.send(3);
-      kill();
-
-      expect([100, 105, 112, 113, 115, 118]).to.deep.equal(out);
-    };
-
     'should test once()' (done) {
       const s = new StreamSink<string>(),
         out: string[] = [],
