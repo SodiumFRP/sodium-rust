@@ -405,23 +405,35 @@ fn accum() {
     assert_memory_freed(sodium_ctx);
 }
 
+#[test]
+fn once() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s = StreamSink::new(sodium_ctx);
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l =
+                s
+                    .once(sodium_ctx)
+                    .listen(
+                        sodium_ctx,
+                        move |a|
+                            out.borrow_mut().push(*a)
+                    );
+        }
+        s.send(sodium_ctx, &"A");
+        s.send(sodium_ctx, &"B");
+        s.send(sodium_ctx, &"C");
+        l.unlisten();
+        assert_eq!(vec!["A"], *out.borrow());
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
 /*
-    'should test once()' (done) {
-      const s = new StreamSink<string>(),
-        out: string[] = [],
-        kill = s.once().listen(a => {
-          out.push(a);
-          done();
-        });
-
-      s.send("A");
-      s.send("B");
-      s.send("C");
-      kill();
-
-      expect(["A"]).to.deep.equal(out);
-    };
-
     'should test defer()' (done) {
       const s = new StreamSink<string>(),
         c = s.hold(" "),
