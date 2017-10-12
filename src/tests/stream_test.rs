@@ -1,3 +1,4 @@
+use sodium::Cell;
 use sodium::CellSink;
 use sodium::IsCell;
 use sodium::IsStream;
@@ -518,57 +519,62 @@ fn hold_is_delayed() {
     assert_memory_freed(sodium_ctx);
 }
 
-/*
-    'should test switchC()' (done) {
-      class SC {
-        constructor(a: string, b: string, sw: string) {
-          this.a = a;
-          this.b = b;
-          this.sw = sw;
+#[test]
+fn switch_c() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        #[derive(Clone)]
+        struct SC {
+            a: Option<&'static str>,
+            b: Option<&'static str>,
+            sw: Option<&'static str>
         }
+        impl SC {
+            fn new(a: Option<&'static str>, b: Option<&'static str>, sw: Option<&'static str>) -> SC {
+                SC {
+                    a: a,
+                    b: b,
+                    sw: sw
+                }
+            }
+        }
+        let ssc = StreamSink::new(sodium_ctx);
+        let mut sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &mut sodium_ctx2;
+        let ca = Stream::filter_option(sodium_ctx, &ssc.map(sodium_ctx2, |s: &SC| s.a.clone())).hold(sodium_ctx, "A");
+        let cb = Stream::filter_option(sodium_ctx, &ssc.map(sodium_ctx2, |s: &SC| s.b.clone())).hold(sodium_ctx, "a");
+        let csw_str = Stream::filter_option(sodium_ctx, &ssc.map(sodium_ctx2, |s: &SC| s.sw.clone())).hold(sodium_ctx, "ca");
+        let csw = csw_str.map(sodium_ctx, move |s| if *s == "ca" { ca.clone() } else { cb.clone() });
+        let co = Cell::switch_c(sodium_ctx, &csw);
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l =
+                co.listen(
+                    sodium_ctx,
+                    move |c|
+                        out.borrow_mut().push(*c)
+                );
+        }
+        ssc.send(sodium_ctx, &SC::new(Some("B"), Some("b"), None));
+        ssc.send(sodium_ctx, &SC::new(Some("C"), Some("c"), Some("cb")));
+        ssc.send(sodium_ctx, &SC::new(Some("D"), Some("d"), None));
+        ssc.send(sodium_ctx, &SC::new(Some("E"), Some("e"), Some("ca")));
+        ssc.send(sodium_ctx, &SC::new(Some("F"), Some("f"), None));
+        ssc.send(sodium_ctx, &SC::new(None, None, Some("cb")));
+        ssc.send(sodium_ctx, &SC::new(None, None, Some("ca")));
+        ssc.send(sodium_ctx, &SC::new(Some("G"), Some("g"), Some("cb")));
+        ssc.send(sodium_ctx, &SC::new(Some("H"), Some("h"), Some("ca")));
+        ssc.send(sodium_ctx, &SC::new(Some("I"), Some("i"), Some("ca")));
+        l.unlisten();
+        assert_eq!(vec!["A", "B", "c", "d", "E", "F", "f", "F", "g", "H", "I"], *out.borrow());
+    }
+    assert_memory_freed(sodium_ctx);
+}
 
-        a: string;
-        b: string;
-        sw: string;
-      }
-
-      const ssc = new StreamSink<SC>(),
-        // Split each field out of SC so we can update multiple cells in a
-        // single transaction.
-        ca = ssc.map(s => s.a).filterNotNull().hold("A"),
-        cb = ssc.map(s => s.b).filterNotNull().hold("a"),
-        csw_str = ssc.map(s => s.sw).filterNotNull().hold("ca"),
-        // ****
-        // NOTE! Because this lambda contains references to Sodium objects, we
-        // must declare them explicitly using lambda1() so that Sodium knows
-        // about the dependency, otherwise it can't manage the memory.
-        // ****
-        csw = csw_str.map(lambda1(s => s == "ca" ? ca : cb, [ca, cb])),
-        co = Cell.switchC(csw),
-        out: string[] = [],
-        kill = co.listen(c => {
-          out.push(c);
-          if(out.length === 11) {
-            done();
-          }
-        });
-
-      ssc.send(new SC("B", "b", null));
-      ssc.send(new SC("C", "c", "cb"));
-      ssc.send(new SC("D", "d", null));
-      ssc.send(new SC("E", "e", "ca"));
-      ssc.send(new SC("F", "f", null));
-      ssc.send(new SC(null, null, "cb"));
-      ssc.send(new SC(null, null, "ca"));
-      ssc.send(new SC("G", "g", "cb"));
-      ssc.send(new SC("H", "h", "ca"));
-      ssc.send(new SC("I", "i", "ca"));
-      kill();
-
-      expect(["A", "B", "c", "d", "E", "F", "f", "F", "g", "H", "I"]).to.deep.equal(out);
-
-    };
-
+/*
     'should test switchS()' (done) {
       class SS {
         constructor(a: string, b: string, sw: string) {
