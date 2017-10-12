@@ -14,7 +14,7 @@ use std::rc::Rc;
 pub struct Operational {}
 
 impl Operational {
-    fn updates<CA,A>(sodium_ctx: &mut SodiumCtx, c: &CA) -> Stream<A>
+    pub fn updates<CA,A>(sodium_ctx: &mut SodiumCtx, c: &CA) -> Stream<A>
         where A: Clone + 'static,
               CA: IsCell<A>
     {
@@ -26,7 +26,7 @@ impl Operational {
         )
     }
 
-    fn value<CA,A>(sodium_ctx: &mut SodiumCtx, c: &CA) -> Stream<A>
+    pub fn value<CA,A>(sodium_ctx: &mut SodiumCtx, c: &CA) -> Stream<A>
         where A: Clone + 'static,
               CA: IsCell<A>
     {
@@ -38,7 +38,7 @@ impl Operational {
         )
     }
 
-    fn defer<SA,A>(sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A>
+    pub fn defer<SA,A>(sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A>
         where A: Clone + 'static,
               SA: IsStream<A>
     {
@@ -55,7 +55,7 @@ impl Operational {
         )
     }
 
-    fn split<SC,C,A>(sodium_ctx: &mut SodiumCtx, s: &SC) -> Stream<A>
+    pub fn split<SC,C,A>(sodium_ctx: &mut SodiumCtx, s: &SC) -> Stream<A>
         where A: Clone + 'static,
               C: IntoIterator<Item=A> + 'static + Clone,
               SC: IsStream<Rc<C>>
@@ -63,8 +63,8 @@ impl Operational {
         let out = StreamWithSend::new(sodium_ctx);
         let l1;
         {
-            let out = out.clone();
             let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+            let out = out.downgrade();
             l1 = s.listen_(
                 sodium_ctx,
                 out_node,

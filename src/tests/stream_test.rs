@@ -1,6 +1,7 @@
 use sodium::CellSink;
 use sodium::IsCell;
 use sodium::IsStream;
+use sodium::Operational;
 use sodium::SodiumCtx;
 use sodium::Stream;
 use sodium::StreamLoop;
@@ -433,26 +434,64 @@ fn once() {
     assert_memory_freed(sodium_ctx);
 }
 
+#[test]
+fn defer() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s = StreamSink::new(sodium_ctx);
+        let c = s.hold(sodium_ctx, " ");
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l =
+                Operational
+                    ::defer(sodium_ctx, &s)
+                    .snapshot_to(sodium_ctx, &c)
+                    .listen(
+                        sodium_ctx,
+                        move |a|
+                            out.borrow_mut().push(*a)
+                    );
+        }
+        s.send(sodium_ctx, &"C");
+        s.send(sodium_ctx, &"B");
+        s.send(sodium_ctx, &"A");
+        l.unlisten();
+        assert_eq!(vec!["C", "B", "A"], *out.borrow());
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+#[test]
+fn hold() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s = StreamSink::new(sodium_ctx);
+        let c = s.hold(sodium_ctx, 0);
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = Operational
+                ::updates(sodium_ctx, &c)
+                .listen(
+                    sodium_ctx,
+                    move |a|
+                        out.borrow_mut().push(*a)
+                );
+        }
+        s.send(sodium_ctx, &2);
+        s.send(sodium_ctx, &9);
+        l.unlisten();
+        assert_eq!(vec![2, 9], *out.borrow());
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
 /*
-    'should test defer()' (done) {
-      const s = new StreamSink<string>(),
-        c = s.hold(" "),
-        out: string[] = [],
-        kill = Operational.defer(s).snapshot1(c)
-          .listen(a => {
-            out.push(a);
-            if(out.length === 3) {
-              done();
-            }
-          });
-
-      s.send("C");
-      s.send("B");
-      s.send("A");
-      kill();
-
-      expect(["C", "B", "A"]).to.deep.equal(out);
-    };
 
     'should test hold()' (done) {
       const s = new StreamSink<number>(),
