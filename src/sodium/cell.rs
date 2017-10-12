@@ -659,23 +659,23 @@ impl<A:'static + Clone> Cell<A> {
         Transaction::run_trans(
             sodium_ctx,
             move |sodium_ctx: &mut SodiumCtx, trans1: &mut Transaction| {
-                let sodium_ctx = sodium_ctx.clone();
                 let self__ = self_.clone();
                 self_.with_cell_data_mut(move |data| {
-                    let mut sodium_ctx2 = sodium_ctx.clone();
-                    let self__ = self__.clone();
+                    let self_ = Rc::downgrade(&self__.cell_data());
+                    let null_node = sodium_ctx.null_node();
                     data.cleanup = Some(data.str.listen2(
-                        &mut sodium_ctx2,
-                        sodium_ctx.null_node(),
+                        sodium_ctx,
+                        null_node,
                         trans1,
                         TransactionHandlerRef::new(
                             move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
-                                let self___ = self__.clone();
-                                self__.with_cell_data_mut(move |data| {
+                                let self_ = Cell { data: self_.upgrade().unwrap() };
+                                let self__ = self_.clone();
+                                self_.with_cell_data_mut(move |data| {
                                     if data.value_update.is_none() {
                                         trans2.last(
                                             move || {
-                                                self___.with_cell_data_mut(|data| {
+                                                self__.with_cell_data_mut(|data| {
                                                     data.value = data.value_update.clone();
                                                     data.lazy_init_value = None;
                                                     data.value_update = None;

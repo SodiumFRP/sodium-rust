@@ -199,15 +199,12 @@ pub trait IsStream<A: Clone + 'static> {
               D: Clone + 'static,
               F: Fn(&A,&B,&C)->D + 'static
     {
-        let sodium_ctx2 = sodium_ctx.clone();
         let cc = cc.to_cell();
         self.snapshot(
             sodium_ctx,
             cb,
             move |a, b| {
-                let mut sodium_ctx = sodium_ctx2.clone();
-                let sodium_ctx = &mut sodium_ctx;
-                f(a, b, &cc.sample(sodium_ctx))
+                f(a, b, &cc.sample_no_trans_())
             }
         )
     }
@@ -222,16 +219,13 @@ pub trait IsStream<A: Clone + 'static> {
               E: Clone + 'static,
               F: Fn(&A,&B,&C,&D)->E + 'static
     {
-        let sodium_ctx2 = sodium_ctx.clone();
         let cc = cc.to_cell();
         let cd = cd.to_cell();
         self.snapshot(
             sodium_ctx,
             cb,
             move |a, b| {
-                let mut sodium_ctx = sodium_ctx2.clone();
-                let sodium_ctx = &mut sodium_ctx;
-                f(a, b, &cc.sample(sodium_ctx), &cd.sample(sodium_ctx))
+                f(a, b, &cc.sample_no_trans_(), &cd.sample_no_trans_())
             }
         )
     }
@@ -248,7 +242,6 @@ pub trait IsStream<A: Clone + 'static> {
               F: Clone + 'static,
               FN: Fn(&A,&B,&C,&D,&E)->F + 'static
     {
-        let sodium_ctx2 = sodium_ctx.clone();
         let cc = cc.to_cell();
         let cd = cd.to_cell();
         let ce = ce.to_cell();
@@ -256,9 +249,7 @@ pub trait IsStream<A: Clone + 'static> {
             sodium_ctx,
             cb,
             move |a, b| {
-                let mut sodium_ctx = sodium_ctx2.clone();
-                let sodium_ctx = &mut sodium_ctx;
-                f(a, b, &cc.sample(sodium_ctx), &cd.sample(sodium_ctx), &ce.sample(sodium_ctx))
+                f(a, b, &cc.sample_no_trans_(), &cd.sample_no_trans_(), &ce.sample_no_trans_())
             }
         )
     }
@@ -277,7 +268,6 @@ pub trait IsStream<A: Clone + 'static> {
               G: Clone + 'static,
               FN: Fn(&A,&B,&C,&D,&E,&F)->G + 'static
     {
-        let sodium_ctx2 = sodium_ctx.clone();
         let cc = cc.to_cell();
         let cd = cd.to_cell();
         let ce = ce.to_cell();
@@ -286,9 +276,7 @@ pub trait IsStream<A: Clone + 'static> {
             sodium_ctx,
             cb,
             move |a, b| {
-                let mut sodium_ctx = sodium_ctx2.clone();
-                let sodium_ctx = &mut sodium_ctx;
-                f(a, b, &cc.sample(sodium_ctx), &cd.sample(sodium_ctx), &ce.sample(sodium_ctx), &cf.sample(sodium_ctx))
+                f(a, b, &cc.sample_no_trans_(), &cd.sample_no_trans_(), &ce.sample_no_trans_(), &cf.sample_no_trans_())
             }
         )
     }
