@@ -491,46 +491,34 @@ fn hold() {
     assert_memory_freed(sodium_ctx);
 }
 
+fn hold_is_delayed() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s = StreamSink::new(sodium_ctx);
+        let h = s.hold(sodium_ctx, 0);
+        let s_pair = s.snapshot(sodium_ctx, &h, |a, b| format!("{} {}", *a, *b));
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l =
+                s_pair
+                    .listen(
+                        sodium_ctx,
+                        move |a|
+                            out.borrow_mut().push(a.clone())
+                    );
+        }
+        s.send(sodium_ctx, &2);
+        s.send(sodium_ctx, &3);
+        l.unlisten();
+        assert_eq!(vec![String::from("2 0"), String::from("3 2")], *out.borrow());
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
 /*
-
-    'should test hold()' (done) {
-      const s = new StreamSink<number>(),
-        c = s.hold(0),
-        out: number[] = [],
-        kill = Operational.updates(c)
-          .listen(a => {
-            out.push(a);
-            if(out.length === 2) {
-              done();
-            }
-          });
-
-      s.send(2);
-      s.send(9);
-      kill();
-
-      expect([2, 9]).to.deep.equal(out);
-    };
-
-    'should do holdIsDelayed' (done) {
-      const s = new StreamSink<number>(),
-        h = s.hold(0),
-        sPair = s.snapshot(h, (a, b) => a + " " + b),
-        out: string[] = [],
-        kill = sPair.listen(a => {
-          out.push(a);
-          if(out.length === 2) {
-            done();
-          }
-        });
-
-      s.send(2);
-      s.send(3);
-      kill();
-
-      expect(["2 0", "3 2"]).to.deep.equal(out);
-    };
-
     'should test switchC()' (done) {
       class SC {
         constructor(a: string, b: string, sw: string) {
