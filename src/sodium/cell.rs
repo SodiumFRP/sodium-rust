@@ -67,11 +67,12 @@ pub trait IsCell<A: Clone + 'static> {
             let s = s.clone();
             trans.last(
                 move || {
+                    let sample_no_trans = me.sample_no_trans_();
                     let mut s = s.data.deref().borrow_mut();
                     s.value_op = Some(
                         me.data.deref().borrow()
                             .cell_data_ref()
-                            .value_update.clone().unwrap_or_else(|| me.sample_no_trans_())
+                            .value_update.clone().unwrap_or_else(move || sample_no_trans)
                     );
                     s.cell_op = None;
                 }
