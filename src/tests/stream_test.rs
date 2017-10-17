@@ -1,4 +1,5 @@
 use sodium::Cell;
+use sodium::CellLoop;
 use sodium::CellSink;
 use sodium::IsCell;
 use sodium::IsStream;
@@ -687,30 +688,41 @@ fn switch_s() {
 
       expect([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).to.deep.equal(out);
     };
-
-    'should test loopCell' (done)  {
-      const sa = new StreamSink<number>(),
-        sum_out = Transaction.run(() => {
-          const sum = new CellLoop<number>(),
-            sum_out_ = sa.snapshot(sum, (x, y) => x + y).hold(0);
-          sum.loop(sum_out_);
-          return sum_out_;
-        }),
-        out: number[] = [],
-        kill = sum_out.listen(a => {
-          out.push(a);
-          if(out.length === 4) {
-            done();
-          }
-        });
-
-      sa.send(2);
-      sa.send(3);
-      sa.send(1);
-      kill();
-
-      expect([0, 2, 5, 6]).to.deep.equal(out);
-      expect(6).to.equal(sum_out.sample());
-    };
-  }
 */
+
+#[test]
+fn loop_cell() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let sa = StreamSink::new(sodium_ctx);
+        let sum_out = Transaction::run(
+            sodium_ctx,
+            |sodium_ctx| {
+                let mut sum = CellLoop::new(sodium_ctx);
+                let sum_out = sa
+                    .snapshot(sodium_ctx, &sum, |x, y| *x + *y)
+                    .hold(sodium_ctx, 0);
+                sum.loop_(sodium_ctx, &sum_out);
+                sum_out
+            }
+        );
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = sum_out.listen(
+                sodium_ctx,
+                move |a|
+                    out.borrow_mut().push(*a)
+            );
+        }
+        sa.send(sodium_ctx, &2);
+        sa.send(sodium_ctx, &3);
+        sa.send(sodium_ctx, &1);
+        l.unlisten();
+        assert_eq!(vec![0, 2, 5, 6], *out.borrow());
+        assert_eq!(6, sum_out.sample(sodium_ctx));
+    }
+    assert_memory_freed(sodium_ctx);
+}

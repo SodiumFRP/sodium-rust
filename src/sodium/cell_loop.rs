@@ -109,7 +109,7 @@ impl<A: Clone + 'static> CellLoop<A> {
         r
     }
 
-    fn loop_<CA>(&self, sodium_ctx: &mut SodiumCtx, a_out: &CA) where CA: IsCell<A> {
+    pub fn loop_<CA>(&self, sodium_ctx: &mut SodiumCtx, a_out: &CA) where CA: IsCell<A> {
         Transaction::apply(
             sodium_ctx,
             |sodium_ctx, trans| {
