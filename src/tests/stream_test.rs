@@ -574,53 +574,73 @@ fn switch_c() {
     assert_memory_freed(sodium_ctx);
 }
 
-/*
-    'should test switchS()' (done) {
-      class SS {
-        constructor(a: string, b: string, sw: string) {
-          this.a = a;
-          this.b = b;
-          this.sw = sw;
+#[test]
+fn switch_s() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        #[derive(Clone)]
+        struct SS {
+            a: &'static str,
+            b: &'static str,
+            sw: Option<&'static str>
         }
+        impl SS {
+            fn new(a: &'static str, b: &'static str, sw: Option<&'static str>) -> SS {
+                SS {
+                    a: a,
+                    b: b,
+                    sw: sw
+                }
+            }
+        }
+        let sss = StreamSink::new(sodium_ctx);
+        let sa = sss.map(sodium_ctx, |s: &SS| s.a.clone());
+        let sb = sss.map(sodium_ctx, |s: &SS| s.b.clone());
+        let mut sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &mut sodium_ctx2;
+        let csw_str =
+            Stream
+                ::filter_option(
+                    sodium_ctx,
+                    &sss.map(
+                        sodium_ctx2,
+                        |s| s.sw.clone()
+                    )
+                )
+                .hold(sodium_ctx, "sa");
+        let csw: Cell<Stream<&'static str>> = csw_str.map(
+            sodium_ctx,
+            move |sw|
+                if *sw == "sa" { sa.clone() } else { sb.clone() }
+        );
+        let so = Cell::switch_s(sodium_ctx, &csw);
+        let out = Rc::new(RefCell::new(Vec::<&'static str>::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = so.listen(
+                sodium_ctx,
+                move |x|
+                    out.borrow_mut().push(*x)
+            );
+        }
+        sss.send(sodium_ctx, &SS::new("A", "a", None));
+        sss.send(sodium_ctx, &SS::new("B", "b", None));
+        sss.send(sodium_ctx, &SS::new("C", "c", Some("sb")));
+        sss.send(sodium_ctx, &SS::new("D", "d", None));
+        sss.send(sodium_ctx, &SS::new("E", "e", Some("sa")));
+        sss.send(sodium_ctx, &SS::new("F", "f", None));
+        sss.send(sodium_ctx, &SS::new("G", "g", Some("sb")));
+        sss.send(sodium_ctx, &SS::new("H", "h", Some("sa")));
+        sss.send(sodium_ctx, &SS::new("I", "i", Some("sa")));
+        l.unlisten();
+        assert_eq!(vec!["A", "B", "C", "d", "e", "F", "G", "h", "I"], *out.borrow());
+    }
+    assert_memory_freed(sodium_ctx);
+}
 
-        a: string;
-        b: string;
-        sw: string;
-      }
-
-      const sss = new StreamSink<SS>(),
-        sa = sss.map(s => s.a),
-        sb = sss.map(s => s.b),
-        csw_str = sss.map(s => s.sw).filterNotNull().hold("sa"),
-        // ****
-        // NOTE! Because this lambda contains references to Sodium objects, we
-        // must declare them explicitly using lambda1() so that Sodium knows
-        // about the dependency, otherwise it can't manage the memory.
-        // ****
-        csw = csw_str.map(lambda1(sw => sw == "sa" ? sa : sb, [sa, sb])),
-        so = Cell.switchS(csw),
-        out: string[] = [],
-        kill = so.listen(x => {
-          out.push(x);
-          if(out.length === 9) {
-            done();
-          }
-        });
-
-      sss.send(new SS("A", "a", null));
-      sss.send(new SS("B", "b", null));
-      sss.send(new SS("C", "c", "sb"));
-      sss.send(new SS("D", "d", null));
-      sss.send(new SS("E", "e", "sa"));
-      sss.send(new SS("F", "f", null));
-      sss.send(new SS("G", "g", "sb"));
-      sss.send(new SS("H", "h", "sa"));
-      sss.send(new SS("I", "i", "sa"));
-      kill();
-
-      expect(["A", "B", "C", "d", "e", "F", "G", "h", "I"]).to.deep.equal(out);
-    };
-
+/*
     'should do switchSSimultaneous' (done) {
       class SS2 {
         s: StreamSink<number> = new StreamSink<number>();

@@ -450,7 +450,7 @@ pub trait IsCell<A: Clone + 'static> {
         )
     }
 
-    fn switch_s<CSA,SA>(sodium_ctx: &mut SodiumCtx, csa: CSA) -> Stream<A>
+    fn switch_s<CSA,SA>(sodium_ctx: &mut SodiumCtx, csa: &CSA) -> Stream<A>
         where CSA: IsCell<SA>,
               SA: IsStream<A> + Clone + 'static
     {
@@ -462,7 +462,7 @@ pub trait IsCell<A: Clone + 'static> {
         )
     }
 
-    fn switch_s_<CSA,SA>(sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, csa: CSA) -> Stream<A>
+    fn switch_s_<CSA,SA>(sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, csa: &CSA) -> Stream<A>
         where CSA: IsCell<SA>,
               SA: IsStream<A> + Clone + 'static
     {
