@@ -469,7 +469,7 @@ pub trait IsCell<A: Clone + 'static> {
         let out = StreamWithSend::new(sodium_ctx);
         let h2;
         {
-            let out = out.clone();
+            let out = out.downgrade();
             h2 = TransactionHandlerRef::new(
                 move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
                     let mut out = out.clone();
@@ -477,11 +477,20 @@ pub trait IsCell<A: Clone + 'static> {
                 }
             );
         }
-        let current_listener: Rc<RefCell<Option<Listener>>> = Rc::new(RefCell::new(None));
+        let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+        let current_listener: Rc<RefCell<Option<Listener>>> = Rc::new(RefCell::new(Some(
+            csa.sample_no_trans_().listen2(
+                sodium_ctx,
+                out_node,
+                trans,
+                h2.clone(),
+                false
+            )
+        )));
         let h1;
         {
             let current_listener = current_listener.clone();
-            let out = out.clone();
+            let out = out.downgrade();
             h1 = TransactionHandlerRef::new(
                 move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, sa: &SA| {
                     let sodium_ctx = sodium_ctx.clone();
@@ -496,7 +505,7 @@ pub trait IsCell<A: Clone + 'static> {
                             let sodium_ctx = &mut sodium_ctx;
                             let mut trans3 = trans3.clone();
                             let trans3 = &mut trans3;
-                            let out = out.clone();
+                            let out = out.upgrade().unwrap().clone();
                             let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
                             let mut current_listener = (*current_listener).borrow_mut();
                             match current_listener.as_ref() {
