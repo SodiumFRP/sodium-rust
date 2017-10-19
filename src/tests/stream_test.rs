@@ -641,6 +641,65 @@ fn switch_s() {
     assert_memory_freed(sodium_ctx);
 }
 
+#[test]
+fn switch_s_simultaneous() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        #[derive(Clone)]
+        struct SS2 {
+            s: StreamSink<i32>
+        }
+        impl SS2 {
+            fn new(sodium_ctx: &mut SodiumCtx) -> SS2 {
+                SS2 {
+                    s: StreamSink::new(sodium_ctx)
+                }
+            }
+        }
+        let ss1 = SS2::new(sodium_ctx);
+        let ss2 = SS2::new(sodium_ctx);
+        let ss3 = SS2::new(sodium_ctx);
+        let ss4 = SS2::new(sodium_ctx);
+        let css = CellSink::new(sodium_ctx, ss1.clone());
+        let mut sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &mut sodium_ctx2;
+        let so = Cell::switch_s(sodium_ctx, &css.map(sodium_ctx2, |b| b.s.clone()));
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = so.listen(
+                sodium_ctx,
+                move |c| out.borrow_mut().push(*c)
+            );
+        }
+        ss1.s.send(sodium_ctx, &0);
+        ss1.s.send(sodium_ctx, &1);
+        ss1.s.send(sodium_ctx, &2);
+        css.send(sodium_ctx, &ss2);
+        ss1.s.send(sodium_ctx, &7);
+        ss2.s.send(sodium_ctx, &3);
+        ss2.s.send(sodium_ctx, &4);
+        ss3.s.send(sodium_ctx, &2);
+        css.send(sodium_ctx, &ss3);
+        ss3.s.send(sodium_ctx, &5);
+        ss3.s.send(sodium_ctx, &6);
+        ss3.s.send(sodium_ctx, &7);
+        Transaction::run(
+            sodium_ctx,
+            |sodium_ctx| {
+                ss3.s.send(sodium_ctx, &8);
+                css.send(sodium_ctx, &ss4);
+                ss4.s.send(sodium_ctx, &2);
+            }
+        );
+        ss4.s.send(sodium_ctx, &9);
+        l.unlisten();
+        assert_eq!(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9], *out.borrow());
+    }
+    assert_memory_freed(sodium_ctx);
+}
 /*
     'should do switchSSimultaneous' (done) {
       class SS2 {
