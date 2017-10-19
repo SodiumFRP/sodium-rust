@@ -700,54 +700,6 @@ fn switch_s_simultaneous() {
     }
     assert_memory_freed(sodium_ctx);
 }
-/*
-    'should do switchSSimultaneous' (done) {
-      class SS2 {
-        s: StreamSink<number> = new StreamSink<number>();
-      }
-
-      const ss1 = new SS2(),
-        ss2 = new SS2(),
-        ss3 = new SS2(),
-        ss4 = new SS2(),
-        css = new CellSink<SS2>(ss1),
-        // ****
-        // NOTE! Because this lambda contains references to Sodium objects, we
-        // must declare them explicitly using lambda1() so that Sodium knows
-        // about the dependency, otherwise it can't manage the memory.
-        // ****
-        so = Cell.switchS(css.map(lambda1((b: SS2) => b.s, [ss1.s, ss2.s, ss3.s, ss4.s]))),
-        out: number[] = [],
-        kill = so.listen(c => {
-          out.push(c);
-          if(out.length === 10) {
-            done();
-          }
-        });
-
-      ss1.s.send(0);
-      ss1.s.send(1);
-      ss1.s.send(2);
-      css.send(ss2);
-      ss1.s.send(7);
-      ss2.s.send(3);
-      ss2.s.send(4);
-      ss3.s.send(2);
-      css.send(ss3);
-      ss3.s.send(5);
-      ss3.s.send(6);
-      ss3.s.send(7);
-      Transaction.run(() => {
-        ss3.s.send(8);
-        css.send(ss4);
-        ss4.s.send(2);
-      });
-      ss4.s.send(9);
-      kill();
-
-      expect([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).to.deep.equal(out);
-    };
-*/
 
 #[test]
 fn loop_cell() {
