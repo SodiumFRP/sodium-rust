@@ -77,15 +77,15 @@ impl<A: Clone + 'static> CellLoop<A> {
                 let self__ = self_.clone();
                 self_.with_cell_data_mut(move |data: &mut CellData<A>| {
                     let mut sodium_ctx2 = sodium_ctx.clone();
-                    let self__ = self__.clone();
+                    let self__ = Rc::downgrade(&self__.data);
                     data.cleanup = Some(data.str.listen2(
                         &mut sodium_ctx2,
                         sodium_ctx.null_node(),
                         trans1,
                         TransactionHandlerRef::new(
                             move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
-                                let self___ = self__.clone();
-                                self__.with_cell_data_mut(move |data| {
+                                let self___ = CellLoop { data: self__.upgrade().unwrap() };
+                                self___.clone().with_cell_data_mut(move |data| {
                                     if data.value_update.is_none() {
                                         trans2.last(
                                             move || {
@@ -115,7 +115,9 @@ impl<A: Clone + 'static> CellLoop<A> {
             sodium_ctx,
             |sodium_ctx, trans| {
                 let mut data = (*self.data).borrow_mut();
-                data.str.loop_(sodium_ctx, a_out.updates_(trans));
+                let mut sodium_ctx2 = sodium_ctx.clone();
+                let sodium_ctx2 = &mut sodium_ctx2;
+                data.str.loop_(sodium_ctx, a_out.updates_(trans).weak_(sodium_ctx2));
                 data.cell_data.lazy_init_value = Some(a_out.sample_lazy_(sodium_ctx, trans));
             }
         )
