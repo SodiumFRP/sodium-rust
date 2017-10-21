@@ -455,8 +455,12 @@ pub trait IsStream<A: Clone + 'static> {
                 let ebs = ea.snapshot(sodium_ctx, &s, f2);
                 let eb = ebs.map(sodium_ctx, |&(ref b,ref s)| b.clone());
                 let es_out = ebs.map(sodium_ctx, |&(ref b,ref s)| s.clone());
-                es.loop_(sodium_ctx, es_out);
-                eb
+                let mut sodium_ctx2 = sodium_ctx.clone();
+                let sodium_ctx2 = &mut sodium_ctx2;
+                es.loop_(sodium_ctx, es_out.weak_(sodium_ctx2));
+                eb.unsafe_add_cleanup(Listener::new(sodium_ctx,move || {
+                    let es_out2 = es_out.clone();
+                }))
             }
         )
     }
@@ -482,7 +486,9 @@ pub trait IsStream<A: Clone + 'static> {
                 let f = f.clone();
                 let f2 = move |a: &A,s: &S| f(a,s);
                 let es_out = ea.snapshot(sodium_ctx, &s, f2);
-                es.loop_(sodium_ctx, es_out.clone());
+                let mut sodium_ctx2 = sodium_ctx.clone();
+                let sodium_ctx2 = &mut sodium_ctx2;
+                es.loop_(sodium_ctx, es_out.clone().weak_(sodium_ctx2));
                 es_out.hold_lazy(sodium_ctx, init_state.clone())
             }
         )
