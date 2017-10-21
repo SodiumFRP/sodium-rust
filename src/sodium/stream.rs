@@ -71,7 +71,7 @@ pub trait IsStream<A: Clone + 'static> {
         Transaction::apply(
             sodium_ctx,
             move |sodium_ctx, trans1| {
-                self.listen2(sodium_ctx, target, trans1, action, false)
+                self.listen2(sodium_ctx, target, trans1, action, false, false)
             }
         )
     }
@@ -89,7 +89,7 @@ pub trait IsStream<A: Clone + 'static> {
         );
     }
 
-    fn listen2(&self, sodium_ctx: &mut SodiumCtx, target: Rc<RefCell<HasNode>>, trans: &mut Transaction, action: TransactionHandlerRef<A>, suppress_earlier_firings: bool) -> Listener {
+    fn listen2(&self, sodium_ctx: &mut SodiumCtx, target: Rc<RefCell<HasNode>>, trans: &mut Transaction, action: TransactionHandlerRef<A>, suppress_earlier_firings: bool, weak_self: bool) -> Listener {
         let mut self_ = self.to_stream_ref().data.borrow_mut();
         let mut self__: &mut StreamData<A> = &mut *self_;
         let node_target;
@@ -119,8 +119,37 @@ pub trait IsStream<A: Clone + 'static> {
                 )
             );
         }
-        ListenerImpl::new(self.to_stream_ref().clone(), action, node_target)
+        let s =
+            if weak_self {
+                WeakS(self.to_stream_ref().downgrade())
+            } else {
+                StrongS(self.to_stream_ref().clone())
+            };
+        ListenerImpl::new(s, action, node_target)
             .into_listener(sodium_ctx)
+    }
+
+    fn weak_(&self, sodium_ctx: &mut SodiumCtx) -> Stream<A> {
+        let out = StreamWithSend::new(sodium_ctx);
+        let out2 = out.downgrade();
+        let l = Transaction::run_trans(
+            sodium_ctx,
+            |sodium_ctx, trans| {
+                self.listen2(
+                    sodium_ctx,
+                    out.stream.data.clone() as Rc<RefCell<HasNode>>,
+                    trans,
+                    TransactionHandlerRef::new(
+                        move |sodium_ctx, trans, a| {
+                            out2.send(sodium_ctx, trans, a)
+                        }
+                    ),
+                    false,
+                    true
+                )
+            }
+        );
+        out.unsafe_add_cleanup(l)
     }
 
     fn map<B:'static + Clone,F>(&self, sodium_ctx: &mut SodiumCtx, f: F) -> Stream<B>
@@ -332,6 +361,7 @@ pub trait IsStream<A: Clone + 'static> {
             out.to_stream_ref().data.clone() as Rc<RefCell<HasNode>>,
             trans1,
             h.to_transaction_handler(),
+            false,
             false
         );
         out.unsafe_add_cleanup(l)
@@ -551,15 +581,23 @@ impl<A> HasNode for StreamData<A> {
     }
 }
 
+enum WeakOrStrongStream<A> {
+    WeakS(WeakStream<A>),
+    StrongS(Stream<A>)
+}
+
+use self::WeakOrStrongStream::WeakS;
+use self::WeakOrStrongStream::StrongS;
+
 struct ListenerImpl<A> {
-    event: Stream<A>,
+    event: WeakOrStrongStream<A>,
     action: TransactionHandlerRef<A>,
     target: Target,
     done: bool
 }
 
 impl<A: Clone + 'static> ListenerImpl<A> {
-    fn new(event: Stream<A>, action: TransactionHandlerRef<A>, target: Target) -> ListenerImpl<A>
+    fn new(event: WeakOrStrongStream<A>, action: TransactionHandlerRef<A>, target: Target) -> ListenerImpl<A>
     {
         ListenerImpl {
             event: event,
@@ -577,8 +615,18 @@ impl<A: Clone + 'static> ListenerImpl<A> {
                 let mut self__ = self_.borrow_mut();
                 let self___ = &mut *self__;
                 if !self___.done {
-                    let mut stream_data = self___.event.data.borrow_mut();
-                    HasNode::unlink_to(&mut *stream_data as &mut HasNode, &self___.target);
+                    let s_op =
+                        match &self___.event {
+                            &WeakS(ref s) => s.upgrade(),
+                            &StrongS(ref s) => Some(s.clone())
+                        };
+                    match s_op {
+                        Some(s) => {
+                            let mut stream_data = s.data.borrow_mut();
+                            HasNode::unlink_to(&mut *stream_data as &mut HasNode, &self___.target);
+                        },
+                        None => ()
+                    }
                     self___.done = true;
                 }
             }
