@@ -296,7 +296,7 @@ fn loop_() {
                     sa
                         .map(sodium_ctx, |x| *x / 10)
                         .filter(sodium_ctx, |x| *x != 0);
-                sb.loop_(sodium_ctx, sb_out);
+                sb.loop_strong(sodium_ctx, sb_out);
                 sc_
             }
         );

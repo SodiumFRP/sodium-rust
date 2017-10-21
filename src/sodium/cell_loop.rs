@@ -117,7 +117,7 @@ impl<A: Clone + 'static> CellLoop<A> {
                 let mut data = (*self.data).borrow_mut();
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;
-                data.str.loop_(sodium_ctx, a_out.updates_(trans).weak_(sodium_ctx2));
+                data.str.loop_weak(sodium_ctx, a_out.updates_(trans));
                 data.cell_data.lazy_init_value = Some(a_out.sample_lazy_(sodium_ctx, trans));
             }
         )
