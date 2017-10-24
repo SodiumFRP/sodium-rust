@@ -118,6 +118,16 @@ pub trait IsCell<A: Clone + 'static> {
         s_initial.merge(sodium_ctx, &self.updates_(trans), |_,a| a.clone())
     }
 
+    fn weak(&self, sodium_ctx: &mut SodiumCtx) -> Cell<A> {
+        Transaction::apply(
+            sodium_ctx,
+            |sodium_ctx, trans| {
+                let tmp = self.sample_lazy_(sodium_ctx, trans);
+                self.updates_(trans).weak(sodium_ctx).hold_lazy_(sodium_ctx, trans, tmp)
+            }
+        )
+    }
+
     fn map<F,B:'static + Clone>(&self, sodium_ctx: &mut SodiumCtx, f: F) -> Cell<B> where F: Fn(&A)->B + 'static {
         Transaction::apply(
             sodium_ctx,
@@ -567,6 +577,16 @@ pub trait IsCell<A: Clone + 'static> {
             |sodium_ctx, trans| {
                 self.value_(sodium_ctx, trans)
                     .listen(sodium_ctx, action)
+            }
+        )
+    }
+
+    fn keep_alive<X:'static>(&self, sodium_ctx: &mut SodiumCtx, object: X) -> Cell<A> {
+        Transaction::apply(
+            sodium_ctx,
+            |sodium_ctx, trans| {
+                let tmp = self.sample_lazy_(sodium_ctx, trans);
+                self.updates_(trans).keep_alive(sodium_ctx, object).hold_lazy_(sodium_ctx, trans, tmp)
             }
         )
     }
