@@ -129,7 +129,7 @@ pub trait IsStream<A: Clone + 'static> {
             .into_listener(sodium_ctx)
     }
 
-    fn weak_(&self, sodium_ctx: &mut SodiumCtx) -> Stream<A> {
+    fn weak(&self, sodium_ctx: &mut SodiumCtx) -> Stream<A> {
         let out = StreamWithSend::new(sodium_ctx);
         let out2 = out.downgrade();
         let l = Transaction::run_trans(
@@ -455,15 +455,10 @@ pub trait IsStream<A: Clone + 'static> {
                 let ebs = ea.snapshot(sodium_ctx, &s, f2);
                 let eb = ebs.map(sodium_ctx, |&(ref b,ref s)| b.clone());
                 let es_out = ebs.map(sodium_ctx, |&(ref b,ref s)| s.clone());
-                es.loop_weak(sodium_ctx, es_out.clone());
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;
-                eb.add_cleanup(
-                    sodium_ctx,
-                    Listener::new(sodium_ctx2,move || {
-                        let es_out2 = es_out.clone();
-                    })
-                )
+                es.loop_(sodium_ctx, es_out.weak(sodium_ctx2));
+                eb.keep_alive(sodium_ctx, es_out)
             }
         )
     }
@@ -491,7 +486,7 @@ pub trait IsStream<A: Clone + 'static> {
                 let es_out = ea.snapshot(sodium_ctx, &s, f2);
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;
-                es.loop_weak(sodium_ctx, es_out.clone());
+                es.loop_(sodium_ctx, es_out.weak(sodium_ctx2));
                 es_out.hold_lazy(sodium_ctx, init_state.clone())
             }
         )
@@ -529,6 +524,11 @@ pub trait IsStream<A: Clone + 'static> {
         }
         *l_cell.borrow_mut() = Some(l.clone());
         out.unsafe_add_cleanup(l)
+    }
+
+    fn keep_alive<X:'static>(&self, sodium_ctx: &mut SodiumCtx, object: X) -> Stream<A> {
+        let l = Listener::new(sodium_ctx, move || { let object2 = &object; });
+        self.add_cleanup(sodium_ctx, l)
     }
 
     fn unsafe_add_cleanup(&self, listener: Listener) -> Stream<A> {
