@@ -159,6 +159,13 @@ impl GcCtx {
     }
 
     fn collect_white(&mut self, s: *mut Node) {
-        unimplemented!();
+        let s = unsafe { &mut *s };
+        if s.colour == Colour::White && !s.buffered {
+            s.colour = Colour::Black;
+            for t in &s.children {
+                self.collect_white(*t);
+            }
+            self.system_free(s);
+        }
     }
 }
