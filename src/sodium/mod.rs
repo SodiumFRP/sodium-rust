@@ -33,6 +33,7 @@ mod cell;
 mod cell_loop;
 mod cell_sink;
 mod coalesce_handler;
+mod gc;
 mod handler;
 mod lazy;
 mod lazy_cell;
