@@ -5,18 +5,20 @@
 
 use std::marker::PhantomData;
 use std::ptr;
+use std::ops::Deref;
+use std::any::Any;
 
 pub struct GcCtx {
     roots: Vec<*mut Node>
 }
 
-pub struct Gc<A> {
+pub struct Gc<A: ?Sized> {
     ctx: *mut GcCtx,
     node: *mut Node,
     phantom: PhantomData<A>
 }
 
-impl<A> Clone for Gc<A> {
+impl<A: ?Sized> Clone for Gc<A> {
     fn clone(&self) -> Self {
         let ctx = unsafe { &mut *self.ctx };
         ctx.increment(self.node);
@@ -28,10 +30,24 @@ impl<A> Clone for Gc<A> {
     }
 }
 
-impl<A> Drop for Gc<A> {
+impl<A: ?Sized> Drop for Gc<A> {
     fn drop(&mut self) {
         let ctx = unsafe { &mut *self.ctx };
         ctx.decrement(self.node);
+    }
+}
+
+impl<A: ?Sized + 'static> Deref for Gc<A> {
+    type Target = A;
+
+    fn deref(&self) -> &A {
+        let node = unsafe { &mut *self.node };
+        let data: &Any = unsafe { &*node.data };
+        let value: &Box<A> = match data.downcast_ref::<Box<A>>() {
+            Some(value2) => value2,
+            None => panic!()
+        };
+        value
     }
 }
 
@@ -48,8 +64,8 @@ struct Node {
     colour: Colour,
     buffered: bool,
     children: Vec<*mut Node>,
-    free_data: Box<Fn(*mut ())>,
-    data: *mut ()
+    free_data: Box<Fn(*mut Any)>,
+    data: *mut Any
 }
 
 impl GcCtx {
