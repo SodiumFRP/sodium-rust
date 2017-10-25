@@ -11,8 +11,28 @@ pub struct GcCtx {
 }
 
 pub struct Gc<A> {
+    ctx: *mut GcCtx,
     node: *mut Node,
     phantom: PhantomData<A>
+}
+
+impl<A> Clone for Gc<A> {
+    fn clone(&self) -> Self {
+        let ctx = unsafe { &mut *self.ctx };
+        ctx.increment(self.node);
+        Gc {
+            ctx: self.ctx,
+            node: self.node,
+            phantom: PhantomData
+        }
+    }
+}
+
+impl<A> Drop for Gc<A> {
+    fn drop(&mut self) {
+        let ctx = unsafe { &mut *self.ctx };
+        ctx.decrement(self.node);
+    }
 }
 
 #[derive(PartialEq)]
