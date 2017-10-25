@@ -31,49 +31,51 @@ struct Node {
     data: *mut ()
 }
 
-impl Node {
+impl GcCtx {
 
-    fn increment(&mut self) {
-        self.count = self.count + 1;
-        self.colour = Colour::Black;
+    fn increment(&mut self, s: *mut Node) {
+        let s = unsafe { &mut *s };
+        s.count = s.count + 1;
+        s.colour = Colour::Black;
     }
 
-    fn decrement(&mut self) {
-        self.count = self.count - 1;
-        if self.count == 0 {
-            self.release();
+    fn decrement(&mut self, s: *mut Node) {
+        let s = unsafe { &mut *s };
+        s.count = s.count - 1;
+        if s.count == 0 {
+            self.release(s);
         } else {
-            self.possible_root();
+            self.possible_root(s);
         }
     }
 
-    fn release(&mut self) {
-        for child in &self.children {
-            unsafe {
-                (&mut **child).decrement();
-            }
+    fn release(&mut self, s: *mut Node) {
+        let s = unsafe { &mut *s };
+        for child in &s.children {
+            self.decrement(*child);
         }
-        self.colour = Colour::Black;
-        if !self.buffered {
-            self.system_free();
+        s.colour = Colour::Black;
+        if !s.buffered {
+            self.system_free(s);
         }
     }
 
-    fn system_free(&mut self) {
-        (self.free_data)(self.data);
-        let self2: *mut Node = self;
+    fn system_free(&mut self, s: *mut Node) {
+        let s = unsafe { &mut *s };
+        (s.free_data)(s.data);
         unsafe {
-            Box::from_raw(self2);
+            Box::from_raw(s);
         }
     }
 
-    fn possible_root(&mut self) {
-        if self.colour != Colour::Purple {
-            self.colour = Colour::Purple;
-            if !self.buffered {
-                self.buffered = true;
+    fn possible_root(&mut self, s: *mut Node) {
+        let s = unsafe { &mut *s };
+        if s.colour != Colour::Purple {
+            s.colour = Colour::Purple;
+            if !s.buffered {
+                s.buffered = true;
                 unimplemented!();
-           }
+            }
         }
         unimplemented!();
     }
