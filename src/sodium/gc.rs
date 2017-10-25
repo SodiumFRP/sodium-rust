@@ -64,11 +64,31 @@ struct Node {
     colour: Colour,
     buffered: bool,
     children: Vec<*mut Node>,
-    free_data: Box<Fn(*mut Any)>,
-    data: *mut Any
+    data: Box<Any>
 }
 
 impl GcCtx {
+
+    pub fn new() -> GcCtx {
+        GcCtx {
+            roots: Vec::new()
+        }
+    }
+
+    pub fn new_gc<A: 'static>(&mut self, value: A) -> Gc<A> {
+        let ctx: *mut GcCtx = self;
+        Gc {
+            ctx: ctx,
+            node: Box::into_raw(Box::new(Node {
+                count: 1,
+                colour: Colour::Black,
+                buffered: false,
+                children: Vec::new(),
+                data: Box::new(value) as Box<Any>
+            })),
+            phantom: PhantomData
+        }
+    }
 
     fn increment(&mut self, s: *mut Node) {
         let s = unsafe { &mut *s };
@@ -99,7 +119,6 @@ impl GcCtx {
 
     fn system_free(&mut self, s: *mut Node) {
         let s = unsafe { &mut *s };
-        (s.free_data)(s.data);
         unsafe {
             Box::from_raw(s);
         }
