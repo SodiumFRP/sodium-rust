@@ -4,13 +4,14 @@
  */
 
 use std::marker::PhantomData;
+use std::ptr;
 
 pub struct GcCtx {
     roots: Vec<*mut Node>
 }
 
 pub struct Gc<A> {
-    node: Node,
+    node: *mut Node,
     phantom: PhantomData<A>
 }
 
@@ -74,9 +75,59 @@ impl GcCtx {
             s.colour = Colour::Purple;
             if !s.buffered {
                 s.buffered = true;
-                unimplemented!();
+                self.roots.push(s);
             }
         }
+    }
+
+    fn collect_cycles(&mut self) {
+        self.mark_roots();
+        self.scan_roots();
+        self.collect_roots();
+    }
+
+    fn mark_roots(&mut self) {
+        let roots = self.roots.clone();
+        for s in roots {
+            let s = unsafe { &mut *s };
+            if s.colour == Colour::Purple && s.count > 0 {
+                self.mark_gray(s);
+            } else {
+                s.buffered = false;
+                self.roots.retain(|s2| !ptr::eq(s, *s2));
+                if s.colour == Colour::Black && s.count == 0 {
+                    self.system_free(s);
+                }
+            }
+        }
+    }
+
+    fn scan_roots(&mut self) {
+        let roots = self.roots.clone();
+        for s in roots {
+            self.scan(s);
+        }
+    }
+
+    fn collect_roots(&mut self) {
+        let roots = self.roots.clone();
+        self.roots.clear();
+        for s in roots {
+            let s = unsafe { &mut *s };
+            s.buffered = false;
+            self.collect_white(s);
+        }
+    }
+
+    fn mark_gray(&mut self, s: *mut Node) {
+        unimplemented!();
+    }
+
+    fn scan(&mut self, s: *mut Node) {
+        unimplemented!();
+    }
+
+    fn collect_white(&mut self, s: *mut Node) {
         unimplemented!();
     }
 }
