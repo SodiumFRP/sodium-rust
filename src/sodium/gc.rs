@@ -51,6 +51,22 @@ impl<A: ?Sized + 'static> Deref for Gc<A> {
     }
 }
 
+impl<A: ?Sized> Gc<A> {
+    pub fn add_child<B>(&mut self, child: &Gc<B>) {
+        let node = unsafe { &mut *self.node };
+        let child_node = child.node;
+        if !node.children.contains(&child_node) {
+            node.children.push(child_node);
+        }
+    }
+
+    pub fn remove_child<B>(&mut self, child: &Gc<B>) {
+        let node = unsafe { &mut *self.node };
+        let child_node = child.node;
+        node.children.retain(|c| !ptr::eq(*c, child_node));
+    }
+}
+
 #[derive(PartialEq)]
 enum Colour {
     Black,
