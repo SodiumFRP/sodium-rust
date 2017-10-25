@@ -120,11 +120,42 @@ impl GcCtx {
     }
 
     fn mark_gray(&mut self, s: *mut Node) {
-        unimplemented!();
+        let s = unsafe { &mut *s };
+        if s.colour != Colour::Gray {
+            s.colour = Colour::Gray;
+            for t in &s.children {
+                let t = unsafe { &mut **t };
+                t.count = t.count - 1;
+                self.mark_gray(t);
+            }
+        }
     }
 
     fn scan(&mut self, s: *mut Node) {
-        unimplemented!();
+        let s = unsafe { &mut *s };
+        if s.colour == Colour::Gray {
+            if s.count > 0 {
+                self.scan_black(s);
+            } else {
+                s.colour = Colour::White;
+                for t in &s.children {
+                    let t = unsafe { &mut **t };
+                    self.scan(t);
+                }
+            }
+        }
+    }
+
+    fn scan_black(&mut self, s: *mut Node) {
+        let s = unsafe { &mut *s };
+        s.colour = Colour::Black;
+        for t in &s.children {
+            let t = unsafe { &mut **t };
+            t.count = t.count + 1;
+            if t.colour != Colour::Black {
+                self.scan_black(t);
+            }
+        }
     }
 
     fn collect_white(&mut self, s: *mut Node) {
