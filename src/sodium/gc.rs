@@ -37,13 +37,13 @@ impl<A: ?Sized> Drop for Gc<A> {
     }
 }
 
-impl<A: ?Sized + 'static> Deref for Gc<A> {
+impl<A: Any> Deref for Gc<A> {
     type Target = A;
 
     fn deref(&self) -> &A {
         let node = unsafe { &mut *self.node };
-        let data: &Any = unsafe { &*node.data };
-        let value: &Box<A> = match data.downcast_ref::<Box<A>>() {
+        let data: &Box<Any> = unsafe { &node.data };
+        let value: &A = match data.downcast_ref::<A>() {
             Some(value2) => value2,
             None => panic!()
         };
@@ -52,7 +52,7 @@ impl<A: ?Sized + 'static> Deref for Gc<A> {
 }
 
 impl<A: ?Sized> Gc<A> {
-    pub fn add_child<B>(&mut self, child: &Gc<B>) {
+    pub fn add_child<B>(&self, child: &Gc<B>) {
         let node = unsafe { &mut *self.node };
         let child_node = child.node;
         if !node.children.contains(&child_node) {
@@ -60,7 +60,7 @@ impl<A: ?Sized> Gc<A> {
         }
     }
 
-    pub fn remove_child<B>(&mut self, child: &Gc<B>) {
+    pub fn remove_child<B>(&self, child: &Gc<B>) {
         let node = unsafe { &mut *self.node };
         let child_node = child.node;
         node.children.retain(|c| !ptr::eq(*c, child_node));
@@ -76,7 +76,7 @@ enum Colour {
 }
 
 struct Node {
-    count: u32,
+    count: i32,
     colour: Colour,
     buffered: bool,
     children: Vec<*mut Node>,
@@ -151,7 +151,7 @@ impl GcCtx {
         }
     }
 
-    fn collect_cycles(&mut self) {
+    pub fn collect_cycles(&mut self) {
         self.mark_roots();
         self.scan_roots();
         self.collect_roots();
