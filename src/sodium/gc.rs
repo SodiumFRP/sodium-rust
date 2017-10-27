@@ -9,7 +9,8 @@ use std::ops::Deref;
 use std::any::Any;
 
 pub struct GcCtx {
-    roots: Vec<*mut Node>
+    roots: Vec<*mut Node>,
+    auto_collect_cycles_on_decrement: bool
 }
 
 pub struct Gc<A: ?Sized> {
@@ -34,6 +35,9 @@ impl<A: ?Sized> Drop for Gc<A> {
     fn drop(&mut self) {
         let ctx = unsafe { &mut *self.ctx };
         ctx.decrement(self.node);
+        if ctx.auto_collect_cycles_on_decrement {
+            ctx.collect_cycles();
+        }
     }
 }
 
@@ -87,7 +91,8 @@ impl GcCtx {
 
     pub fn new() -> GcCtx {
         GcCtx {
-            roots: Vec::new()
+            roots: Vec::new(),
+            auto_collect_cycles_on_decrement: true
         }
     }
 

@@ -41,6 +41,5 @@ pub fn gc_loop() {
         a.x.set(Some(c.clone()));
         a.add_child(&c);
     }
-    gc_ctx.collect_cycles();
     assert_eq!(0, *count.borrow());
 }
