@@ -4,6 +4,7 @@
  */
 
 use std::marker::PhantomData;
+use std::cell::Cell;
 use std::ptr;
 use std::ops::Deref;
 use std::any::Any;
@@ -56,6 +57,48 @@ impl<A: Any> Deref for Gc<A> {
 }
 
 impl<A: ?Sized> Gc<A> {
+    pub fn downgrade(&self) -> GcWeak<A> {
+        let weak_node = Box::into_raw(Box::new(
+            WeakNode {
+                node: Some(self.node)
+            }
+        ));
+        GcWeak {
+            ctx: self.ctx,
+            weak_node: weak_node,
+            phantom: PhantomData
+        }
+    }
+}
+
+pub struct GcWeak<A: ?Sized> {
+    ctx: *mut GcCtx,
+    weak_node: *mut WeakNode,
+    phantom: PhantomData<A>
+}
+
+impl<A: ?Sized> Drop for GcWeak<A> {
+    fn drop(&mut self) {
+        unsafe { Box::from_raw(self.weak_node); }
+    }
+}
+
+impl<A: ?Sized> GcWeak<A> {
+    pub fn upgrade(&self) -> Option<Gc<A>> {
+        let weak_node = unsafe { &*self.weak_node };
+        weak_node.node.map(|node| {
+            let ctx = unsafe { &mut *self.ctx };
+            ctx.increment(node);
+            Gc {
+                ctx: self.ctx,
+                node: node,
+                phantom: PhantomData
+            }
+        })
+    }
+}
+
+impl<A: ?Sized> Gc<A> {
     pub fn add_child<B>(&self, child: &Gc<B>) {
         let node = unsafe { &mut *self.node };
         let child_node = child.node;
@@ -84,7 +127,33 @@ struct Node {
     colour: Colour,
     buffered: bool,
     children: Vec<*mut Node>,
+    weak_nodes: Vec<*mut WeakNode>,
     data: Box<Any>
+}
+
+impl Drop for Node {
+    fn drop(&mut self) {
+        for weak_node in &self.weak_nodes {
+            let weak_node = unsafe { &mut **weak_node };
+            weak_node.node = None;
+        }
+    }
+}
+
+struct WeakNode {
+    node: Option<*mut Node>
+}
+
+impl Drop for WeakNode {
+    fn drop(&mut self) {
+        match &self.node {
+            &Some(ref node) => {
+                let node = unsafe { &mut **node };
+                node.weak_nodes.retain(|weak_node| !ptr::eq(*weak_node, self));
+            },
+            &None => ()
+        }
+    }
 }
 
 impl GcCtx {
@@ -105,6 +174,7 @@ impl GcCtx {
                 colour: Colour::Black,
                 buffered: false,
                 children: Vec::new(),
+                weak_nodes: Vec::new(),
                 data: Box::new(value) as Box<Any>
             })),
             phantom: PhantomData
