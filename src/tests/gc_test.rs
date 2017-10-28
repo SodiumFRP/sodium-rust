@@ -43,3 +43,15 @@ pub fn gc_loop() {
     }
     assert_eq!(0, *count.borrow());
 }
+
+#[test]
+fn gc_weak() {
+    let mut gc_ctx = GcCtx::new();
+    let b;
+    {
+        let a = gc_ctx.new_gc(1);
+        b = a.downgrade();
+        assert!(b.upgrade().is_some());
+    }
+    assert!(b.upgrade().is_none());
+}
