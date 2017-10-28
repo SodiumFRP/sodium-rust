@@ -72,6 +72,14 @@ impl<A: ?Sized> Gc<A> {
             phantom: PhantomData
         }
     }
+
+    pub fn as_gc_any(&self) -> Gc<Any> {
+        Gc {
+            ctx: self.ctx,
+            node: self.node,
+            phantom: PhantomData
+        }
+    }
 }
 
 pub struct GcWeak<A: ?Sized> {
