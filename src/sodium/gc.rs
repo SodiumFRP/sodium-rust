@@ -63,6 +63,9 @@ impl<A: ?Sized> Gc<A> {
                 node: Some(self.node)
             }
         ));
+        unsafe {
+            (*self.node).weak_nodes.push(weak_node);
+        }
         GcWeak {
             ctx: self.ctx,
             weak_node: weak_node,
