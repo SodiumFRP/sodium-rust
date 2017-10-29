@@ -73,7 +73,7 @@ impl<A: ?Sized> Gc<A> {
         }
     }
 
-    pub fn as_gc_any(&self) -> Gc<Any> {
+    pub fn upcast<F,B:?Sized>(&self, f: F) -> Gc<B> where F: FnOnce(&A)->&B {
         Gc {
             ctx: self.ctx,
             node: self.node,
