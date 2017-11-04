@@ -3,6 +3,8 @@ use sodium::SodiumCtxData;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
 use sodium::WeakTransactionHandlerRef;
+use sodium::gc::Gc;
+use sodium::gc::GcWeak;
 use std::any::Any;
 use std::borrow::Borrow;
 use std::borrow::BorrowMut;
@@ -75,7 +77,7 @@ impl Drop for Node {
 
 pub struct Target {
     pub id: u32,
-    pub node: Weak<RefCell<HasNode>>,
+    pub node: GcWeak<RefCell<HasNode>>,
     // action here is really a strong reference to a weak reference, meaning it is still a weak
     // reference overall. This had to be done so we can use "Any" here.
     pub action: TransactionHandlerRef<Any>
@@ -101,11 +103,11 @@ impl HasNode for Node {
 }
 
 impl Target {
-    pub fn new<A:'static>(sodium_ctx: &mut SodiumCtx, node: Rc<RefCell<HasNode>>, action: TransactionHandlerRef<A>) -> Target {
+    pub fn new<A:'static>(sodium_ctx: &mut SodiumCtx, node: Gc<RefCell<HasNode>>, action: TransactionHandlerRef<A>) -> Target {
         let action = action.downgrade();
         Target {
             id: sodium_ctx.new_id(),
-            node: Rc::downgrade(&node),
+            node: node.downgrade(),
             action: TransactionHandlerRef::new(
                 move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &Any| {
                     match action.upgrade() {
@@ -124,7 +126,7 @@ impl Target {
 }
 
 impl HasNode {
-    pub fn link_to<A:'static>(&mut self, sodium_ctx: &mut SodiumCtx, target: Rc<RefCell<HasNode>>, action: TransactionHandlerRef<A>) -> (Target, bool) {
+    pub fn link_to<A:'static>(&mut self, sodium_ctx: &mut SodiumCtx, target: Gc<RefCell<HasNode>>, action: TransactionHandlerRef<A>) -> (Target, bool) {
         let changed;
         {
             changed = HasNode::ensure_bigger_than(target.clone(), self.node_ref().rank, &mut HashSet::new());
@@ -144,7 +146,7 @@ impl HasNode {
         )
     }
 
-    pub fn ensure_bigger_than(self_: Rc<RefCell<Self>>, limit: u64, visited: &mut HashSet<u32>) -> bool {
+    pub fn ensure_bigger_than(self_: Gc<RefCell<Self>>, limit: u64, visited: &mut HashSet<u32>) -> bool {
         let listeners;
         let rank;
         {

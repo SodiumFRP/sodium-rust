@@ -14,6 +14,9 @@ use sodium::StreamWithSend;
 use sodium::Target;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
+use sodium::gc::Gc;
+use sodium::gc::GcCtx;
+use sodium::gc::GcWeak;
 use std::cell::RefCell;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -21,11 +24,11 @@ use std::rc::Rc;
 use std::rc::Weak;
 
 pub struct Stream<A> {
-    pub data: Rc<RefCell<StreamData<A>>>
+    pub data: Gc<RefCell<StreamData<A>>>
 }
 
 pub struct WeakStream<A> {
-    pub data: Weak<RefCell<StreamData<A>>>
+    pub data: GcWeak<RefCell<StreamData<A>>>
 }
 
 pub trait IsStream<A: Clone + 'static> {
@@ -67,7 +70,7 @@ pub trait IsStream<A: Clone + 'static> {
         result
     }
 
-    fn listen_(&self, sodium_ctx: &mut SodiumCtx, target: Rc<RefCell<HasNode>>, action: TransactionHandlerRef<A>) -> Listener {
+    fn listen_(&self, sodium_ctx: &mut SodiumCtx, target: Gc<RefCell<HasNode>>, action: TransactionHandlerRef<A>) -> Listener {
         Transaction::apply(
             sodium_ctx,
             move |sodium_ctx, trans1| {
@@ -89,7 +92,7 @@ pub trait IsStream<A: Clone + 'static> {
         );
     }
 
-    fn listen2(&self, sodium_ctx: &mut SodiumCtx, target: Rc<RefCell<HasNode>>, trans: &mut Transaction, action: TransactionHandlerRef<A>, suppress_earlier_firings: bool, weak_self: bool) -> Listener {
+    fn listen2(&self, sodium_ctx: &mut SodiumCtx, target: Gc<RefCell<HasNode>>, trans: &mut Transaction, action: TransactionHandlerRef<A>, suppress_earlier_firings: bool, weak_self: bool) -> Listener {
         let mut self_ = self.to_stream_ref().data.borrow_mut();
         let mut self__: &mut StreamData<A> = &mut *self_;
         let node_target;
@@ -137,7 +140,7 @@ pub trait IsStream<A: Clone + 'static> {
             |sodium_ctx, trans| {
                 self.listen2(
                     sodium_ctx,
-                    out.stream.data.clone() as Rc<RefCell<HasNode>>,
+                    out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>),
                     trans,
                     TransactionHandlerRef::new(
                         move |sodium_ctx, trans, a| {
@@ -159,7 +162,7 @@ pub trait IsStream<A: Clone + 'static> {
         let out2 = out.downgrade();
         let l = self.listen_(
             sodium_ctx,
-            out.stream.data.clone() as Rc<RefCell<HasNode>>,
+            out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>),
             TransactionHandlerRef::new(
                 move |sodium_ctx, trans, a| {
                     out2.send(sodium_ctx, trans, &f(a));
@@ -205,7 +208,7 @@ pub trait IsStream<A: Clone + 'static> {
         let out = StreamWithSend::new(sodium_ctx);
         let l;
         {
-            let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+            let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
             let out = out.downgrade();
             let c = c.to_cell();
             l = self.listen_(
@@ -316,8 +319,10 @@ pub trait IsStream<A: Clone + 'static> {
 
     fn merge_<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A> where SA: IsStream<A> {
         let out = StreamWithSend::<A>::new(sodium_ctx);
-        let left = Rc::new(RefCell::new(Node::new(sodium_ctx, 0))) as Rc<RefCell<HasNode>>;
-        let right = out.to_stream_ref().data.clone() as Rc<RefCell<HasNode>>;
+        let mut sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &mut sodium_ctx2;
+        let left = sodium_ctx.new_gc(RefCell::new(Node::new(sodium_ctx2, 0))).upcast(|x| x as &RefCell<HasNode>);
+        let right = out.to_stream_ref().data.clone().upcast(|x| x as &RefCell<HasNode>);
         let (node_target, _) = left.borrow_mut().link_to(
             sodium_ctx,
             right.clone(),
@@ -358,7 +363,7 @@ pub trait IsStream<A: Clone + 'static> {
         let h = CoalesceHandler::new(f, out.downgrade());
         let l = self.listen2(
             sodium_ctx,
-            out.to_stream_ref().data.clone() as Rc<RefCell<HasNode>>,
+            out.to_stream_ref().data.clone().upcast(|x| x as &RefCell<HasNode>),
             trans1,
             h.to_transaction_handler(),
             false,
@@ -375,7 +380,7 @@ pub trait IsStream<A: Clone + 'static> {
         let out = StreamWithSend::new(sodium_ctx);
         let l;
         {
-            let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+            let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
             let out = out.downgrade();
             l = self.listen_(
                 sodium_ctx,
@@ -396,7 +401,7 @@ pub trait IsStream<A: Clone + 'static> {
         let out = StreamWithSend::new(sodium_ctx);
         let l;
         {
-            let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+            let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
             let out = out.downgrade();
             l = self_.listen_(
                 sodium_ctx,
@@ -494,7 +499,7 @@ pub trait IsStream<A: Clone + 'static> {
 
     fn once(&self, sodium_ctx: &mut SodiumCtx) -> Stream<A> {
         let out = StreamWithSend::new(sodium_ctx);
-        let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+        let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
         let l_cell = Rc::new(RefCell::new(None));
         let l;
         {
@@ -645,10 +650,12 @@ impl<A: Clone + 'static> ListenerImpl<A> {
 
 impl<A: Clone + 'static> Stream<A> {
     pub fn new(sodium_ctx: &mut SodiumCtx) -> Stream<A> {
+        let mut sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &mut sodium_ctx2;
         Stream {
-            data: Rc::new(RefCell::new(
+            data: sodium_ctx.new_gc(RefCell::new(
                 StreamData {
-                    node: Node::new(sodium_ctx, 0),
+                    node: Node::new(sodium_ctx2, 0),
                     finalizers: Vec::new(),
                     firings: Vec::new()
                 }
@@ -656,9 +663,9 @@ impl<A: Clone + 'static> Stream<A> {
         }
     }
 
-    fn new_(node: Node, finalizers: Vec<Listener>, firings: Vec<A>) -> Stream<A> {
+    fn new_(gc_ctx: &mut GcCtx, node: Node, finalizers: Vec<Listener>, firings: Vec<A>) -> Stream<A> {
         Stream {
-            data: Rc::new(RefCell::new(
+            data: gc_ctx.new_gc(RefCell::new(
                 StreamData {
                     node: node,
                     finalizers: finalizers,
@@ -670,7 +677,7 @@ impl<A: Clone + 'static> Stream<A> {
 
     pub fn downgrade(&self) -> WeakStream<A> {
         WeakStream {
-            data: Rc::downgrade(&self.data)
+            data: self.data.downgrade()
         }
     }
 

@@ -10,6 +10,7 @@ use sodium::StreamWithSend;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
 use sodium::WeakStreamWithSend;
+use sodium::gc::Gc;
 use std::borrow::Borrow;
 use std::borrow::BorrowMut;
 use std::cell::Ref;
@@ -103,7 +104,7 @@ pub trait IsCell<A: Clone + 'static> {
 
     fn value_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) -> Stream<A> {
         let s_spark = StreamWithSend::new(sodium_ctx);
-        let s_spark_node = s_spark.stream.data.clone() as Rc<RefCell<HasNode>>;
+        let s_spark_node = s_spark.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
         {
             let s_spark = s_spark.clone();
             trans.prioritized(
@@ -264,9 +265,11 @@ pub trait IsCell<A: Clone + 'static> {
             sodium_ctx,
             |sodium_ctx, trans| {
                 let out: StreamWithSend<Lazy<B>> = StreamWithSend::new(sodium_ctx);
-                let out_target = out.stream.data.clone() as Rc<RefCell<HasNode>>;
-                let mut in_target = Rc::new(RefCell::new(Node::new(sodium_ctx, 0))) as Rc<RefCell<HasNode>>;
-                let (node_target,_) = ((*in_target).borrow_mut().node_mut() as &mut HasNode).link_to::<Lazy<B>>(
+                let out_target = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
+                let mut sodium_ctx2 = sodium_ctx.clone();
+                let sodium_ctx2 = &mut sodium_ctx2;
+                let mut in_target = sodium_ctx.new_gc(RefCell::new(Node::new(sodium_ctx2, 0))).upcast(|x| x as &RefCell<HasNode>);
+                let (node_target,_) = ((in_target.deref()).borrow_mut().node_mut() as &mut HasNode).link_to::<Lazy<B>>(
                     sodium_ctx,
                     out_target,
                     TransactionHandlerRef::new(
@@ -408,7 +411,7 @@ pub trait IsCell<A: Clone + 'static> {
                     h = TransactionHandlerRef::new(
                         move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, ca: &CA| {
                             let out = out.clone();
-                            let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+                            let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
                             let mut current_listener = (*current_listener).borrow_mut();
                             match current_listener.as_ref() {
                                 Some(current_listener) =>
@@ -436,7 +439,7 @@ pub trait IsCell<A: Clone + 'static> {
                         }
                     );
                 }
-                let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+                let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
                 let l1 = cca.value_(sodium_ctx, trans).listen_(sodium_ctx, out_node, h);
                 out
                     .last_firing_only_(sodium_ctx, trans)
@@ -488,7 +491,7 @@ pub trait IsCell<A: Clone + 'static> {
                 }
             );
         }
-        let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+        let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
         let current_listener: Rc<RefCell<Option<Listener>>> = Rc::new(RefCell::new(Some(
             csa.sample_no_trans_().listen2(
                 sodium_ctx,
@@ -518,7 +521,7 @@ pub trait IsCell<A: Clone + 'static> {
                             let mut trans3 = trans3.clone();
                             let trans3 = &mut trans3;
                             let out = out.upgrade().unwrap().clone();
-                            let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+                            let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
                             let mut current_listener = (*current_listener).borrow_mut();
                             match current_listener.as_ref() {
                                 Some(current_listener) =>
@@ -541,7 +544,7 @@ pub trait IsCell<A: Clone + 'static> {
                 }
             );
         }
-        let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+        let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
         let l1 = csa.updates_(trans).listen2(
             sodium_ctx,
             out_node,
@@ -797,7 +800,7 @@ impl<A:'static + Clone,B:'static> ApplyHandler<A,B> {
         let out_node;
         match out.stream.upgrade() {
             Some(stream) => {
-                out_node = stream.data.clone() as Rc<RefCell<HasNode>>;
+                out_node = stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
             },
             None => return
         }

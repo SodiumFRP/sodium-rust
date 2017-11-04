@@ -2,6 +2,7 @@ use sodium::HandlerRefMut;
 use sodium::HasNode;
 use sodium::Node;
 use sodium::SodiumCtx;
+use sodium::gc::Gc;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
@@ -20,13 +21,13 @@ use std::ops::DerefMut;
 use std::rc::Rc;
 
 pub struct Entry {
-    pub rank: Rc<RefCell<HasNode>>,
+    pub rank: Gc<RefCell<HasNode>>,
     pub action: HandlerRefMut<Transaction>,
     pub seq: u64
 }
 
 impl Entry {
-    fn new(sodium_ctx: &mut SodiumCtx, rank: Rc<RefCell<HasNode>>, action: HandlerRefMut<Transaction>) -> Entry {
+    fn new(sodium_ctx: &mut SodiumCtx, rank: Gc<RefCell<HasNode>>, action: HandlerRefMut<Transaction>) -> Entry {
         Entry {
             rank: rank,
             action: action,
@@ -185,7 +186,7 @@ impl Transaction {
         }
     }
 
-    pub fn prioritized(&mut self, sodium_ctx: &mut SodiumCtx, rank: Rc<RefCell<HasNode>>, action: HandlerRefMut<Transaction>) {
+    pub fn prioritized(&mut self, sodium_ctx: &mut SodiumCtx, rank: Gc<RefCell<HasNode>>, action: HandlerRefMut<Transaction>) {
         let e = Entry::new(sodium_ctx, rank, action);
         self.with_data_mut(|data| {
             data.prioritized_q.push(e.clone());

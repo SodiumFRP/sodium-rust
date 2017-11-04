@@ -8,51 +8,58 @@ use std::cell::Cell;
 use std::ptr;
 use std::ops::Deref;
 use std::any::Any;
+use std::mem::transmute;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct GcCtx {
+    data: Rc<RefCell<GcCtxData>>
+}
+
+impl Clone for GcCtx {
+    fn clone(&self) -> Self {
+        GcCtx {
+            data: self.data.clone()
+        }
+    }
+}
+
+struct GcCtxData {
     roots: Vec<*mut Node>,
     auto_collect_cycles_on_decrement: bool
 }
 
 pub struct Gc<A: ?Sized> {
-    ctx: *mut GcCtx,
-    node: *mut Node,
-    phantom: PhantomData<A>
+    ctx: GcCtx,
+    value: *mut A,
+    node: *mut Node
 }
 
 impl<A: ?Sized> Clone for Gc<A> {
     fn clone(&self) -> Self {
-        let ctx = unsafe { &mut *self.ctx };
-        ctx.increment(self.node);
+        self.ctx.increment(self.node);
         Gc {
-            ctx: self.ctx,
-            node: self.node,
-            phantom: PhantomData
+            ctx: self.ctx.clone(),
+            value: self.value,
+            node: self.node
         }
     }
 }
 
 impl<A: ?Sized> Drop for Gc<A> {
     fn drop(&mut self) {
-        let ctx = unsafe { &mut *self.ctx };
-        ctx.decrement(self.node);
-        if ctx.auto_collect_cycles_on_decrement {
-            ctx.collect_cycles();
+        self.ctx.decrement(self.node);
+        if self.ctx.with_data(|data| data.auto_collect_cycles_on_decrement) {
+            self.ctx.collect_cycles();
         }
     }
 }
 
-impl<A: Any> Deref for Gc<A> {
+impl<A: ?Sized> Deref for Gc<A> {
     type Target = A;
 
     fn deref(&self) -> &A {
-        let node = unsafe { &mut *self.node };
-        let data: &Box<Any> = unsafe { &node.data };
-        let value: &A = match data.downcast_ref::<A>() {
-            Some(value2) => value2,
-            None => panic!()
-        };
-        value
+        unsafe { &*self.value }
     }
 }
 
@@ -67,25 +74,41 @@ impl<A: ?Sized> Gc<A> {
             (*self.node).weak_nodes.push(weak_node);
         }
         GcWeak {
-            ctx: self.ctx,
+            ctx: self.ctx.clone(),
             weak_node: weak_node,
-            phantom: PhantomData
+            value: self.value
         }
     }
 
     pub fn upcast<F,B:?Sized>(&self, f: F) -> Gc<B> where F: FnOnce(&A)->&B {
+        let s = unsafe { &mut *self.node };
+        s.count = s.count + 1;
         Gc {
-            ctx: self.ctx,
-            node: self.node,
-            phantom: PhantomData
+            ctx: self.ctx.clone(),
+            value: unsafe { transmute(f(unsafe { &mut *self.value })) },
+            node: self.node
         }
     }
 }
 
 pub struct GcWeak<A: ?Sized> {
-    ctx: *mut GcCtx,
+    ctx: GcCtx,
     weak_node: *mut WeakNode,
-    phantom: PhantomData<A>
+    value: *mut A
+}
+
+impl<A: ?Sized> Clone for GcWeak<A> {
+    fn clone(&self) -> Self {
+        match self.upgrade() {
+            Some(gc) => gc.downgrade(),
+            None =>
+                GcWeak {
+                    ctx: self.ctx.clone(),
+                    weak_node: Box::into_raw(Box::new(WeakNode { node: None })),
+                    value: self.value
+                }
+        }
+    }
 }
 
 impl<A: ?Sized> Drop for GcWeak<A> {
@@ -98,12 +121,11 @@ impl<A: ?Sized> GcWeak<A> {
     pub fn upgrade(&self) -> Option<Gc<A>> {
         let weak_node = unsafe { &*self.weak_node };
         weak_node.node.map(|node| {
-            let ctx = unsafe { &mut *self.ctx };
-            ctx.increment(node);
+            self.ctx.increment(node);
             Gc {
-                ctx: self.ctx,
-                node: node,
-                phantom: PhantomData
+                ctx: self.ctx.clone(),
+                value: self.value,
+                node: node
             }
         })
     }
@@ -139,7 +161,7 @@ struct Node {
     buffered: bool,
     children: Vec<*mut Node>,
     weak_nodes: Vec<*mut WeakNode>,
-    data: Box<Any>
+    cleanup: Box<Fn()>
 }
 
 impl Drop for Node {
@@ -148,6 +170,7 @@ impl Drop for Node {
             let weak_node = unsafe { &mut **weak_node };
             weak_node.node = None;
         }
+        (self.cleanup)();
     }
 }
 
@@ -171,34 +194,42 @@ impl GcCtx {
 
     pub fn new() -> GcCtx {
         GcCtx {
-            roots: Vec::new(),
-            auto_collect_cycles_on_decrement: true
+            data: Rc::new(RefCell::new(
+                GcCtxData {
+                    roots: Vec::new(),
+                    auto_collect_cycles_on_decrement: true
+                }
+            ))
         }
     }
 
     pub fn new_gc<A: 'static>(&mut self, value: A) -> Gc<A> {
-        let ctx: *mut GcCtx = self;
+        let value = Box::into_raw(Box::new(value));
         Gc {
-            ctx: ctx,
+            ctx: self.clone(),
+            value: value,
             node: Box::into_raw(Box::new(Node {
                 count: 1,
                 colour: Colour::Black,
                 buffered: false,
                 children: Vec::new(),
                 weak_nodes: Vec::new(),
-                data: Box::new(value) as Box<Any>
-            })),
-            phantom: PhantomData
+                cleanup: Box::new(move || { unsafe { Box::from_raw(value); } })
+            }))
         }
     }
 
-    fn increment(&mut self, s: *mut Node) {
+    fn with_data<F,A>(&self, f: F)->A where F: FnOnce(&mut GcCtxData)->A {
+        f(&mut self.data.borrow_mut())
+    }
+
+    fn increment(&self, s: *mut Node) {
         let s = unsafe { &mut *s };
         s.count = s.count + 1;
         s.colour = Colour::Black;
     }
 
-    fn decrement(&mut self, s: *mut Node) {
+    fn decrement(&self, s: *mut Node) {
         let s = unsafe { &mut *s };
         s.count = s.count - 1;
         if s.count == 0 {
@@ -208,7 +239,7 @@ impl GcCtx {
         }
     }
 
-    fn release(&mut self, s: *mut Node) {
+    fn release(&self, s: *mut Node) {
         let s = unsafe { &mut *s };
         for child in &s.children {
             self.decrement(*child);
@@ -219,39 +250,40 @@ impl GcCtx {
         }
     }
 
-    fn system_free(&mut self, s: *mut Node) {
+    fn system_free(&self, s: *mut Node) {
+        self.with_data(|data| data.roots.retain(|n| !ptr::eq(*n, s)));
         let s = unsafe { &mut *s };
         unsafe {
             Box::from_raw(s);
         }
     }
 
-    fn possible_root(&mut self, s: *mut Node) {
+    fn possible_root(&self, s: *mut Node) {
         let s = unsafe { &mut *s };
         if s.colour != Colour::Purple {
             s.colour = Colour::Purple;
             if !s.buffered {
                 s.buffered = true;
-                self.roots.push(s);
+                self.with_data(|data| data.roots.push(s));
             }
         }
     }
 
-    pub fn collect_cycles(&mut self) {
+    pub fn collect_cycles(&self) {
         self.mark_roots();
         self.scan_roots();
         self.collect_roots();
     }
 
-    fn mark_roots(&mut self) {
-        let roots = self.roots.clone();
+    fn mark_roots(&self) {
+        let roots = self.with_data(|data| data.roots.clone());
         for s in roots {
             let s = unsafe { &mut *s };
             if s.colour == Colour::Purple && s.count > 0 {
                 self.mark_gray(s);
             } else {
                 s.buffered = false;
-                self.roots.retain(|s2| !ptr::eq(s, *s2));
+                self.with_data(|data| data.roots.retain(|s2| !ptr::eq(s, *s2)));
                 if s.colour == Colour::Black && s.count == 0 {
                     self.system_free(s);
                 }
@@ -259,16 +291,19 @@ impl GcCtx {
         }
     }
 
-    fn scan_roots(&mut self) {
-        let roots = self.roots.clone();
+    fn scan_roots(&self) {
+        let roots = self.with_data(|data| data.roots.clone());
         for s in roots {
             self.scan(s);
         }
     }
 
-    fn collect_roots(&mut self) {
-        let roots = self.roots.clone();
-        self.roots.clear();
+    fn collect_roots(&self) {
+        let roots = self.with_data(|data| {
+            let roots = data.roots.clone();
+            data.roots.clear();
+            roots
+        });
         for s in roots {
             let s = unsafe { &mut *s };
             s.buffered = false;
@@ -276,7 +311,7 @@ impl GcCtx {
         }
     }
 
-    fn mark_gray(&mut self, s: *mut Node) {
+    fn mark_gray(&self, s: *mut Node) {
         let s = unsafe { &mut *s };
         if s.colour != Colour::Gray {
             s.colour = Colour::Gray;
@@ -288,7 +323,7 @@ impl GcCtx {
         }
     }
 
-    fn scan(&mut self, s: *mut Node) {
+    fn scan(&self, s: *mut Node) {
         let s = unsafe { &mut *s };
         if s.colour == Colour::Gray {
             if s.count > 0 {
@@ -303,7 +338,7 @@ impl GcCtx {
         }
     }
 
-    fn scan_black(&mut self, s: *mut Node) {
+    fn scan_black(&self, s: *mut Node) {
         let s = unsafe { &mut *s };
         s.colour = Colour::Black;
         for t in &s.children {
@@ -315,7 +350,7 @@ impl GcCtx {
         }
     }
 
-    fn collect_white(&mut self, s: *mut Node) {
+    fn collect_white(&self, s: *mut Node) {
         let s = unsafe { &mut *s };
         if s.colour == Colour::White && !s.buffered {
             s.colour = Colour::Black;

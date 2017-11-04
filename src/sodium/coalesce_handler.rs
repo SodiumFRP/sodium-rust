@@ -63,7 +63,7 @@ impl<A: 'static + Clone> CoalesceHandler<A> {
                 Some(out) => {
                     trans1.prioritized(
                         sodium_ctx,
-                        out.stream.data.clone() as Rc<RefCell<HasNode>>,
+                        out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>),
                         HandlerRefMut::new(
                             move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction| {
                                 let mut data = self_.data.borrow_mut();

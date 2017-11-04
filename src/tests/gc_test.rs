@@ -55,3 +55,35 @@ fn gc_weak() {
     }
     assert!(b.upgrade().is_none());
 }
+
+#[test]
+fn gc_deref() {
+    let mut gc_ctx = GcCtx::new();
+    let a = gc_ctx.new_gc(1);
+    assert_eq!(*a, 1);
+}
+
+#[test]
+fn gc_upcast() {
+    struct Value {
+        value: i32
+    }
+    trait Inc {
+        fn inc(&mut self);
+    }
+    impl Inc for Value {
+        fn inc(&mut self) {
+            self.value = self.value + 1
+        }
+    }
+    let mut gc_ctx = GcCtx::new();
+    {
+        let a =
+            gc_ctx
+                .new_gc(RefCell::new(Value { value: 3 }))
+                .upcast(|x| x as &RefCell<Inc>);
+        (*a).borrow_mut().inc();
+        let b = a.clone();
+        (*b).borrow_mut().inc();
+    }
+}

@@ -44,7 +44,7 @@ impl<A: 'static + Clone> StreamLoop<A> {
                 self.unsafe_add_cleanup(
                     ea_out.listen_(
                         sodium_ctx,
-                        self.stream.stream.data.clone() as Rc<RefCell<HasNode>>,
+                        self.stream.stream.data.clone().upcast(|x| x as &RefCell<HasNode>),
                         TransactionHandlerRef::new(
                             move |sodium_ctx, trans, a| {
                                 let me = me.upgrade();

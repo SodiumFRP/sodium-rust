@@ -63,7 +63,7 @@ impl Operational {
         let out = StreamWithSend::new(sodium_ctx);
         let l1;
         {
-            let out_node = out.stream.data.clone() as Rc<RefCell<HasNode>>;
+            let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
             let out = out.downgrade();
             l1 = s.listen_(
                 sodium_ctx,

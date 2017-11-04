@@ -15,6 +15,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[test]
+fn gc_crash_test() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+}
+
+#[test]
 fn map() {
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
