@@ -39,12 +39,13 @@ pub trait IsStream<A: Clone + 'static> {
         Dep::new(self.to_stream_ref().clone().data)
     }
 
-    fn set_deps(&self, deps: Vec<Dep>) {
+    fn set_deps(&self, deps: Vec<Dep>) -> &Self {
         let mut gc_deps = Vec::new();
         for dep in deps {
             gc_deps.push(dep.gc_dep);
         }
         self.to_stream_ref().data.set_deps(gc_deps);
+        self
     }
 
     fn listen<F>(&self, sodium_ctx: &mut SodiumCtx, handler: F) -> Listener where F: Fn(&A) + 'static {

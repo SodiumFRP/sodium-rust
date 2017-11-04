@@ -26,12 +26,13 @@ pub trait IsCell<A: Clone + 'static> {
         Dep::new(self.to_cell().data)
     }
 
-    fn set_deps(&self, deps: Vec<Dep>) {
+    fn set_deps(&self, deps: Vec<Dep>) -> &Self {
         let mut gc_deps = Vec::new();
         for dep in deps {
             gc_deps.push(dep.gc_dep);
         }
         self.to_cell().data.set_deps(gc_deps);
+        self
     }
 
     fn with_cell_data_ref<F,R>(&self, f: F) -> R where F: FnOnce(&CellData<A>)->R {
