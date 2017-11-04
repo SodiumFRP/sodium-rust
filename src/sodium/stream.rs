@@ -1,5 +1,6 @@
 use sodium::Cell;
 use sodium::CoalesceHandler;
+use sodium::Dep;
 use sodium::HandlerRef;
 use sodium::HandlerRefMut;
 use sodium::IsCell;
@@ -33,6 +34,18 @@ pub struct WeakStream<A> {
 
 pub trait IsStream<A: Clone + 'static> {
     fn to_stream_ref(&self) -> &Stream<A>;
+
+    fn to_dep(&self) -> Dep {
+        Dep::new(self.to_stream_ref().clone().data)
+    }
+
+    fn set_deps(&self, deps: Vec<Dep>) {
+        let mut gc_deps = Vec::new();
+        for dep in deps {
+            gc_deps.push(dep.gc_dep);
+        }
+        self.to_stream_ref().data.set_deps(gc_deps);
+    }
 
     fn listen<F>(&self, sodium_ctx: &mut SodiumCtx, handler: F) -> Listener where F: Fn(&A) + 'static {
         let l0 = self.listen_weak(sodium_ctx, handler);

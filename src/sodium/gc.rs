@@ -29,6 +29,17 @@ struct GcCtxData {
     auto_collect_cycles_on_decrement: bool
 }
 
+pub struct GcDep {
+    ctx: GcCtx,
+    node: *mut Node
+}
+
+impl Drop for GcDep {
+    fn drop(&mut self) {
+        self.ctx.decrement(self.node);
+    }
+}
+
 pub struct Gc<A: ?Sized> {
     ctx: GcCtx,
     value: *mut A,
@@ -64,6 +75,22 @@ impl<A: ?Sized> Deref for Gc<A> {
 }
 
 impl<A: ?Sized> Gc<A> {
+    pub fn to_dep(&self) -> GcDep {
+        self.ctx.increment(self.node);
+        GcDep {
+            ctx: self.ctx.clone(),
+            node: self.node
+        }
+    }
+
+    pub fn set_deps(&self, deps: Vec<GcDep>) {
+        let node = unsafe { &mut *self.node };
+        node.children.clear();
+        for dep in deps {
+            node.children.push(dep.node);
+        }
+    }
+
     pub fn downgrade(&self) -> GcWeak<A> {
         let weak_node = Box::into_raw(Box::new(
             WeakNode {

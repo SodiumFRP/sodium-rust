@@ -1,3 +1,4 @@
+use sodium::Dep;
 use sodium::HandlerRefMut;
 use sodium::HasNode;
 use sodium::Node;
@@ -20,6 +21,18 @@ use std::ops::Deref;
 
 pub trait IsCell<A: Clone + 'static> {
     fn to_cell(&self) -> Cell<A>;
+
+    fn to_dep(&self) -> Dep {
+        Dep::new(self.to_cell().data)
+    }
+
+    fn set_deps(&self, deps: Vec<Dep>) {
+        let mut gc_deps = Vec::new();
+        for dep in deps {
+            gc_deps.push(dep.gc_dep);
+        }
+        self.to_cell().data.set_deps(gc_deps);
+    }
 
     fn with_cell_data_ref<F,R>(&self, f: F) -> R where F: FnOnce(&CellData<A>)->R {
         let data1 = self.to_cell();
