@@ -596,7 +596,7 @@ pub trait IsCell<A: Clone + 'static> {
 }
 
 pub struct Cell<A> {
-    pub data: Rc<RefCell<HasCellData<A>>>
+    pub data: Gc<RefCell<HasCellData<A>>>
 }
 
 pub struct CellData<A> {
@@ -607,13 +607,13 @@ pub struct CellData<A> {
     pub lazy_init_value: Option<Lazy<A>>
 }
 
-pub trait HasCellDataRc<A> {
-    fn cell_data(&self) -> Rc<RefCell<HasCellData<A>>>;
+pub trait HasCellDataGc<A> {
+    fn cell_data(&self) -> Gc<RefCell<HasCellData<A>>>;
 }
 
-impl<A: 'static> HasCellDataRc<A> for Cell<A> {
-    fn cell_data(&self) -> Rc<RefCell<HasCellData<A>>> {
-        self.data.clone() as Rc<RefCell<HasCellData<A>>>
+impl<A: 'static> HasCellDataGc<A> for Cell<A> {
+    fn cell_data(&self) -> Gc<RefCell<HasCellData<A>>> {
+        self.data.clone().upcast(|x| x as &RefCell<HasCellData<A>>)
     }
 }
 
@@ -649,7 +649,7 @@ impl<A> Drop for CellData<A> {
     }
 }
 
-impl<A: Clone + 'static,CA: HasCellDataRc<A>> IsCell<A> for CA {
+impl<A: Clone + 'static,CA: HasCellDataGc<A>> IsCell<A> for CA {
     fn to_cell(&self) -> Cell<A> {
         Cell {
             data: self.cell_data()
@@ -667,22 +667,24 @@ impl<A> Clone for Cell<A> {
 
 impl<A:'static + Clone> Cell<A> {
     pub fn new(sodium_ctx: &mut SodiumCtx, value: A) -> Cell<A> {
+        let mut sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &mut sodium_ctx2;
         Cell {
-            data: Rc::new(RefCell::new(
+            data: sodium_ctx.new_gc(RefCell::new(
                 CellData {
-                    str: Stream::new(sodium_ctx),
+                    str: Stream::new(sodium_ctx2),
                     value: Some(value),
                     value_update: None,
                     cleanup: None,
                     lazy_init_value: None
                 }
-            ))
+            )).upcast(|x| x as &RefCell<HasCellData<A>>)
         }
     }
 
     pub fn new_(sodium_ctx: &mut SodiumCtx, str: Stream<A>, init_value: Option<A>) -> Cell<A> {
         let r = Cell {
-            data: Rc::new(RefCell::new(
+            data: sodium_ctx.new_gc(RefCell::new(
                 CellData {
                     str: str,
                     value: init_value,
@@ -690,7 +692,7 @@ impl<A:'static + Clone> Cell<A> {
                     cleanup: None,
                     lazy_init_value: None
                 }
-            ))
+            )).upcast(|x| x as &RefCell<HasCellData<A>>)
         };
         let self_ = r.clone();
         Transaction::run_trans(
@@ -698,7 +700,7 @@ impl<A:'static + Clone> Cell<A> {
             move |sodium_ctx: &mut SodiumCtx, trans1: &mut Transaction| {
                 let self__ = self_.clone();
                 self_.with_cell_data_mut(move |data| {
-                    let self_ = Rc::downgrade(&self__.cell_data());
+                    let self_ = self__.cell_data().downgrade();
                     let null_node = sodium_ctx.null_node();
                     data.cleanup = Some(data.str.listen2(
                         sodium_ctx,

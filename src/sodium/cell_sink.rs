@@ -1,10 +1,11 @@
 use sodium::Cell;
 use sodium::CellData;
 use sodium::HasCellData;
-use sodium::HasCellDataRc;
+use sodium::HasCellDataGc;
 use sodium::IsStream;
 use sodium::SodiumCtx;
 use sodium::StreamSink;
+use sodium::gc::Gc;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -13,8 +14,8 @@ pub struct CellSink<A> {
     str: StreamSink<A>
 }
 
-impl<A: Clone + 'static> HasCellDataRc<A> for CellSink<A> {
-    fn cell_data(&self) -> Rc<RefCell<HasCellData<A>>> {
+impl<A: Clone + 'static> HasCellDataGc<A> for CellSink<A> {
+    fn cell_data(&self) -> Gc<RefCell<HasCellData<A>>> {
         self.cell.cell_data()
     }
 }

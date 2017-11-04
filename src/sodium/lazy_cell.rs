@@ -1,10 +1,11 @@
 use sodium::Cell;
 use sodium::IsCell;
-use sodium::HasCellDataRc;
+use sodium::HasCellDataGc;
 use sodium::HasCellData;
 use sodium::Lazy;
 use sodium::SodiumCtx;
 use sodium::Stream;
+use sodium::gc::Gc;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -29,8 +30,8 @@ trait HasCellData<A> {
 }
 */
 
-impl<A: Clone + 'static> HasCellDataRc<A> for LazyCell<A> {
-    fn cell_data(&self) -> Rc<RefCell<HasCellData<A>>> {
+impl<A: Clone + 'static> HasCellDataGc<A> for LazyCell<A> {
+    fn cell_data(&self) -> Gc<RefCell<HasCellData<A>>> {
         self.cell.data.clone()
     }
 

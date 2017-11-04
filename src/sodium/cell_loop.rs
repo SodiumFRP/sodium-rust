@@ -3,16 +3,17 @@ use sodium::IsCell;
 use sodium::IsStream;
 use sodium::HandlerRefMut;
 use sodium::HasCellData;
-use sodium::HasCellDataRc;
+use sodium::HasCellDataGc;
 use sodium::SodiumCtx;
 use sodium::StreamLoop;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
+use sodium::gc::Gc;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct CellLoop<A> {
-    data: Rc<RefCell<CellLoopData<A>>>
+    data: Gc<RefCell<CellLoopData<A>>>
 }
 
 impl<A> Clone for CellLoop<A> {
@@ -29,9 +30,9 @@ struct CellLoopData<A> {
     is_assigned: bool
 }
 
-impl<A: Clone + 'static> HasCellDataRc<A> for CellLoop<A> {
-    fn cell_data(&self) -> Rc<RefCell<HasCellData<A>>> {
-        self.data.clone() as Rc<RefCell<HasCellData<A>>>
+impl<A: Clone + 'static> HasCellDataGc<A> for CellLoop<A> {
+    fn cell_data(&self) -> Gc<RefCell<HasCellData<A>>> {
+        self.data.clone().upcast(|x| x as &RefCell<HasCellData<A>>)
     }
 }
 
@@ -55,7 +56,7 @@ impl<A: Clone + 'static> CellLoop<A> {
     pub fn new(sodium_ctx: &mut SodiumCtx) -> CellLoop<A> {
         let str = StreamLoop::new(sodium_ctx);
         let r = CellLoop {
-            data: Rc::new(RefCell::new(
+            data: sodium_ctx.new_gc(RefCell::new(
                 CellLoopData {
                     cell_data: CellData {
                         str: str.to_stream_ref().clone(),
@@ -77,7 +78,7 @@ impl<A: Clone + 'static> CellLoop<A> {
                 let self__ = self_.clone();
                 self_.with_cell_data_mut(move |data: &mut CellData<A>| {
                     let mut sodium_ctx2 = sodium_ctx.clone();
-                    let self__ = Rc::downgrade(&self__.data);
+                    let self__ = self__.data.downgrade();
                     data.cleanup = Some(data.str.listen2(
                         &mut sodium_ctx2,
                         sodium_ctx.null_node(),
