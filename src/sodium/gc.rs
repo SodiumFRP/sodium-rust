@@ -291,7 +291,12 @@ impl GcCtx {
             s.colour = Colour::Purple;
             if !s.buffered {
                 s.buffered = true;
-                self.with_data(|data| data.roots.push(s));
+                self.with_data(|data| {
+                    let s2: *mut Node = s;
+                    if !data.roots.contains(&s2) {
+                        data.roots.push(s);
+                    }
+                });
             }
         }
     }
