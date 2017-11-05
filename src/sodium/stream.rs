@@ -189,6 +189,7 @@ pub trait IsStream<A: Clone + 'static> {
         );
         out
             .unsafe_add_cleanup(l)
+            .set_deps(vec![self.to_dep()])
             .to_stream()
     }
 

@@ -268,9 +268,13 @@ impl GcCtx {
 
     fn release(&self, s: *mut Node) {
         let s = unsafe { &mut *s };
+        /*
+        The destructor of A inside Gc<A> will do this for us.
+
         for child in &s.children {
             self.decrement(*child);
         }
+        */
         s.colour = Colour::Black;
         if !s.buffered {
             self.system_free(s);
