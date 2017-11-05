@@ -94,6 +94,6 @@ impl Operational {
                 )
             );
         }
-        out.unsafe_add_cleanup(l1)
+        out.unsafe_add_cleanup(l1).to_stream()
     }
 }

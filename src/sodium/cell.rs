@@ -584,6 +584,7 @@ pub trait IsCell<A: Clone + 'static> {
                     }
                 )
             )
+            .to_stream()
     }
 
     fn listen<F>(&self, sodium_ctx: &mut SodiumCtx, action: F) -> Listener

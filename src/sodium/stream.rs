@@ -35,6 +35,10 @@ pub struct WeakStream<A> {
 pub trait IsStream<A: Clone + 'static> {
     fn to_stream_ref(&self) -> &Stream<A>;
 
+    fn to_stream(&self) -> Stream<A> {
+        self.to_stream_ref().clone()
+    }
+
     fn to_dep(&self) -> Dep {
         Dep::new(self.to_stream_ref().clone().data)
     }
@@ -166,7 +170,7 @@ pub trait IsStream<A: Clone + 'static> {
                 )
             }
         );
-        out.unsafe_add_cleanup(l)
+        out.unsafe_add_cleanup(l).to_stream()
     }
 
     fn map<B:'static + Clone,F>(&self, sodium_ctx: &mut SodiumCtx, f: F) -> Stream<B>
@@ -183,7 +187,9 @@ pub trait IsStream<A: Clone + 'static> {
                 }
             )
         );
-        out.unsafe_add_cleanup(l)
+        out
+            .unsafe_add_cleanup(l)
+            .to_stream()
     }
 
     fn map_to<B:'static + Clone>(&self, sodium_ctx: &mut SodiumCtx, b: B) -> Stream<B> {
@@ -234,7 +240,7 @@ pub trait IsStream<A: Clone + 'static> {
                 )
             );
         }
-        out.unsafe_add_cleanup(l)
+        out.unsafe_add_cleanup(l).to_stream()
     }
 
     fn snapshot2<CB,CC,B,C,D,F>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, f: F) -> Stream<D>
@@ -360,7 +366,7 @@ pub trait IsStream<A: Clone + 'static> {
             move || {
                 left.borrow_mut().unlink_to(&node_target);
             }
-        ))
+        )).to_stream()
     }
 
     fn merge<SA,F>(&self, sodium_ctx: &mut SodiumCtx, s: &SA, f: F) -> Stream<A> where SA: IsStream<A>, F: Fn(&A,&A)->A + 'static {
@@ -383,7 +389,7 @@ pub trait IsStream<A: Clone + 'static> {
             false,
             false
         );
-        out.unsafe_add_cleanup(l)
+        out.unsafe_add_cleanup(l).to_stream()
     }
 
     fn last_firing_only_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) -> Stream<A> {
@@ -408,7 +414,7 @@ pub trait IsStream<A: Clone + 'static> {
                 )
             );
         }
-        out.unsafe_add_cleanup(l)
+        out.unsafe_add_cleanup(l).to_stream()
     }
 
     fn filter_option<S>(sodium_ctx: &mut SodiumCtx, self_: &S) -> Stream<A> where S: IsStream<Option<A>> {
@@ -430,7 +436,7 @@ pub trait IsStream<A: Clone + 'static> {
                 )
             );
         }
-        out.unsafe_add_cleanup(l)
+        out.unsafe_add_cleanup(l).to_stream()
     }
 
     fn gate<CB>(&self, sodium_ctx: &mut SodiumCtx, c: &CB) -> Stream<A> where CB: IsCell<bool> {
@@ -542,7 +548,7 @@ pub trait IsStream<A: Clone + 'static> {
             );
         }
         *l_cell.borrow_mut() = Some(l.clone());
-        out.unsafe_add_cleanup(l)
+        out.unsafe_add_cleanup(l).to_stream()
     }
 
     fn keep_alive<X:'static>(&self, sodium_ctx: &mut SodiumCtx, object: X) -> Stream<A> {
@@ -550,17 +556,18 @@ pub trait IsStream<A: Clone + 'static> {
         self.add_cleanup(sodium_ctx, l)
     }
 
-    fn unsafe_add_cleanup(&self, listener: Listener) -> Stream<A> {
+    fn unsafe_add_cleanup(&self, listener: Listener) -> &Self {
         let mut data = self.to_stream_ref().data.borrow_mut();
         let data_: &mut StreamData<A> = &mut *data;
         data_.finalizers.push(listener);
-        self.to_stream_ref().clone()
+        self
     }
 
     fn add_cleanup(&self, sodium_ctx: &mut SodiumCtx, cleanup: Listener) -> Stream<A> {
         self
             .map(sodium_ctx, |a| a.clone())
             .unsafe_add_cleanup(cleanup)
+            .to_stream()
     }
 }
 
