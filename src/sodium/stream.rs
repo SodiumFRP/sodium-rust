@@ -52,6 +52,15 @@ pub trait IsStream<A: Clone + 'static> {
         self
     }
 
+    fn add_deps(&self, deps: Vec<Dep>) -> &Self {
+        let mut gc_deps = Vec::new();
+        for dep in deps {
+            gc_deps.push(dep.gc_dep);
+        }
+        self.to_stream_ref().data.add_deps(gc_deps);
+        self
+    }
+
     fn listen<F>(&self, sodium_ctx: &mut SodiumCtx, handler: F) -> Listener where F: Fn(&A) + 'static {
         let l0 = self.listen_weak(sodium_ctx, handler);
         let mut l_id = Rc::new(RefCell::new(0));
@@ -241,7 +250,10 @@ pub trait IsStream<A: Clone + 'static> {
                 )
             );
         }
-        out.unsafe_add_cleanup(l).to_stream()
+        out
+            .unsafe_add_cleanup(l)
+            .set_deps(vec![self.to_dep(), c.to_dep()])
+            .to_stream()
     }
 
     fn snapshot2<CB,CC,B,C,D,F>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, f: F) -> Stream<D>
@@ -253,13 +265,14 @@ pub trait IsStream<A: Clone + 'static> {
               F: Fn(&A,&B,&C)->D + 'static
     {
         let cc = cc.to_cell();
+        let cc2 = cc.clone();
         self.snapshot(
             sodium_ctx,
             cb,
             move |a, b| {
                 f(a, b, &cc.sample_no_trans_())
             }
-        )
+        ).add_deps(vec![cc2.to_dep()]).to_stream()
     }
 
     fn snapshot3<CB,CC,CD,B,C,D,E,F>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, cd: &CD, f: F) -> Stream<E>
@@ -274,13 +287,15 @@ pub trait IsStream<A: Clone + 'static> {
     {
         let cc = cc.to_cell();
         let cd = cd.to_cell();
+        let cc2 = cc.clone();
+        let cd2 = cd.clone();
         self.snapshot(
             sodium_ctx,
             cb,
             move |a, b| {
                 f(a, b, &cc.sample_no_trans_(), &cd.sample_no_trans_())
             }
-        )
+        ).add_deps(vec![cc2.to_dep(), cd2.to_dep()]).to_stream()
     }
 
     fn snapshot4<CB,CC,CD,CE,B,C,D,E,F,FN>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, cd: &CD, ce: &CE, f: FN) -> Stream<F>

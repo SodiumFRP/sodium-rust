@@ -91,6 +91,13 @@ impl<A: ?Sized> Gc<A> {
         }
     }
 
+    pub fn add_deps(&self, deps: Vec<GcDep>) {
+        let node = unsafe { &mut *self.node };
+        for dep in deps {
+            node.children.push(dep.node);
+        }
+    }
+
     pub fn downgrade(&self) -> GcWeak<A> {
         let weak_node = Box::into_raw(Box::new(
             WeakNode {
