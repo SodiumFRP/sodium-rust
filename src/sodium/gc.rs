@@ -106,11 +106,6 @@ impl<A: ?Sized> Gc<A> {
         let node = unsafe { &mut *self.node };
         let dep_nodes: Vec<*mut Node> = deps.iter().map(|dep| dep.node).collect();
         node.children.retain(|node| !dep_nodes.contains(node));
-        for dep in deps {
-            if !node.children.contains(&dep.node) {
-                node.children.push(dep.node);
-            }
-        }
     }
 
     pub fn downgrade(&self) -> GcWeak<A> {
