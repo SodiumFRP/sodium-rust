@@ -87,14 +87,29 @@ impl<A: ?Sized> Gc<A> {
         let node = unsafe { &mut *self.node };
         node.children.clear();
         for dep in deps {
-            node.children.push(dep.node);
+            if !node.children.contains(&dep.node) {
+                node.children.push(dep.node);
+            }
         }
     }
 
     pub fn add_deps(&self, deps: Vec<GcDep>) {
         let node = unsafe { &mut *self.node };
         for dep in deps {
-            node.children.push(dep.node);
+            if !node.children.contains(&dep.node) {
+                node.children.push(dep.node);
+            }
+        }
+    }
+
+    pub fn remove_deps(&self, deps: Vec<GcDep>) {
+        let node = unsafe { &mut *self.node };
+        let dep_nodes: Vec<*mut Node> = deps.iter().map(|dep| dep.node).collect();
+        node.children.retain(|node| !dep_nodes.contains(node));
+        for dep in deps {
+            if !node.children.contains(&dep.node) {
+                node.children.push(dep.node);
+            }
         }
     }
 
@@ -162,22 +177,6 @@ impl<A: ?Sized> GcWeak<A> {
                 node: node
             }
         })
-    }
-}
-
-impl<A: ?Sized> Gc<A> {
-    pub fn add_child<B>(&self, child: &Gc<B>) {
-        let node = unsafe { &mut *self.node };
-        let child_node = child.node;
-        if !node.children.contains(&child_node) {
-            node.children.push(child_node);
-        }
-    }
-
-    pub fn remove_child<B>(&self, child: &Gc<B>) {
-        let node = unsafe { &mut *self.node };
-        let child_node = child.node;
-        node.children.retain(|c| !ptr::eq(*c, child_node));
     }
 }
 

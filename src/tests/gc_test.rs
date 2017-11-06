@@ -35,11 +35,11 @@ pub fn gc_loop() {
     {
         let mut a = gc_ctx.new_gc(A::new(None, &count));
         let mut b = gc_ctx.new_gc(A::new(Some(a.clone()), &count));
-        b.add_child(&a);
+        b.set_deps(vec![a.to_dep()]);
         let mut c = gc_ctx.new_gc(A::new(Some(b.clone()), &count));
-        c.add_child(&b);
+        c.set_deps(vec![b.to_dep()]);
         a.x.set(Some(c.clone()));
-        a.add_child(&c);
+        a.set_deps(vec![c.to_dep()]);
     }
     assert_eq!(0, *count.borrow());
 }
