@@ -33,10 +33,10 @@ pub fn gc_loop() {
         }
     }
     {
-        let mut a = gc_ctx.new_gc(A::new(None, &count));
-        let mut b = gc_ctx.new_gc(A::new(Some(a.clone()), &count));
+        let a = gc_ctx.new_gc(A::new(None, &count));
+        let b = gc_ctx.new_gc(A::new(Some(a.clone()), &count));
         b.set_deps(vec![a.to_dep()]);
-        let mut c = gc_ctx.new_gc(A::new(Some(b.clone()), &count));
+        let c = gc_ctx.new_gc(A::new(Some(b.clone()), &count));
         c.set_deps(vec![b.to_dep()]);
         a.x.set(Some(c.clone()));
         a.set_deps(vec![c.to_dep()]);

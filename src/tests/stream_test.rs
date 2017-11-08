@@ -8,7 +8,6 @@ use sodium::SodiumCtx;
 use sodium::Stream;
 use sodium::StreamLoop;
 use sodium::StreamSink;
-use sodium::StreamWithSend;
 use sodium::Transaction;
 use tests::assert_memory_freed;
 use std::cell::RefCell;
@@ -17,6 +16,7 @@ use std::rc::Rc;
 #[test]
 fn gc_crash_test() {
     let mut sodium_ctx = SodiumCtx::new();
+    #[allow(unused_variables)]
     let sodium_ctx = &mut sodium_ctx;
 }
 
@@ -104,8 +104,8 @@ fn merge_simultaneous() {
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
     {
-        let s1 = StreamSink::new_with_coalescer(sodium_ctx, |l, r| *r);
-        let s2 = StreamSink::new_with_coalescer(sodium_ctx, |l, r| *r);
+        let s1 = StreamSink::new_with_coalescer(sodium_ctx, |_l, r| *r);
+        let s2 = StreamSink::new_with_coalescer(sodium_ctx, |_l, r| *r);
         let out = Rc::new(RefCell::new(Vec::new()));
         let l;
         {
@@ -499,6 +499,7 @@ fn hold() {
     assert_memory_freed(sodium_ctx);
 }
 
+#[test]
 fn hold_is_delayed() {
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
@@ -716,7 +717,7 @@ fn loop_cell() {
         let sum_out = Transaction::run(
             sodium_ctx,
             |sodium_ctx| {
-                let mut sum = CellLoop::new(sodium_ctx);
+                let sum = CellLoop::new(sodium_ctx);
                 let sum_out = sa
                     .snapshot(sodium_ctx, &sum, |x, y| *x + *y)
                     .hold(sodium_ctx, 0);

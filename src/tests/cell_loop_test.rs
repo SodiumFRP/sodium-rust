@@ -5,10 +5,7 @@ use sodium::IsCell;
 use sodium::IsStream;
 use sodium::Operational;
 use sodium::SodiumCtx;
-use sodium::Stream;
-use sodium::StreamLoop;
 use sodium::StreamSink;
-use sodium::StreamWithSend;
 use sodium::Transaction;
 use tests::assert_memory_freed;
 use std::cell::RefCell;
@@ -27,7 +24,7 @@ fn loop_value_snapshot() {
                 sodium_ctx,
                 |sodium_ctx| {
                     let a = Cell::new(sodium_ctx, "lettuce");
-                    let mut b = CellLoop::new(sodium_ctx);
+                    let b = CellLoop::new(sodium_ctx);
                     let e_snap =
                         Operational
                             ::value(sodium_ctx, &a)
@@ -59,7 +56,7 @@ fn loop_value_hold() {
         let value = Transaction::run(
             sodium_ctx,
             |sodium_ctx| {
-                let mut a = CellLoop::new(sodium_ctx);
+                let a = CellLoop::new(sodium_ctx);
                 let value_ = Operational::value(sodium_ctx, &a).hold(sodium_ctx, "onion");
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;
