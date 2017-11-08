@@ -1,5 +1,4 @@
 use sodium::SodiumCtx;
-use std::ops::Deref;
 use std::rc::Rc;
 
 pub struct Listener {

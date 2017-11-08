@@ -1,5 +1,4 @@
 use sodium::CoalesceHandler;
-use sodium::HandlerRefMut;
 use sodium::IsStream;
 use sodium::SodiumCtx;
 use sodium::Stream;

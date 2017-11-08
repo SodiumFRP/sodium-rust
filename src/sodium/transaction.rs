@@ -1,11 +1,8 @@
 use sodium::HandlerRefMut;
 use sodium::HasNode;
-use sodium::Node;
 use sodium::SodiumCtx;
 use sodium::gc::Gc;
-use std::cell::Ref;
 use std::cell::RefCell;
-use std::cell::RefMut;
 use std::cmp::Ordering;
 use std::cmp::PartialEq;
 use std::cmp::PartialOrd;
@@ -15,9 +12,6 @@ use std::collections::HashSet;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::mem::swap;
-use std::mem::replace;
-use std::ops::Deref;
-use std::ops::DerefMut;
 use std::rc::Rc;
 
 pub struct Entry {
@@ -144,7 +138,7 @@ impl Transaction {
     pub fn run<F,A>(sodium_ctx: &mut SodiumCtx, code: F) -> A where F: FnOnce(&mut SodiumCtx)->A {
         Transaction::run_trans(
             sodium_ctx,
-            move |sodium_ctx, trans| {
+            move |sodium_ctx, _trans| {
                 code(sodium_ctx)
             }
         )
@@ -220,7 +214,7 @@ impl Transaction {
         let action2 = Rc::new(action);
         Transaction::run_trans(
             sodium_ctx,
-            move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction| {
+            move |_sodium_ctx: &mut SodiumCtx, trans: &mut Transaction| {
                 let action3 = action2.clone();
                 trans.post_(
                     -1,

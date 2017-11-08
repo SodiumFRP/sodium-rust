@@ -1,7 +1,6 @@
 use sodium::CellData;
 use sodium::IsCell;
 use sodium::IsStream;
-use sodium::HandlerRefMut;
 use sodium::HasCellData;
 use sodium::HasCellDataGc;
 use sodium::SodiumCtx;
@@ -10,7 +9,6 @@ use sodium::Transaction;
 use sodium::TransactionHandlerRef;
 use sodium::gc::Gc;
 use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct CellLoop<A> {
     data: Gc<RefCell<CellLoopData<A>>>
@@ -84,7 +82,7 @@ impl<A: Clone + 'static> CellLoop<A> {
                         sodium_ctx.null_node(),
                         trans1,
                         TransactionHandlerRef::new(
-                            move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
+                            move |_sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
                                 let self___ = CellLoop { data: self__.upgrade().unwrap() };
                                 self___.clone().with_cell_data_mut(move |data| {
                                     if data.value_update.is_none() {

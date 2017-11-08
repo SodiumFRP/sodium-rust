@@ -8,8 +8,6 @@ use std::borrow::Borrow;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::Deref;
-use std::ops::DerefMut;
 use std::rc::Rc;
 
 pub struct SodiumCtx {

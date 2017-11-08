@@ -1,4 +1,3 @@
-use sodium::Cell;
 use sodium::HandlerRefMut;
 use sodium::HasNode;
 use sodium::IsCell;
@@ -20,7 +19,7 @@ impl Operational {
     {
         Transaction::apply(
             sodium_ctx,
-            |sodium_ctx, trans| {
+            |_sodium_ctx, trans| {
                 c.updates_(trans)
             }
         )
@@ -69,7 +68,7 @@ impl Operational {
                 sodium_ctx,
                 out_node,
                 TransactionHandlerRef::new(
-                    move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, c: &Rc<C>| {
+                    move |_sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, c: &Rc<C>| {
                         let mut child_ix = 0;
                         for a in (**c).clone() {
                             let a = a.clone();
@@ -78,7 +77,7 @@ impl Operational {
                                 child_ix,
                                 HandlerRefMut::new(
                                     move |sodium_ctx: &mut SodiumCtx, trans_op: &mut Option<Transaction>| {
-                                        let mut out = out.clone();
+                                        let out = out.clone();
                                         match trans_op {
                                             &mut Some(ref mut trans) => {
                                                 out.send(sodium_ctx, trans, &a);

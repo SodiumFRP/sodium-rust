@@ -7,7 +7,6 @@ use sodium::SodiumCtx;
 use sodium::Stream;
 use sodium::gc::Gc;
 use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct LazyCell<A> {
     pub cell: Cell<A>
@@ -42,7 +41,7 @@ impl<A: Clone + 'static> HasCellDataGc<A> for LazyCell<A> {
 
 impl<A:Clone + 'static> LazyCell<A> {
     pub fn new(sodium_ctx: &mut SodiumCtx, event: Stream<A>, lazy_init_value: Lazy<A>) -> LazyCell<A> {
-        let mut cell = Cell::new_(
+        let cell = Cell::new_(
             sodium_ctx,
             event,
             None

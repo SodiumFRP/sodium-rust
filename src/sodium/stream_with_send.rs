@@ -69,8 +69,7 @@ impl<A:'static + Clone> StreamWithSend<A> {
                 self__.firings.push(a.clone());
             }
             let node = self.to_stream_ref().data.clone();
-            let mut node2 = node.borrow();
-            let node3: &HasNode = &*node2;
+            let node2 = node.borrow();
             let node4 = node2.node_ref();
             targets = node4.listeners.clone();
         }
@@ -83,7 +82,7 @@ impl<A:'static + Clone> StreamWithSend<A> {
                         target_node2 = target_node.clone();
                         let mut target_node = target_node.borrow_mut();
                         let target_node2: &mut HasNode = &mut *target_node;
-                        let target_node3: &mut Node = target_node2.node_mut();
+                        let _target_node3: &mut Node = target_node2.node_mut();
                         target2 = target.clone();
                     },
                     None => continue

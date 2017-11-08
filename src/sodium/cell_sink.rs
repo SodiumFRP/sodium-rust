@@ -1,5 +1,4 @@
 use sodium::Cell;
-use sodium::CellData;
 use sodium::HasCellData;
 use sodium::HasCellDataGc;
 use sodium::IsStream;
@@ -7,7 +6,6 @@ use sodium::SodiumCtx;
 use sodium::StreamSink;
 use sodium::gc::Gc;
 use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct CellSink<A> {
     cell: Cell<A>,

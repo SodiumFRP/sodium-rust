@@ -14,7 +14,6 @@ use sodium::WeakStreamWithSend;
 use sodium::gc::Gc;
 use std::borrow::Borrow;
 use std::borrow::BorrowMut;
-use std::cell::Ref;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::ops::Deref;
@@ -69,7 +68,7 @@ pub trait IsCell<A: Clone + 'static> {
     fn sample(&self, sodium_ctx: &mut SodiumCtx) -> A {
         Transaction::apply(
             sodium_ctx,
-            |sodium_ctx, trans| {
+            |_sodium_ctx, _trans| {
                 self.sample_no_trans_()
             }
         )
@@ -121,7 +120,7 @@ pub trait IsCell<A: Clone + 'static> {
         })
     }
 
-    fn updates_(&self, trans: &mut Transaction) -> Stream<A> {
+    fn updates_(&self, _trans: &mut Transaction) -> Stream<A> {
         self.with_cell_data_ref(|data| data.str.clone())
     }
 
@@ -291,12 +290,12 @@ pub trait IsCell<A: Clone + 'static> {
                 let out_target = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;
-                let mut in_target = sodium_ctx.new_gc(RefCell::new(Node::new(sodium_ctx2, 0))).upcast(|x| x as &RefCell<HasNode>);
+                let in_target = sodium_ctx.new_gc(RefCell::new(Node::new(sodium_ctx2, 0))).upcast(|x| x as &RefCell<HasNode>);
                 let (node_target,_) = ((in_target.deref()).borrow_mut().node_mut() as &mut HasNode).link_to::<Lazy<B>>(
                     sodium_ctx,
                     out_target,
                     TransactionHandlerRef::new(
-                        |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &Lazy<B>| {}
+                        |_sodium_ctx: &mut SodiumCtx, _trans: &mut Transaction, _a: &Lazy<B>| {}
                     )
                 );
                 let h: ApplyHandler<A,B> = ApplyHandler::new(out.downgrade());
@@ -310,7 +309,7 @@ pub trait IsCell<A: Clone + 'static> {
                                 move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, f: &Rc<F>| {
                                     (*h.data).borrow_mut().f_op = Some(f.clone());
                                     let run_it = match &(*h.data).borrow_mut().a_op {
-                                        &Some(ref a) => true,
+                                        &Some(ref _a) => true,
                                         &None => false
                                     };
                                     if run_it {
@@ -326,7 +325,7 @@ pub trait IsCell<A: Clone + 'static> {
                             move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
                                 (*h.data).borrow_mut().a_op = Some(a.clone());
                                 let run_it = match &(*h.data).borrow_mut().f_op {
-                                    &Some(ref f) => true,
+                                    &Some(ref _f) => true,
                                     &None => false
                                 };
                                 if run_it {
@@ -451,7 +450,7 @@ pub trait IsCell<A: Clone + 'static> {
                                             trans,
                                             TransactionHandlerRef::new(
                                                 move |sodium_ctx, trans2, a| {
-                                                    let mut out = out.clone();
+                                                    let out = out.clone();
                                                     out.send(sodium_ctx, trans2, a);
                                                 }
                                             ),
@@ -509,7 +508,7 @@ pub trait IsCell<A: Clone + 'static> {
             let out = out.downgrade();
             h2 = TransactionHandlerRef::new(
                 move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
-                    let mut out = out.clone();
+                    let out = out.clone();
                     out.send(sodium_ctx, trans2, a)
                 }
             );
@@ -731,7 +730,7 @@ impl<A:'static + Clone> Cell<A> {
                         null_node,
                         trans1,
                         TransactionHandlerRef::new(
-                            move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
+                            move |_sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
                                 let self_ = Cell { data: self_.upgrade().unwrap() };
                                 let self__ = self_.clone();
                                 self_.with_cell_data_mut(move |data| {

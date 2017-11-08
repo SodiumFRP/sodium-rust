@@ -2,12 +2,10 @@ use sodium::HasNode;
 use sodium::IsStream;
 use sodium::SodiumCtx;
 use sodium::Stream;
-use sodium::StreamData;
 use sodium::StreamWithSend;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
 use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct StreamLoop<A> {
     stream: StreamWithSend<A>,

@@ -3,11 +3,8 @@
  * DAVID F. BACON, CLEMENT R. ATTANASIO, V.T. RAJAN, STEPHEN E. SMITH
  */
 
-use std::marker::PhantomData;
-use std::cell::Cell;
 use std::ptr;
 use std::ops::Deref;
-use std::any::Any;
 use std::mem::transmute;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -129,7 +126,7 @@ impl<A: ?Sized> Gc<A> {
         s.count = s.count + 1;
         Gc {
             ctx: self.ctx.clone(),
-            value: unsafe { transmute(f(unsafe { &mut *self.value })) },
+            value: unsafe { transmute(f(&mut *self.value)) },
             node: self.node
         }
     }
