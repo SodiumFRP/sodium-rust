@@ -72,6 +72,11 @@ impl SodiumCtx {
         f(&mut *self.data.borrow_mut())
     }
 
+    pub fn gc(&self) {
+        let gc_ctx = self.with_data_ref(|data| data.gc_ctx.clone());
+        gc_ctx.collect_cycles();
+    }
+
     pub fn null_node(&self) -> Gc<RefCell<HasNode>> {
         let self_: &RefCell<SodiumCtxData> = self.data.borrow();
         let self__: Ref<SodiumCtxData> = self_.borrow();
