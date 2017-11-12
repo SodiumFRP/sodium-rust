@@ -6,6 +6,7 @@
 use std::ptr;
 use std::ops::Deref;
 use std::mem::transmute;
+use std::mem::swap;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -23,6 +24,7 @@ impl Clone for GcCtx {
 
 struct GcCtxData {
     roots: Vec<*mut Node>,
+    to_be_freed: Vec<*mut Node>,
     collecting_cycles: bool
 }
 
@@ -158,7 +160,7 @@ impl<A: ?Sized> Drop for GcWeak<A> {
         if node.weak > 0 {
             node.weak = node.weak - 1;
             if node.weak == 0 {
-                unsafe { Box::from_raw(node) };
+                self.ctx.with_data(|data| data.to_be_freed.push(node));
             }
         }
     }
@@ -206,6 +208,7 @@ impl GcCtx {
             data: Rc::new(RefCell::new(
                 GcCtxData {
                     roots: Vec::new(),
+                    to_be_freed: Vec::new(),
                     collecting_cycles: false
                 }
             ))
@@ -270,7 +273,7 @@ impl GcCtx {
         if s.weak > 0 {
             s.weak = s.weak - 1;
             if s.weak == 0 {
-                unsafe { Box::from_raw(s) };
+                self.with_data(|data| data.to_be_freed.push(s));
             }
         }
     }
@@ -301,6 +304,12 @@ impl GcCtx {
         self.mark_roots();
         self.scan_roots();
         self.collect_roots();
+
+        let mut to_be_freed = Vec::new();
+        self.with_data(|data| swap(&mut to_be_freed, &mut data.to_be_freed));
+        for node in to_be_freed {
+            unsafe { Box::from_raw(node) };
+        }
 
         self.with_data(|data| data.collecting_cycles = false);
     }
