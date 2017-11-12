@@ -87,3 +87,14 @@ fn gc_upcast() {
         (*b).borrow_mut().inc();
     }
 }
+
+#[test]
+fn gc_upcast2() {
+    let mut gc_ctx = GcCtx::new();
+    let a = gc_ctx.new_gc(5);
+    let a2 = a.clone();
+    let b = gc_ctx.new_gc(move |x| x + *a).upcast(|x| x as &Fn(i32)->i32);
+    b.add_deps(vec![a2.to_dep()]);
+    b(4);
+    b(3);
+}
