@@ -36,9 +36,10 @@ impl<A: 'static + Clone> CoalesceHandler<A> {
         }
     }
 
-    pub fn to_transaction_handler(&self) -> TransactionHandlerRef<A> {
+    pub fn to_transaction_handler(&self, sodium_ctx: &mut SodiumCtx) -> TransactionHandlerRef<A> {
         let self_ = self.clone();
         TransactionHandlerRef::new(
+            sodium_ctx,
             move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &A| {
                 self_.run(sodium_ctx, trans, a);
             }

@@ -12,3 +12,11 @@ impl Dep {
         }
     }
 }
+
+impl Clone for Dep {
+    fn clone(&self) -> Self {
+        Dep {
+            gc_dep: self.gc_dep.clone()
+        }
+    }
+}
