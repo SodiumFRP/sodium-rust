@@ -3,6 +3,7 @@ use sodium::CoalesceHandler;
 use sodium::Dep;
 use sodium::HandlerRefMut;
 use sodium::IsCell;
+use sodium::IsLambda1;
 use sodium::Lazy;
 use sodium::LazyCell;
 use sodium::Listener;
@@ -85,10 +86,13 @@ pub trait IsStream<A: Clone + 'static> {
 
     fn listen_weak<F>(&self, sodium_ctx: &mut SodiumCtx, action: F) -> Listener where F: Fn(&A) + 'static {
         let null_node = sodium_ctx.null_node();
+        let mut sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &mut sodium_ctx2;
         return self.listen_(
             sodium_ctx,
             null_node,
             TransactionHandlerRef::new(
+                sodium_ctx2,
                 move |_sodium_ctx, _trans2, a| {
                     action(a)
                 }
@@ -139,6 +143,8 @@ pub trait IsStream<A: Clone + 'static> {
     fn weak(&self, sodium_ctx: &mut SodiumCtx) -> Stream<A> {
         let out = StreamWithSend::new(sodium_ctx);
         let out2 = out.downgrade();
+        let mut sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &mut sodium_ctx2;
         let l = Transaction::run_trans(
             sodium_ctx,
             |sodium_ctx, trans| {
@@ -147,6 +153,7 @@ pub trait IsStream<A: Clone + 'static> {
                     out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>),
                     trans,
                     TransactionHandlerRef::new(
+                        sodium_ctx2,
                         move |sodium_ctx, trans, a| {
                             out2.send(sodium_ctx, trans, a)
                         }
@@ -160,17 +167,22 @@ pub trait IsStream<A: Clone + 'static> {
     }
 
     fn map<B:'static + Clone,F>(&self, sodium_ctx: &mut SodiumCtx, f: F) -> Stream<B>
-    where F: Fn(&A)->B + 'static
+    where F: IsLambda1<A,B> + 'static
     {
         let out = StreamWithSend::new(sodium_ctx);
         let out2 = out.downgrade();
+        let mut sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &mut sodium_ctx2;
+        let deps = f.deps();
         let l = self.listen_(
             sodium_ctx,
             out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>),
-            TransactionHandlerRef::new(
+            TransactionHandlerRef::new_with_deps(
+                sodium_ctx2,
                 move |sodium_ctx, trans, a| {
-                    out2.send(sodium_ctx, trans, &f(a));
-                }
+                    out2.send(sodium_ctx, trans, &f.apply(a));
+                },
+                deps
             )
         );
         out
@@ -179,7 +191,7 @@ pub trait IsStream<A: Clone + 'static> {
     }
 
     fn map_to<B:'static + Clone>(&self, sodium_ctx: &mut SodiumCtx, b: B) -> Stream<B> {
-        return self.map(sodium_ctx, move |_| b.clone());
+        return self.map(sodium_ctx, move |_: &A| b.clone());
     }
 
     fn hold(&self, sodium_ctx: &mut SodiumCtx, init_value: A) -> Cell<A> {
@@ -217,12 +229,17 @@ pub trait IsStream<A: Clone + 'static> {
             let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
             let out = out.downgrade();
             let c = c.to_cell();
+            let deps = vec![c.to_dep()];
+            let mut sodium_ctx2 = sodium_ctx.clone();
+            let sodium_ctx2 = &mut sodium_ctx2;
             l = self.listen_(
                 sodium_ctx,
                 out_node,
-                TransactionHandlerRef::new(
+                TransactionHandlerRef::new_with_deps(
+                    sodium_ctx2,
                     move |sodium_ctx, trans, a|
-                        out.send(sodium_ctx, trans, &f(a, &c.sample_no_trans_()))
+                        out.send(sodium_ctx, trans, &f(a, &c.sample_no_trans_())),
+                    deps
                 )
             );
         }
@@ -335,6 +352,7 @@ pub trait IsStream<A: Clone + 'static> {
             sodium_ctx,
             right.clone(),
             TransactionHandlerRef::new(
+                sodium_ctx2,
                 |_: &mut SodiumCtx, _: &mut Transaction, _: &A| ()
             )
         );
@@ -342,6 +360,7 @@ pub trait IsStream<A: Clone + 'static> {
         {
             let out = out.downgrade();
             h = TransactionHandlerRef::new(
+                sodium_ctx2,
                 move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &A| {
                     out.send(sodium_ctx, trans, a);
                 }
@@ -369,11 +388,13 @@ pub trait IsStream<A: Clone + 'static> {
     fn coalesce_<F>(&self, sodium_ctx: &mut SodiumCtx, trans1: &mut Transaction, f: F) -> Stream<A> where F: Fn(&A,&A)->A + 'static {
         let out = StreamWithSend::new(sodium_ctx);
         let h = CoalesceHandler::new(f, out.downgrade());
+        let mut sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &mut sodium_ctx2;
         let l = self.listen2(
             sodium_ctx,
             out.to_stream_ref().data.clone().upcast(|x| x as &RefCell<HasNode>),
             trans1,
-            h.to_transaction_handler(),
+            h.to_transaction_handler(sodium_ctx2),
             false,
             false
         );
@@ -390,10 +411,13 @@ pub trait IsStream<A: Clone + 'static> {
         {
             let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
             let out = out.downgrade();
+            let mut sodium_ctx2 = sodium_ctx.clone();
+            let sodium_ctx2 = &mut sodium_ctx2;
             l = self.listen_(
                 sodium_ctx,
                 out_node,
                 TransactionHandlerRef::new(
+                    sodium_ctx2,
                     move |sodium_ctx, trans, a| {
                         if predicate(a) {
                             out.send(sodium_ctx, trans, a);
@@ -411,10 +435,13 @@ pub trait IsStream<A: Clone + 'static> {
         {
             let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
             let out = out.downgrade();
+            let mut sodium_ctx2 = sodium_ctx.clone();
+            let sodium_ctx2 = &mut sodium_ctx2;
             l = self_.listen_(
                 sodium_ctx,
                 out_node,
                 TransactionHandlerRef::new(
+                    sodium_ctx2,
                     move |sodium_ctx, trans, oa| {
                         match oa {
                             &Some(ref a) => out.send(sodium_ctx, trans, a),
@@ -466,8 +493,8 @@ pub trait IsStream<A: Clone + 'static> {
                 let f = f.clone();
                 let f2 = move |a: &A, s: &S| f(a,s);
                 let ebs = ea.snapshot(sodium_ctx, &s, f2);
-                let eb = ebs.map(sodium_ctx, |&(ref b,ref _s)| b.clone());
-                let es_out = ebs.map(sodium_ctx, |&(ref _b,ref s)| s.clone());
+                let eb = ebs.map(sodium_ctx, |&(ref b,ref _s): &(B,S)| b.clone());
+                let es_out = ebs.map(sodium_ctx, |&(ref _b,ref s): &(B,S)| s.clone());
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;
                 es.loop_(sodium_ctx, es_out.weak(sodium_ctx2));
@@ -513,10 +540,13 @@ pub trait IsStream<A: Clone + 'static> {
         {
             let out = out.downgrade();
             let l_cell = l_cell.clone();
+            let mut sodium_ctx2 = sodium_ctx.clone();
+            let sodium_ctx2 = &mut sodium_ctx2;
             l = self.listen_(
                 sodium_ctx,
                 out_node,
                 TransactionHandlerRef::new(
+                    sodium_ctx2,
                     move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &A| {
                         let has_listener = l_cell.borrow().is_some();
                         if has_listener {
@@ -553,7 +583,7 @@ pub trait IsStream<A: Clone + 'static> {
 
     fn add_cleanup(&self, sodium_ctx: &mut SodiumCtx, cleanup: Listener) -> Stream<A> {
         self
-            .map(sodium_ctx, |a| a.clone())
+            .map(sodium_ctx, |a: &A| a.clone())
             .unsafe_add_cleanup(cleanup)
             .to_stream()
     }
@@ -634,8 +664,12 @@ impl<A: Clone + 'static> ListenerImpl<A> {
     }
 
     fn into_listener(self, sodium_ctx: &mut SodiumCtx) -> Listener {
+        let deps = match &self.event {
+            &WeakS(ref s) => vec![self.action.to_dep()],
+            &StrongS(ref s) => vec![self.action.to_dep(), s.to_dep()]
+        };
         let self_ = RefCell::new(self);
-        Listener::new(
+        let l = Listener::new(
             sodium_ctx,
             move || {
                 let mut self__ = self_.borrow_mut();
@@ -656,7 +690,9 @@ impl<A: Clone + 'static> ListenerImpl<A> {
                     self___.done = true;
                 }
             }
-        )
+        );
+        l.set_deps(deps);
+        l
     }
 }
 

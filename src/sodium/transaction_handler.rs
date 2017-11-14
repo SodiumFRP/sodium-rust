@@ -1,11 +1,15 @@
+use sodium::Dep;
 use sodium::SodiumCtx;
 use sodium::Transaction;
+use sodium::gc::Gc;
+use sodium::gc::GcDep;
+use sodium::gc::GcWeak;
 use std::any::Any;
 use std::rc::Rc;
 use std::rc::Weak;
 
 pub struct WeakTransactionHandlerRef<A: ?Sized> {
-    run: Weak<Fn(&mut SodiumCtx, &mut Transaction, &A)>
+    run: GcWeak<Fn(&mut SodiumCtx, &mut Transaction, &A)>
 }
 
 impl<A:?Sized> Clone for WeakTransactionHandlerRef<A> {
@@ -27,7 +31,7 @@ impl<A:?Sized> WeakTransactionHandlerRef<A> {
 }
 
 pub struct TransactionHandlerRef<A: ?Sized> {
-    run: Rc<Fn(&mut SodiumCtx, &mut Transaction, &A)>
+    run: Gc<Fn(&mut SodiumCtx, &mut Transaction, &A)>
 }
 
 impl<A:?Sized> Clone for TransactionHandlerRef<A> {
@@ -38,28 +42,31 @@ impl<A:?Sized> Clone for TransactionHandlerRef<A> {
     }
 }
 
-impl<A: ?Sized> TransactionHandlerRef<A> {
-    pub fn new<F>(f: F) -> TransactionHandlerRef<A>
+impl<A: ?Sized + 'static> TransactionHandlerRef<A> {
+    pub fn new<F>(sodium_ctx: &mut SodiumCtx, f: F) -> TransactionHandlerRef<A>
     where
     F: Fn(&mut SodiumCtx, &mut Transaction, &A) + 'static
     {
         TransactionHandlerRef {
-            run: Rc::new(f)
+            run: sodium_ctx.new_gc(f).upcast(|a| a as &(Fn(&mut SodiumCtx, &mut Transaction, &A) + 'static))
         }
     }
 
-    pub fn into_any(self) -> TransactionHandlerRef<Any>
-    where A: Any + Sized
+    pub fn new_with_deps<F>(sodium_ctx: &mut SodiumCtx, f: F, deps: Vec<Dep>) -> TransactionHandlerRef<A>
+    where
+    F: Fn(&mut SodiumCtx, &mut Transaction, &A) + 'static
     {
-        let self_ = self;
-        TransactionHandlerRef::new(
-            move |sodium_ctx: &mut SodiumCtx, transaction: &mut Transaction, a: &Any| {
-                match a.downcast_ref::<A>() {
-                    Some(a2) => self_.run(sodium_ctx, transaction, a2),
-                    None => ()
-                }
-            }
-        )
+        let t = TransactionHandlerRef::new(sodium_ctx, f);
+        t.set_deps(deps);
+        t
+    }
+
+    pub fn to_dep(&self) -> Dep {
+        Dep::new(self.run.clone())
+    }
+
+    pub fn set_deps(&self, deps: Vec<Dep>) {
+        self.run.set_deps(deps.into_iter().map(|dep| dep.gc_dep).collect());
     }
 
     pub fn run(&self, sodium_ctx: &mut SodiumCtx, transaction: &mut Transaction, a: &A) {
@@ -68,7 +75,7 @@ impl<A: ?Sized> TransactionHandlerRef<A> {
 
     pub fn downgrade(&self) -> WeakTransactionHandlerRef<A> {
         WeakTransactionHandlerRef {
-            run: Rc::downgrade(&self.run)
+            run: Gc::downgrade(&self.run)
         }
     }
 }

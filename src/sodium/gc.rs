@@ -33,6 +33,16 @@ pub struct GcDep {
     node: *mut Node
 }
 
+impl Clone for GcDep {
+    fn clone(&self) -> Self {
+        self.ctx.increment(self.node);
+        GcDep {
+            ctx: self.ctx.clone(),
+            node: self.node
+        }
+    }
+}
+
 impl Drop for GcDep {
     fn drop(&mut self) {
         self.ctx.decrement(self.node);

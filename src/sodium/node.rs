@@ -97,10 +97,13 @@ impl HasNode for Node {
 impl Target {
     pub fn new<A:'static>(sodium_ctx: &mut SodiumCtx, node: Gc<RefCell<HasNode>>, action: TransactionHandlerRef<A>) -> Target {
         let action = action.downgrade();
+        let mut sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &mut sodium_ctx2;
         Target {
             id: sodium_ctx.new_id(),
             node: node.downgrade(),
             action: TransactionHandlerRef::new(
+                sodium_ctx2,
                 move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &Any| {
                     match action.upgrade() {
                         Some(action) => {

@@ -64,10 +64,13 @@ impl Operational {
         {
             let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
             let out = out.downgrade();
+            let mut sodium_ctx2 = sodium_ctx.clone();
+            let sodium_ctx2 = &mut sodium_ctx2;
             l1 = s.listen_(
                 sodium_ctx,
                 out_node,
                 TransactionHandlerRef::new(
+                    sodium_ctx2,
                     move |_sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, c: &Rc<C>| {
                         let mut child_ix = 0;
                         for a in (**c).clone() {

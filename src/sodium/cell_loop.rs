@@ -76,12 +76,14 @@ impl<A: Clone + 'static> CellLoop<A> {
                 let self__ = self_.clone();
                 self_.with_cell_data_mut(move |data: &mut CellData<A>| {
                     let mut sodium_ctx2 = sodium_ctx.clone();
+                    let mut sodium_ctx3 = sodium_ctx.clone();
                     let self__ = self__.data.downgrade();
                     data.cleanup = Some(data.str.listen2(
                         &mut sodium_ctx2,
                         sodium_ctx.null_node(),
                         trans1,
                         TransactionHandlerRef::new(
+                            &mut sodium_ctx3,
                             move |_sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
                                 let self___ = CellLoop { data: self__.upgrade().unwrap() };
                                 self___.clone().with_cell_data_mut(move |data| {

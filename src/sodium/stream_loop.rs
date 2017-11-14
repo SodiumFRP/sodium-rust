@@ -39,11 +39,14 @@ impl<A: 'static + Clone> StreamLoop<A> {
             sodium_ctx,
             move |sodium_ctx| {
                 let me = self.stream.downgrade();
+                let mut sodium_ctx2 = sodium_ctx.clone();
+                let sodium_ctx2 = &mut sodium_ctx2;
                 self.unsafe_add_cleanup(
                     ea_out.listen_(
                         sodium_ctx,
                         self.stream.stream.data.clone().upcast(|x| x as &RefCell<HasNode>),
                         TransactionHandlerRef::new(
+                            sodium_ctx2,
                             move |sodium_ctx, trans, a| {
                                 let me = me.upgrade();
                                 match me {

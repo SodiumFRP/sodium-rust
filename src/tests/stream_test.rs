@@ -30,7 +30,7 @@ fn map() {
         let l;
         {
             let out = out.clone();
-            l = s.map(sodium_ctx, |a| *a + 1)
+            l = s.map(sodium_ctx, |a: &i32| *a + 1)
                 .listen(
                     sodium_ctx,
                     move |a| {
@@ -260,11 +260,11 @@ fn merge() {
         let sa = StreamSink::new(sodium_ctx);
         let sb =
             sa
-                .map(sodium_ctx, |x| *x / 10)
+                .map(sodium_ctx, |x: &i32| *x / 10)
                 .filter(sodium_ctx, |x| *x != 0);
         let sc =
             sa
-                .map(sodium_ctx, |x| *x % 10)
+                .map(sodium_ctx, |x: &i32| *x % 10)
                 .merge(sodium_ctx, &sb, |x, y| *x + *y);
         let out = Rc::new(RefCell::new(Vec::new()));
         let l;
@@ -296,11 +296,11 @@ fn loop_() {
                 let mut sb = StreamLoop::new(sodium_ctx);
                 let sc_ =
                     sa
-                        .map(sodium_ctx, |x| *x % 10)
+                        .map(sodium_ctx, |x: &i32| *x % 10)
                         .merge(sodium_ctx, &sb, |x, y| *x + *y);
                 let sb_out =
                     sa
-                        .map(sodium_ctx, |x| *x / 10)
+                        .map(sodium_ctx, |x: &i32| *x / 10)
                         .filter(sodium_ctx, |x| *x != 0);
                 sb.loop_(sodium_ctx, sb_out);
                 sc_
@@ -613,7 +613,7 @@ fn switch_s() {
                     sodium_ctx,
                     &sss.map(
                         sodium_ctx2,
-                        |s| s.sw.clone()
+                        |s: &SS| s.sw.clone()
                     )
                 )
                 .hold(sodium_ctx, "sa");
