@@ -265,7 +265,7 @@ fn merge() {
         let sc =
             sa
                 .map(sodium_ctx, |x: &i32| *x % 10)
-                .merge(sodium_ctx, &sb, |x, y| *x + *y);
+                .merge(sodium_ctx, &sb, |x: &i32, y: &i32| *x + *y);
         let out = Rc::new(RefCell::new(Vec::new()));
         let l;
         {
@@ -297,7 +297,7 @@ fn loop_() {
                 let sc_ =
                     sa
                         .map(sodium_ctx, |x: &i32| *x % 10)
-                        .merge(sodium_ctx, &sb, |x, y| *x + *y);
+                        .merge(sodium_ctx, &sb, |x: &i32, y: &i32| *x + *y);
                 let sb_out =
                     sa
                         .map(sodium_ctx, |x: &i32| *x / 10)

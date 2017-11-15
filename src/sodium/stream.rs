@@ -372,7 +372,7 @@ pub trait IsStream<A: Clone + 'static> {
     }
 
     fn or_else<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A> where SA: IsStream<A> {
-        self.merge(sodium_ctx, s, |a,_| a.clone())
+        self.merge(sodium_ctx, s, |a: &A, _: &A| a.clone())
     }
 
     fn merge_<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A> where SA: IsStream<A> {
@@ -409,7 +409,7 @@ pub trait IsStream<A: Clone + 'static> {
         )).to_stream()
     }
 
-    fn merge<SA,F>(&self, sodium_ctx: &mut SodiumCtx, s: &SA, f: F) -> Stream<A> where SA: IsStream<A>, F: Fn(&A,&A)->A + 'static {
+    fn merge<SA,F>(&self, sodium_ctx: &mut SodiumCtx, s: &SA, f: F) -> Stream<A> where SA: IsStream<A>, F: IsLambda2<A,A,A> + 'static {
         Transaction::apply(
             sodium_ctx,
             |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction| {
@@ -418,16 +418,17 @@ pub trait IsStream<A: Clone + 'static> {
         )
     }
 
-    fn coalesce_<F>(&self, sodium_ctx: &mut SodiumCtx, trans1: &mut Transaction, f: F) -> Stream<A> where F: Fn(&A,&A)->A + 'static {
+    fn coalesce_<F>(&self, sodium_ctx: &mut SodiumCtx, trans1: &mut Transaction, f: F) -> Stream<A> where F: IsLambda2<A,A,A> + 'static {
+        let deps = f.deps();
         let out = StreamWithSend::new(sodium_ctx);
-        let h = CoalesceHandler::new(f, out.downgrade());
+        let h = CoalesceHandler::new(move |a, b| f.apply(a, b), out.downgrade());
         let mut sodium_ctx2 = sodium_ctx.clone();
         let sodium_ctx2 = &mut sodium_ctx2;
         let l = self.listen2(
             sodium_ctx,
             out.to_stream_ref().data.clone().upcast(|x| x as &RefCell<HasNode>),
             trans1,
-            h.to_transaction_handler(sodium_ctx2),
+            h.to_transaction_handler(sodium_ctx2).set_deps_tunneled(deps),
             false,
             false
         );
@@ -435,7 +436,7 @@ pub trait IsStream<A: Clone + 'static> {
     }
 
     fn last_firing_only_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) -> Stream<A> {
-        self.coalesce_(sodium_ctx, trans, |_,a| a.clone())
+        self.coalesce_(sodium_ctx, trans, |_: &A, a: &A| a.clone())
     }
 
     fn filter<F>(&self, sodium_ctx: &mut SodiumCtx, predicate: F) -> Stream<A> where F: Fn(&A)->bool + 'static {

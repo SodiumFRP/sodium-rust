@@ -120,7 +120,7 @@ pub trait IsCell<A: Clone + 'static> {
             );
         }
         let s_initial = s_spark.snapshot_to(sodium_ctx, &self.to_cell());
-        s_initial.merge(sodium_ctx, &self.updates_(trans), |_,a| a.clone())
+        s_initial.merge(sodium_ctx, &self.updates_(trans), |_: &A, a: &A| a.clone())
     }
 
     fn weak(&self, sodium_ctx: &mut SodiumCtx) -> Cell<A> {

@@ -69,6 +69,11 @@ impl<A: ?Sized + 'static> TransactionHandlerRef<A> {
         self.run.set_deps(deps.into_iter().map(|dep| dep.gc_dep).collect());
     }
 
+    pub fn set_deps_tunneled(self, deps: Vec<Dep>) -> Self {
+        self.set_deps(deps);
+        self
+    }
+
     pub fn run(&self, sodium_ctx: &mut SodiumCtx, transaction: &mut Transaction, a: &A) {
         (self.run)(sodium_ctx, transaction, a)
     }
