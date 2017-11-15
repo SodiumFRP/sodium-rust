@@ -506,7 +506,7 @@ fn hold_is_delayed() {
     {
         let s = StreamSink::new(sodium_ctx);
         let h = s.hold(sodium_ctx, 0);
-        let s_pair = s.snapshot(sodium_ctx, &h, |a, b| format!("{} {}", *a, *b));
+        let s_pair = s.snapshot(sodium_ctx, &h, |a: &i32, b: &i32| format!("{} {}", *a, *b));
         let out = Rc::new(RefCell::new(Vec::new()));
         let l;
         {
@@ -719,7 +719,7 @@ fn loop_cell() {
             |sodium_ctx| {
                 let sum = CellLoop::new(sodium_ctx);
                 let sum_out = sa
-                    .snapshot(sodium_ctx, &sum, |x, y| *x + *y)
+                    .snapshot(sodium_ctx, &sum, |x: &i32, y: &i32| *x + *y)
                     .hold(sodium_ctx, 0);
                 sum.loop_(sodium_ctx, &sum_out);
                 sum_out

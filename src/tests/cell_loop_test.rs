@@ -31,7 +31,7 @@ fn loop_value_snapshot() {
                             .snapshot(
                                 sodium_ctx,
                                 &b,
-                                |aa, bb|
+                                |aa: &&str, bb: &&str|
                                     format!("{} {}", aa, bb)
                             );
                     let mut sodium_ctx2 = sodium_ctx.clone();

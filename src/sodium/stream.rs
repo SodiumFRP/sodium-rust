@@ -4,6 +4,12 @@ use sodium::Dep;
 use sodium::HandlerRefMut;
 use sodium::IsCell;
 use sodium::IsLambda1;
+use sodium::IsLambda2;
+use sodium::IsLambda3;
+use sodium::IsLambda4;
+use sodium::IsLambda5;
+use sodium::IsLambda6;
+use sodium::Lambda;
 use sodium::Lazy;
 use sodium::LazyCell;
 use sodium::Listener;
@@ -214,14 +220,14 @@ pub trait IsStream<A: Clone + 'static> {
     }
 
     fn snapshot_to<CB,B>(&self, sodium_ctx: &mut SodiumCtx, c: &CB) -> Stream<B> where CB: IsCell<B>, B: Clone + 'static {
-        self.snapshot(sodium_ctx, c, |_a, b| b.clone())
+        self.snapshot(sodium_ctx, c, |_a: &A, b: &B| b.clone())
     }
 
     fn snapshot<CB,B,C,F>(&self, sodium_ctx: &mut SodiumCtx, c: &CB, f: F) -> Stream<C>
         where CB: IsCell<B>,
               B: Clone + 'static,
               C: Clone + 'static,
-              F: Fn(&A,&B)->C + 'static
+              F: IsLambda2<A,B,C> + 'static
     {
         let out = StreamWithSend::new(sodium_ctx);
         let l;
@@ -229,7 +235,8 @@ pub trait IsStream<A: Clone + 'static> {
             let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
             let out = out.downgrade();
             let c = c.to_cell();
-            let deps = vec![c.to_dep()];
+            let mut deps = vec![c.to_dep()];
+            deps.append(&mut f.deps());
             let mut sodium_ctx2 = sodium_ctx.clone();
             let sodium_ctx2 = &mut sodium_ctx2;
             l = self.listen_(
@@ -238,7 +245,7 @@ pub trait IsStream<A: Clone + 'static> {
                 TransactionHandlerRef::new_with_deps(
                     sodium_ctx2,
                     move |sodium_ctx, trans, a|
-                        out.send(sodium_ctx, trans, &f(a, &c.sample_no_trans_())),
+                        out.send(sodium_ctx, trans, &f.apply(a, &c.sample_no_trans_())),
                     deps
                 )
             );
@@ -254,15 +261,20 @@ pub trait IsStream<A: Clone + 'static> {
               B: Clone + 'static,
               C: Clone + 'static,
               D: Clone + 'static,
-              F: Fn(&A,&B,&C)->D + 'static
+              F: IsLambda3<A,B,C,D> + 'static
     {
         let cc = cc.to_cell();
+        let cc2 = cc.clone();
+        let deps = f.deps();
         self.snapshot(
             sodium_ctx,
             cb,
-            move |a, b| {
-                f(a, b, &cc.sample_no_trans_())
-            }
+            lambda!(
+                move |a: &A, b: &B| {
+                    f.apply(a, b, &cc.sample_no_trans_())
+                },
+                cc2.to_dep()
+            ).add_deps_tunneled(deps)
         )
     }
 
@@ -274,16 +286,22 @@ pub trait IsStream<A: Clone + 'static> {
               C: Clone + 'static,
               D: Clone + 'static,
               E: Clone + 'static,
-              F: Fn(&A,&B,&C,&D)->E + 'static
+              F: IsLambda4<A,B,C,D,E> + 'static
     {
         let cc = cc.to_cell();
         let cd = cd.to_cell();
+        let cc2 = cc.clone();
+        let cd2 = cd.clone();
+        let deps = f.deps();
         self.snapshot(
             sodium_ctx,
             cb,
-            move |a, b| {
-                f(a, b, &cc.sample_no_trans_(), &cd.sample_no_trans_())
-            }
+            lambda!(
+                move |a: &A, b: &B| {
+                    f.apply(a, b, &cc.sample_no_trans_(), &cd.sample_no_trans_())
+                },
+                cc2.to_dep(), cd2.to_dep()
+            ).add_deps_tunneled(deps)
         )
     }
 
@@ -297,17 +315,24 @@ pub trait IsStream<A: Clone + 'static> {
               D: Clone + 'static,
               E: Clone + 'static,
               F: Clone + 'static,
-              FN: Fn(&A,&B,&C,&D,&E)->F + 'static
+              FN: IsLambda5<A,B,C,D,E,F> + 'static
     {
         let cc = cc.to_cell();
         let cd = cd.to_cell();
         let ce = ce.to_cell();
+        let cc2 = cc.clone();
+        let cd2 = cd.clone();
+        let ce2 = ce.clone();
+        let deps = f.deps();
         self.snapshot(
             sodium_ctx,
             cb,
-            move |a, b| {
-                f(a, b, &cc.sample_no_trans_(), &cd.sample_no_trans_(), &ce.sample_no_trans_())
-            }
+            lambda!(
+                move |a:&A, b: &B| {
+                    f.apply(a, b, &cc.sample_no_trans_(), &cd.sample_no_trans_(), &ce.sample_no_trans_())
+                },
+                cc2.to_dep(), cd2.to_dep(), ce2.to_dep()
+            ).add_deps_tunneled(deps)
         )
     }
 
@@ -323,18 +348,26 @@ pub trait IsStream<A: Clone + 'static> {
               E: Clone + 'static,
               F: Clone + 'static,
               G: Clone + 'static,
-              FN: Fn(&A,&B,&C,&D,&E,&F)->G + 'static
+              FN: IsLambda6<A,B,C,D,E,F,G> + 'static
     {
         let cc = cc.to_cell();
         let cd = cd.to_cell();
         let ce = ce.to_cell();
         let cf = cf.to_cell();
+        let cc2 = cc.clone();
+        let cd2 = cd.clone();
+        let ce2 = ce.clone();
+        let cf2 = cf.clone();
+        let deps = f.deps();
         self.snapshot(
             sodium_ctx,
             cb,
-            move |a, b| {
-                f(a, b, &cc.sample_no_trans_(), &cd.sample_no_trans_(), &ce.sample_no_trans_(), &cf.sample_no_trans_())
-            }
+            lambda!(
+                move |a:&A, b: &B| {
+                    f.apply(a, b, &cc.sample_no_trans_(), &cd.sample_no_trans_(), &ce.sample_no_trans_(), &cf.sample_no_trans_())
+                },
+                cc2.to_dep(), cd2.to_dep(), ce2.to_dep(), cf2.to_dep()
+            ).add_deps_tunneled(deps)
         )
     }
 

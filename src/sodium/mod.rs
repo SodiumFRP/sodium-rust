@@ -45,7 +45,10 @@ mod coalesce_handler;
 mod dep;
 pub mod gc;
 mod handler;
+
+#[macro_use]
 mod lambda;
+
 mod lazy;
 mod lazy_cell;
 mod listener;

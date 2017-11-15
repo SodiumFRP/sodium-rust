@@ -12,14 +12,23 @@ impl<FN: ?Sized> Lambda<FN> {
             deps: deps
         }
     }
+
+    pub fn add_deps(&mut self, mut deps: Vec<Dep>) {
+        self.deps.append(&mut deps);
+    }
+
+    pub fn add_deps_tunneled(mut self, deps: Vec<Dep>) -> Lambda<FN> {
+        self.add_deps(deps);
+        self
+    }
 }
 
 macro_rules! lambda {
     ($f:expr) => {{
         Lambda::new(Box::new($f), Vec::new())
     }};
-    ($f:expr, $($dep:expr),*) => {{
-        Lambda::new(Box::new($f), vec![$(deps,)*])
+    ($f:expr, $($deps:expr),*) => {{
+        Lambda::new(Box::new($f), vec![$($deps,)*])
     }}
 }
 
