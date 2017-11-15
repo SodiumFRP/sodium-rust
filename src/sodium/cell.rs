@@ -700,7 +700,7 @@ impl<A:'static + Clone> Cell<A> {
         let r = Cell {
             data: sodium_ctx.new_gc(RefCell::new(
                 CellData {
-                    str: str,
+                    str: str.clone(),
                     value: init_value,
                     value_update: None,
                     cleanup: None,
@@ -708,6 +708,7 @@ impl<A:'static + Clone> Cell<A> {
                 }
             )).upcast(|x| x as &RefCell<HasCellData<A>>)
         };
+        r.data.add_deps(vec![str.to_dep().gc_dep]);
         let self_ = r.clone();
         Transaction::run_trans(
             sodium_ctx,
