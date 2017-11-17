@@ -609,6 +609,7 @@ pub trait IsStream<A: Clone + 'static> {
     }
 
     fn unsafe_add_cleanup(&self, listener: Listener) -> &Self {
+        self.to_stream_ref().data.add_deps(vec![listener.to_dep().gc_dep]);
         let mut data = self.to_stream_ref().data.borrow_mut();
         let data_: &mut StreamData<A> = &mut *data;
         data_.finalizers.push(listener);

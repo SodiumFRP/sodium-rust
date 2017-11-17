@@ -24,6 +24,10 @@ impl Listener {
         }
     }
 
+    pub fn to_dep(&self) -> Dep {
+        Dep::new(self.unlisten.clone())
+    }
+
     pub fn set_deps(&self, deps: Vec<Dep>) {
         self.unlisten.set_deps(deps.into_iter().map(|dep| dep.gc_dep).collect());
     }
