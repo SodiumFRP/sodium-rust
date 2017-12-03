@@ -1,15 +1,15 @@
-use sodium::Cell;
-use sodium::IsCell;
+use sodium::cell::CellImpl;
+use sodium::cell::IsCellPrivate;
 use sodium::HasCellDataGc;
 use sodium::HasCellData;
 use sodium::Lazy;
 use sodium::SodiumCtx;
-use sodium::Stream;
+use sodium::stream::StreamImpl;
 use sodium::gc::Gc;
 use std::cell::RefCell;
 
 pub struct LazyCell<A> {
-    pub cell: Cell<A>
+    pub cell: CellImpl<A>
 }
 
 /*
@@ -40,8 +40,8 @@ impl<A: Clone + 'static> HasCellDataGc<A> for LazyCell<A> {
 }
 
 impl<A:Clone + 'static> LazyCell<A> {
-    pub fn new(sodium_ctx: &mut SodiumCtx, event: Stream<A>, lazy_init_value: Lazy<A>) -> LazyCell<A> {
-        let cell = Cell::new_(
+    pub fn new(sodium_ctx: &mut SodiumCtx, event: StreamImpl<A>, lazy_init_value: Lazy<A>) -> LazyCell<A> {
+        let cell = CellImpl::new_(
             sodium_ctx,
             event,
             None

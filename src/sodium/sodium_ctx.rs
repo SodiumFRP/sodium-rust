@@ -1,9 +1,17 @@
+use sodium::Cell;
+use sodium::CellLoop;
+use sodium::CellSink;
 use sodium::HasNode;
 use sodium::Listener;
 use sodium::Node;
+use sodium::Stream;
+use sodium::StreamLoop;
+use sodium::StreamSink;
 use sodium::Transaction;
+use sodium::cell;
 use sodium::gc::GcCtx;
 use sodium::gc::Gc;
+use sodium::stream;
 use std::borrow::Borrow;
 use std::cell::Ref;
 use std::cell::RefCell;
@@ -70,6 +78,44 @@ impl SodiumCtx {
 
     pub fn with_data_mut<F,A>(&self, f: F) -> A where F: FnOnce(&mut SodiumCtxData) -> A {
         f(&mut *self.data.borrow_mut())
+    }
+
+    pub fn new_cell<A: Clone + 'static>(&mut self, a: A) -> Cell<A> {
+        cell::make_cell(
+            self.clone(),
+            cell::CellImpl::new(self, a)
+        )
+    }
+
+    pub fn new_stream<A: Clone + 'static>(&mut self) -> Stream<A> {
+        stream::make_stream(
+            self.clone(),
+            stream::StreamImpl::new(self)
+        )
+    }
+
+    pub fn new_stream_sink<A: Clone + 'static>(&mut self) -> StreamSink<A> {
+        StreamSink::new(self)
+    }
+
+    pub fn new_stream_sink_with_coalescer<A: Clone + 'static, F: Fn(&A,&A)->A + 'static>(&mut self, f: F) -> StreamSink<A> {
+        StreamSink::new_with_coalescer(self, f)
+    }
+
+    pub fn new_cell_sink<A: Clone + 'static>(&mut self, a: A) -> CellSink<A> {
+        CellSink::new(self, a)
+    }
+
+    pub fn new_stream_loop<A: Clone + 'static>(&mut self) -> StreamLoop<A> {
+        StreamLoop::new(self)
+    }
+
+    pub fn new_cell_loop<A: Clone + 'static>(&mut self) -> CellLoop<A> {
+        CellLoop::new(self)
+    }
+
+    pub fn run_transaction<A, F: FnOnce()->A>(&mut self, code: F) -> A {
+        Transaction::run(self, |_: &mut SodiumCtx| code())
     }
 
     pub fn gc(&self) {

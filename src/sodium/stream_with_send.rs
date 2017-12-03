@@ -1,20 +1,21 @@
 use sodium::HandlerRefMut;
-use sodium::IsStream;
+use sodium::stream::IsStreamPrivate;
 use sodium::HasNode;
 use sodium::Node;
 use sodium::SodiumCtx;
-use sodium::Stream;
-use sodium::StreamData;
+use sodium::stream::HasStream;
+use sodium::stream::StreamImpl;
+use sodium::stream::StreamData;
 use sodium::Transaction;
-use sodium::WeakStream;
+use sodium::WeakStreamImpl;
 use std::any::Any;
 
 pub struct StreamWithSend<A> {
-    pub stream: Stream<A>
+    pub stream: StreamImpl<A>
 }
 
 pub struct WeakStreamWithSend<A> {
-    pub stream: WeakStream<A>
+    pub stream: WeakStreamImpl<A>
 }
 
 impl<A> Clone for StreamWithSend<A> {
@@ -33,8 +34,8 @@ impl<A> Clone for WeakStreamWithSend<A> {
     }
 }
 
-impl<A:'static + Clone> IsStream<A> for StreamWithSend<A> {
-    fn to_stream_ref(&self) -> &Stream<A> {
+impl<A:'static + Clone> IsStreamPrivate<A> for StreamWithSend<A> {
+    fn to_stream_ref(&self) -> &StreamImpl<A> {
         &self.stream
     }
 }
@@ -42,7 +43,7 @@ impl<A:'static + Clone> IsStream<A> for StreamWithSend<A> {
 impl<A:'static + Clone> StreamWithSend<A> {
     pub fn new(sodium_ctx: &mut SodiumCtx) -> StreamWithSend<A> {
         StreamWithSend {
-            stream: Stream::new(sodium_ctx)
+            stream: StreamImpl::new(sodium_ctx)
         }
     }
 

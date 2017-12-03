@@ -1,5 +1,4 @@
 pub use self::cell::Cell;
-pub use self::cell::CellData;
 pub use self::cell::IsCell;
 pub use self::cell::HasCellData;
 pub use self::cell::HasCellDataGc;
@@ -26,9 +25,9 @@ pub use self::operational::Operational;
 pub use self::sodium_ctx::SodiumCtx;
 pub use self::sodium_ctx::SodiumCtxData;
 pub use self::stream::IsStream;
+pub use self::stream::IsStreamOption;
 pub use self::stream::Stream;
-pub use self::stream::StreamData;
-pub use self::stream::WeakStream;
+pub use self::stream::WeakStreamImpl;
 pub use self::stream_sink::StreamSink;
 pub use self::stream_loop::StreamLoop;
 pub use self::stream_with_send::StreamWithSend;

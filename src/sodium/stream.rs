@@ -1,7 +1,10 @@
 use sodium::Cell;
+use sodium::cell;
+use sodium::cell::CellImpl;
 use sodium::CoalesceHandler;
 use sodium::Dep;
 use sodium::HandlerRefMut;
+use sodium::cell::IsCellPrivate;
 use sodium::IsCell;
 use sodium::IsLambda1;
 use sodium::IsLambda2;
@@ -26,18 +29,313 @@ use sodium::gc::GcWeak;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub struct Stream<A> {
-    pub data: Gc<RefCell<StreamData<A>>>
+pub struct Stream<A: Clone + 'static> {
+    sodium_ctx: SodiumCtx,
+    stream_impl: StreamImpl<A>
 }
 
-pub struct WeakStream<A> {
-    pub data: GcWeak<RefCell<StreamData<A>>>
+impl<A: Clone + 'static> Clone for Stream<A> {
+    fn clone(&self) -> Self {
+        Stream {
+            sodium_ctx: self.sodium_ctx.clone(),
+            stream_impl: self.stream_impl.clone()
+        }
+    }
+}
+
+pub trait HasStream<A: Clone + 'static> {
+    fn stream(&self) -> Stream<A>;
+}
+
+impl<A: Clone + 'static> HasStream<A> for Stream<A> {
+    fn stream(&self) -> Stream<A> {
+        self.clone()
+    }
+}
+
+pub fn make_stream<A: Clone + 'static>(sodium_ctx: SodiumCtx, stream_impl: StreamImpl<A>) -> Stream<A> {
+    Stream {
+        sodium_ctx,
+        stream_impl
+    }
+}
+
+pub fn get_sodium_ctx<A: Clone + 'static, SA: HasStream<A>>(sa: &SA) -> SodiumCtx {
+    sa.stream().sodium_ctx.clone()
+}
+
+pub fn get_stream_impl<A: Clone + 'static, SA: HasStream<A>>(sa: &SA) -> StreamImpl<A> {
+    sa.stream().stream_impl.clone()
 }
 
 pub trait IsStream<A: Clone + 'static> {
-    fn to_stream_ref(&self) -> &Stream<A>;
+    fn stream(&self) -> Stream<A>;
+    fn to_dep(&self) -> Dep;
+    fn listen<F>(&self, f: F) -> Listener where F: Fn(&A) + 'static;
+    fn listen_once<F>(&self, f: F) -> Listener where F: Fn(&A) + 'static;
+    fn listen_weak<F>(&self, f: F) -> Listener where F: Fn(&A) + 'static;
+    fn map<B,F>(&self, f: F) -> Stream<B> where B: Clone + 'static, F: IsLambda1<A,B> + 'static;
+    fn map_to<B>(&self, b: B) -> Stream<B> where B: Clone + 'static {
+        self.map(move |a: &A| b.clone())
+    }
+    fn hold(&self, a: A) -> Cell<A> {
+        self.hold_lazy(Lazy::new(move || a.clone()))
+    }
+    fn hold_lazy(&self, a: Lazy<A>) -> Cell<A>;
+    fn snapshot_to<B,CB>(&self, cb: &CB) -> Stream<B> where B: Clone + 'static, CB: IsCell<B> {
+        self.snapshot(cb, |_a: &A, b: &B| b.clone())
+    }
+    fn snapshot<B,CB,C,F>(&self, cb: &CB, f: F) -> Stream<C> where B: Clone + 'static, CB: IsCell<B>, C: Clone + 'static, F: IsLambda2<A,B,C> + 'static;
+    fn snapshot2<B,C,CB,CC,D,F>(&self, cb: &CB, cc: &CC, f: F) -> Stream<D> where B: Clone + 'static, C: Clone + 'static, CB: IsCell<B>, CC: IsCell<C>, D: Clone + 'static, F: IsLambda3<A,B,C,D> + 'static;
+    fn snapshot3<B,C,D,CB,CC,CD,E,F>(&self, cb: &CB, cc: &CC, cd: &CD, f: F) -> Stream<E> where B: Clone + 'static, C: Clone + 'static, D: Clone + 'static, CB: IsCell<B>, CC: IsCell<C>, CD: IsCell<D>, E: Clone + 'static, F: IsLambda4<A,B,C,D,E> + 'static;
+    fn snapshot4<B,C,D,E,CB,CC,CD,CE,F,FN>(&self, cb: &CB, cc: &CC, cd: &CD, ce: &CE, f: FN) -> Stream<F> where B: Clone + 'static, C: Clone + 'static, D: Clone + 'static, E: Clone + 'static, CB: IsCell<B>, CC: IsCell<C>, CD: IsCell<D>, CE: IsCell<E>, F: Clone + 'static, FN: IsLambda5<A,B,C,D,E,F> + 'static;
+    fn snapshot5<B,C,D,E,F,CB,CC,CD,CE,CF,G,FN>(&self, cb: &CB, cc: &CC, cd: &CD, ce: &CE, cf: &CF, f: FN) -> Stream<G> where B: Clone + 'static, C: Clone + 'static, D: Clone + 'static, E: Clone + 'static, F: Clone + 'static, CB: IsCell<B>, CC: IsCell<C>, CD: IsCell<D>, CE: IsCell<E>, CF: IsCell<F>, G: Clone + 'static, FN: IsLambda6<A,B,C,D,E,F,G> + 'static;
+    fn or_else<SA>(&self, sa: &SA) -> Stream<A> where SA: IsStream<A> {
+        self.merge(sa, |l: &A, _r: &A| l.clone())
+    }
+    fn merge<SA,F>(&self, sa: &SA, f: F) -> Stream<A> where SA: IsStream<A>, F: IsLambda2<A,A,A> + 'static;
+    fn filter<F>(&self, f: F) -> Stream<A> where F: IsLambda1<A,bool> + 'static;
+    fn gate<CB>(&self, c: &CB) -> Stream<A> where CB: IsCell<bool> {
+        self
+            .snapshot(
+                c,
+                |a: &A, pred: &bool| {
+                    if *pred {
+                        Some(a.clone())
+                    } else {
+                        None
+                    }
+                }
+            )
+            .filter_option()
+    }
 
-    fn to_stream(&self) -> Stream<A> {
+    fn collect<B,S,F>(&self, init_state: S, f: F) -> Stream<B>
+        where B: Clone + 'static,
+              S: Clone + 'static,
+              F: Fn(&A,&S)->(B,S) + 'static
+    {
+        self.collect_lazy(Lazy::new(move || init_state.clone()), f)
+    }
+
+    fn collect_lazy<B,S,F>(&self, init_state: Lazy<S>, f: F) -> Stream<B>
+        where B: Clone + 'static,
+              S: Clone + 'static,
+              F: Fn(&A,&S)->(B,S) + 'static;
+
+    fn accum<S,F>(&self, init_state: S, f: F) -> Cell<S>
+        where S: Clone + 'static,
+              F: Fn(&A,&S)->S + 'static
+    {
+        self.accum_lazy(Lazy::new(move || init_state.clone()), f)
+    }
+
+    fn accum_lazy<S,F>(&self, init_state: Lazy<S>, f: F) -> Cell<S>
+        where S: Clone + 'static,
+              F: Fn(&A,&S)->S + 'static;
+
+    fn once(&self) -> Stream<A>;
+}
+
+pub trait IsStreamOption<A: Clone + 'static> {
+    fn filter_option(&self) -> Stream<A>;
+}
+
+impl<A: Clone + 'static, S: HasStream<A>> IsStream<A> for S {
+    fn stream(&self) -> Stream<A> {
+        HasStream::stream(self)
+    }
+
+    fn to_dep(&self) -> Dep {
+        get_stream_impl(self).to_dep()
+    }
+
+    fn listen<F>(&self, f: F) -> Listener where F: Fn(&A) + 'static {
+        get_stream_impl(self).listen(
+            &mut get_sodium_ctx(self),
+            f
+        )
+    }
+
+    fn listen_once<F>(&self, f: F) -> Listener where F: Fn(&A) + 'static {
+        get_stream_impl(self).listen_once(
+            &mut get_sodium_ctx(self),
+            f
+        )
+    }
+
+    fn listen_weak<F>(&self, f: F) -> Listener where F: Fn(&A) + 'static {
+        get_stream_impl(self).listen_once(
+            &mut get_sodium_ctx(self),
+            f
+        )
+    }
+
+    fn map<B, F>(&self, f: F) -> Stream<B> where B: Clone + 'static, F: IsLambda1<A, B> + 'static {
+        Stream {
+            sodium_ctx: get_sodium_ctx(self),
+            stream_impl: get_stream_impl(self).map(
+                &mut get_sodium_ctx(self),
+                f
+            )
+        }
+    }
+
+    fn hold_lazy(&self, a: Lazy<A>) -> Cell<A> {
+        cell::make_cell(
+            self.stream().sodium_ctx.clone(),
+            self.stream().stream_impl.hold_lazy(
+                &mut self.stream().sodium_ctx.clone(),
+                a
+            )
+        )
+    }
+
+    fn snapshot<B, CB, C, F>(&self, cb: &CB, f: F) -> Stream<C> where B: Clone + 'static, CB: IsCell<B>, C: Clone + 'static, F: IsLambda2<A, B, C> + 'static {
+        Stream {
+            sodium_ctx: self.stream().sodium_ctx.clone(),
+            stream_impl: self.stream().stream_impl.snapshot(
+                &mut self.stream().sodium_ctx.clone(),
+                &cell::get_cell_impl(&cb.cell()),
+                f
+            )
+        }
+    }
+
+    fn snapshot2<B, C, CB, CC, D, F>(&self, cb: &CB, cc: &CC, f: F) -> Stream<D> where B: Clone + 'static, C: Clone + 'static, CB: IsCell<B>, CC: IsCell<C>, D: Clone + 'static, F: IsLambda3<A, B, C, D> + 'static {
+        Stream {
+            sodium_ctx: self.stream().sodium_ctx.clone(),
+            stream_impl: self.stream().stream_impl.snapshot2(
+                &mut self.stream().sodium_ctx.clone(),
+                &cell::get_cell_impl(&cb.cell()),
+                &cell::get_cell_impl(&cc.cell()),
+                f
+            )
+        }
+    }
+
+    fn snapshot3<B, C, D, CB, CC, CD, E, F>(&self, cb: &CB, cc: &CC, cd: &CD, f: F) -> Stream<E> where B: Clone + 'static, C: Clone + 'static, D: Clone + 'static, CB: IsCell<B>, CC: IsCell<C>, CD: IsCell<D>, E: Clone + 'static, F: IsLambda4<A, B, C, D, E> + 'static {
+        Stream {
+            sodium_ctx: self.stream().sodium_ctx.clone(),
+            stream_impl: self.stream().stream_impl.snapshot3(
+                &mut self.stream().sodium_ctx.clone(),
+                &cell::get_cell_impl(&cb.cell()),
+                &cell::get_cell_impl(&cc.cell()),
+                &cell::get_cell_impl(&cd.cell()),
+                f
+            )
+        }
+    }
+
+    fn snapshot4<B, C, D, E, CB, CC, CD, CE, F, FN>(&self, cb: &CB, cc: &CC, cd: &CD, ce: &CE, f: FN) -> Stream<F> where B: Clone + 'static, C: Clone + 'static, D: Clone + 'static, E: Clone + 'static, CB: IsCell<B>, CC: IsCell<C>, CD: IsCell<D>, CE: IsCell<E>, F: Clone + 'static, FN: IsLambda5<A, B, C, D, E, F> + 'static {
+        Stream {
+            sodium_ctx: self.stream().sodium_ctx.clone(),
+            stream_impl: self.stream().stream_impl.snapshot4(
+                &mut self.stream().sodium_ctx.clone(),
+                &cell::get_cell_impl(&cb.cell()),
+                &cell::get_cell_impl(&cc.cell()),
+                &cell::get_cell_impl(&cd.cell()),
+                &cell::get_cell_impl(&ce.cell()),
+                f
+            )
+        }
+    }
+
+    fn snapshot5<B, C, D, E, F, CB, CC, CD, CE, CF, G, FN>(&self, cb: &CB, cc: &CC, cd: &CD, ce: &CE, cf: &CF, f: FN) -> Stream<G> where B: Clone + 'static, C: Clone + 'static, D: Clone + 'static, E: Clone + 'static, F: Clone + 'static, CB: IsCell<B>, CC: IsCell<C>, CD: IsCell<D>, CE: IsCell<E>, CF: IsCell<F>, G: Clone + 'static, FN: IsLambda6<A, B, C, D, E, F, G> + 'static {
+        Stream {
+            sodium_ctx: self.stream().sodium_ctx.clone(),
+            stream_impl: self.stream().stream_impl.snapshot5(
+                &mut self.stream().sodium_ctx.clone(),
+                &cell::get_cell_impl(&cb.cell()),
+                &cell::get_cell_impl(&cc.cell()),
+                &cell::get_cell_impl(&cd.cell()),
+                &cell::get_cell_impl(&ce.cell()),
+                &cell::get_cell_impl(&cf.cell()),
+                f
+            )
+        }
+    }
+
+    fn merge<SA, F>(&self, sa: &SA, f: F) -> Stream<A> where SA: IsStream<A>, F: IsLambda2<A, A, A> + 'static {
+        Stream {
+            sodium_ctx: self.stream().sodium_ctx.clone(),
+            stream_impl: self.stream().stream_impl.merge(
+                &mut self.stream().sodium_ctx.clone(),
+                &sa.stream().stream_impl,
+                f
+            )
+        }
+    }
+
+    fn filter<F>(&self, f: F) -> Stream<A> where F: IsLambda1<A, bool> + 'static {
+        Stream {
+            sodium_ctx: get_sodium_ctx(self),
+            stream_impl: get_stream_impl(self).filter(&mut get_sodium_ctx(self), f)
+        }
+    }
+
+    fn collect_lazy<B,ST,F>(&self, init_state: Lazy<ST>, f: F) -> Stream<B>
+        where B: Clone + 'static,
+              ST: Clone + 'static,
+              F: Fn(&A,&ST)->(B,ST) + 'static
+    {
+        Stream {
+            sodium_ctx: get_sodium_ctx(self),
+            stream_impl: get_stream_impl(self).collect_lazy(
+                &mut get_sodium_ctx(self),
+                init_state,
+                f
+            )
+        }
+    }
+
+    fn accum_lazy<ST,F>(&self, init_state: Lazy<ST>, f: F) -> Cell<ST>
+        where ST: Clone + 'static,
+              F: Fn(&A,&ST)->ST + 'static
+    {
+        cell::make_cell(
+            get_sodium_ctx(self),
+            get_stream_impl(self).accum_lazy(
+                &mut get_sodium_ctx(self),
+                init_state,
+                f
+            )
+        )
+    }
+
+    fn once(&self) -> Stream<A>
+    {
+        Stream {
+            sodium_ctx: get_sodium_ctx(self),
+            stream_impl: get_stream_impl(self).once(&mut get_sodium_ctx(self))
+        }
+    }
+}
+
+impl<A: Clone + 'static, S: HasStream<Option<A>>> IsStreamOption<A> for S {
+    fn filter_option(&self) -> Stream<A> {
+        Stream {
+            sodium_ctx: get_sodium_ctx(self),
+            stream_impl: StreamImpl::filter_option(
+                &mut get_sodium_ctx(self),
+                &get_stream_impl(self)
+            )
+        }
+    }
+}
+
+pub struct StreamImpl<A> {
+    pub data: Gc<RefCell<StreamData<A>>>
+}
+
+pub struct WeakStreamImpl<A> {
+    pub data: GcWeak<RefCell<StreamData<A>>>
+}
+
+pub trait IsStreamPrivate<A: Clone + 'static> {
+    fn to_stream_ref(&self) -> &StreamImpl<A>;
+
+    fn to_stream(&self) -> StreamImpl<A> {
         self.to_stream_ref().clone()
     }
 
@@ -146,7 +444,7 @@ pub trait IsStream<A: Clone + 'static> {
             .into_listener(sodium_ctx)
     }
 
-    fn weak(&self, sodium_ctx: &mut SodiumCtx) -> Stream<A> {
+    fn weak(&self, sodium_ctx: &mut SodiumCtx) -> StreamImpl<A> {
         let out = StreamWithSend::new(sodium_ctx);
         let out2 = out.downgrade();
         let mut sodium_ctx2 = sodium_ctx.clone();
@@ -172,7 +470,7 @@ pub trait IsStream<A: Clone + 'static> {
         out.unsafe_add_cleanup(l).to_stream()
     }
 
-    fn map<B:'static + Clone,F>(&self, sodium_ctx: &mut SodiumCtx, f: F) -> Stream<B>
+    fn map<B:'static + Clone,F>(&self, sodium_ctx: &mut SodiumCtx, f: F) -> StreamImpl<B>
     where F: IsLambda1<A,B> + 'static
     {
         let out = StreamWithSend::new(sodium_ctx);
@@ -196,18 +494,18 @@ pub trait IsStream<A: Clone + 'static> {
             .to_stream()
     }
 
-    fn map_to<B:'static + Clone>(&self, sodium_ctx: &mut SodiumCtx, b: B) -> Stream<B> {
+    fn map_to<B:'static + Clone>(&self, sodium_ctx: &mut SodiumCtx, b: B) -> StreamImpl<B> {
         return self.map(sodium_ctx, move |_: &A| b.clone());
     }
 
-    fn hold(&self, sodium_ctx: &mut SodiumCtx, init_value: A) -> Cell<A> {
+    fn hold(&self, sodium_ctx: &mut SodiumCtx, init_value: A) -> CellImpl<A> {
         Transaction::apply(
             sodium_ctx,
-            |sodium_ctx, _trans| Cell::new_(sodium_ctx, self.to_stream_ref().clone(), Some(init_value))
+            |sodium_ctx, _trans| CellImpl::new_(sodium_ctx, self.to_stream_ref().clone(), Some(init_value))
         )
     }
 
-    fn hold_lazy(&self, sodium_ctx: &mut SodiumCtx, initial_value: Lazy<A>) -> Cell<A> {
+    fn hold_lazy(&self, sodium_ctx: &mut SodiumCtx, initial_value: Lazy<A>) -> CellImpl<A> {
         Transaction::apply(
             sodium_ctx,
             |sodium_ctx, trans|
@@ -215,16 +513,16 @@ pub trait IsStream<A: Clone + 'static> {
         )
     }
 
-    fn hold_lazy_(&self, sodium_ctx: &mut SodiumCtx, _trans: &mut Transaction, initial_value: Lazy<A>) -> Cell<A> {
+    fn hold_lazy_(&self, sodium_ctx: &mut SodiumCtx, _trans: &mut Transaction, initial_value: Lazy<A>) -> CellImpl<A> {
         LazyCell::new(sodium_ctx, self.to_stream_ref().clone(), initial_value).to_cell()
     }
 
-    fn snapshot_to<CB,B>(&self, sodium_ctx: &mut SodiumCtx, c: &CB) -> Stream<B> where CB: IsCell<B>, B: Clone + 'static {
+    fn snapshot_to<CB,B>(&self, sodium_ctx: &mut SodiumCtx, c: &CB) -> StreamImpl<B> where CB: IsCellPrivate<B>, B: Clone + 'static {
         self.snapshot(sodium_ctx, c, |_a: &A, b: &B| b.clone())
     }
 
-    fn snapshot<CB,B,C,F>(&self, sodium_ctx: &mut SodiumCtx, c: &CB, f: F) -> Stream<C>
-        where CB: IsCell<B>,
+    fn snapshot<CB,B,C,F>(&self, sodium_ctx: &mut SodiumCtx, c: &CB, f: F) -> StreamImpl<C>
+        where CB: IsCellPrivate<B>,
               B: Clone + 'static,
               C: Clone + 'static,
               F: IsLambda2<A,B,C> + 'static
@@ -255,9 +553,9 @@ pub trait IsStream<A: Clone + 'static> {
             .to_stream()
     }
 
-    fn snapshot2<CB,CC,B,C,D,F>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, f: F) -> Stream<D>
-        where CB: IsCell<B>,
-              CC: IsCell<C>,
+    fn snapshot2<CB,CC,B,C,D,F>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, f: F) -> StreamImpl<D>
+        where CB: IsCellPrivate<B>,
+              CC: IsCellPrivate<C>,
               B: Clone + 'static,
               C: Clone + 'static,
               D: Clone + 'static,
@@ -278,10 +576,10 @@ pub trait IsStream<A: Clone + 'static> {
         )
     }
 
-    fn snapshot3<CB,CC,CD,B,C,D,E,F>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, cd: &CD, f: F) -> Stream<E>
-        where CB: IsCell<B>,
-              CC: IsCell<C>,
-              CD: IsCell<D>,
+    fn snapshot3<CB,CC,CD,B,C,D,E,F>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, cd: &CD, f: F) -> StreamImpl<E>
+        where CB: IsCellPrivate<B>,
+              CC: IsCellPrivate<C>,
+              CD: IsCellPrivate<D>,
               B: Clone + 'static,
               C: Clone + 'static,
               D: Clone + 'static,
@@ -305,11 +603,11 @@ pub trait IsStream<A: Clone + 'static> {
         )
     }
 
-    fn snapshot4<CB,CC,CD,CE,B,C,D,E,F,FN>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, cd: &CD, ce: &CE, f: FN) -> Stream<F>
-        where CB: IsCell<B>,
-              CC: IsCell<C>,
-              CD: IsCell<D>,
-              CE: IsCell<E>,
+    fn snapshot4<CB,CC,CD,CE,B,C,D,E,F,FN>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, cd: &CD, ce: &CE, f: FN) -> StreamImpl<F>
+        where CB: IsCellPrivate<B>,
+              CC: IsCellPrivate<C>,
+              CD: IsCellPrivate<D>,
+              CE: IsCellPrivate<E>,
               B: Clone + 'static,
               C: Clone + 'static,
               D: Clone + 'static,
@@ -336,12 +634,12 @@ pub trait IsStream<A: Clone + 'static> {
         )
     }
 
-    fn snapshot5<CB,CC,CD,CE,CF,B,C,D,E,F,G,FN>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, cd: &CD, ce: &CE, cf: &CF, f: FN) -> Stream<G>
-        where CB: IsCell<B>,
-              CC: IsCell<C>,
-              CD: IsCell<D>,
-              CE: IsCell<E>,
-              CF: IsCell<F>,
+    fn snapshot5<CB,CC,CD,CE,CF,B,C,D,E,F,G,FN>(&self, sodium_ctx: &mut SodiumCtx, cb: &CB, cc: &CC, cd: &CD, ce: &CE, cf: &CF, f: FN) -> StreamImpl<G>
+        where CB: IsCellPrivate<B>,
+              CC: IsCellPrivate<C>,
+              CD: IsCellPrivate<D>,
+              CE: IsCellPrivate<E>,
+              CF: IsCellPrivate<F>,
               B: Clone + 'static,
               C: Clone + 'static,
               D: Clone + 'static,
@@ -371,11 +669,11 @@ pub trait IsStream<A: Clone + 'static> {
         )
     }
 
-    fn or_else<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A> where SA: IsStream<A> {
+    fn or_else<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> StreamImpl<A> where SA: IsStreamPrivate<A> {
         self.merge(sodium_ctx, s, |a: &A, _: &A| a.clone())
     }
 
-    fn merge_<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A> where SA: IsStream<A> {
+    fn merge_<SA>(&self, sodium_ctx: &mut SodiumCtx, s: &SA) -> StreamImpl<A> where SA: IsStreamPrivate<A> {
         let out = StreamWithSend::<A>::new(sodium_ctx);
         let mut sodium_ctx2 = sodium_ctx.clone();
         let sodium_ctx2 = &mut sodium_ctx2;
@@ -409,7 +707,7 @@ pub trait IsStream<A: Clone + 'static> {
         )).to_stream()
     }
 
-    fn merge<SA,F>(&self, sodium_ctx: &mut SodiumCtx, s: &SA, f: F) -> Stream<A> where SA: IsStream<A>, F: IsLambda2<A,A,A> + 'static {
+    fn merge<SA,F>(&self, sodium_ctx: &mut SodiumCtx, s: &SA, f: F) -> StreamImpl<A> where SA: IsStreamPrivate<A>, F: IsLambda2<A,A,A> + 'static {
         Transaction::apply(
             sodium_ctx,
             |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction| {
@@ -418,7 +716,7 @@ pub trait IsStream<A: Clone + 'static> {
         )
     }
 
-    fn coalesce_<F>(&self, sodium_ctx: &mut SodiumCtx, trans1: &mut Transaction, f: F) -> Stream<A> where F: IsLambda2<A,A,A> + 'static {
+    fn coalesce_<F>(&self, sodium_ctx: &mut SodiumCtx, trans1: &mut Transaction, f: F) -> StreamImpl<A> where F: IsLambda2<A,A,A> + 'static {
         let deps = f.deps();
         let out = StreamWithSend::new(sodium_ctx);
         let h = CoalesceHandler::new(move |a, b| f.apply(a, b), out.downgrade());
@@ -435,11 +733,11 @@ pub trait IsStream<A: Clone + 'static> {
         out.unsafe_add_cleanup(l).to_stream()
     }
 
-    fn last_firing_only_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) -> Stream<A> {
+    fn last_firing_only_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) -> StreamImpl<A> {
         self.coalesce_(sodium_ctx, trans, |_: &A, a: &A| a.clone())
     }
 
-    fn filter<F>(&self, sodium_ctx: &mut SodiumCtx, predicate: F) -> Stream<A> where F: Fn(&A)->bool + 'static {
+    fn filter<F>(&self, sodium_ctx: &mut SodiumCtx, predicate: F) -> StreamImpl<A> where F: IsLambda1<A,bool> + 'static {
         let out = StreamWithSend::new(sodium_ctx);
         let l;
         {
@@ -453,7 +751,7 @@ pub trait IsStream<A: Clone + 'static> {
                 TransactionHandlerRef::new(
                     sodium_ctx2,
                     move |sodium_ctx, trans, a| {
-                        if predicate(a) {
+                        if predicate.apply(a) {
                             out.send(sodium_ctx, trans, a);
                         }
                     }
@@ -463,7 +761,7 @@ pub trait IsStream<A: Clone + 'static> {
         out.unsafe_add_cleanup(l).to_stream()
     }
 
-    fn filter_option<S>(sodium_ctx: &mut SodiumCtx, self_: &S) -> Stream<A> where S: IsStream<Option<A>> {
+    fn filter_option<S>(sodium_ctx: &mut SodiumCtx, self_: &S) -> StreamImpl<A> where S: IsStreamPrivate<Option<A>> {
         let out = StreamWithSend::new(sodium_ctx);
         let l;
         {
@@ -488,7 +786,7 @@ pub trait IsStream<A: Clone + 'static> {
         out.unsafe_add_cleanup(l).to_stream()
     }
 
-    fn gate<CB>(&self, sodium_ctx: &mut SodiumCtx, c: &CB) -> Stream<A> where CB: IsCell<bool> {
+    fn gate<CB>(&self, sodium_ctx: &mut SodiumCtx, c: &CB) -> StreamImpl<A> where CB: IsCellPrivate<bool> {
         let s =
             self.snapshot(
                 sodium_ctx,
@@ -501,10 +799,10 @@ pub trait IsStream<A: Clone + 'static> {
                     }
                 }
             );
-        Stream::filter_option(sodium_ctx, &s)
+        StreamImpl::filter_option(sodium_ctx, &s)
     }
 
-    fn collect<B,S,F>(&self, sodium_ctx: &mut SodiumCtx, init_state: S, f: F) -> Stream<B>
+    fn collect<B,S,F>(&self, sodium_ctx: &mut SodiumCtx, init_state: S, f: F) -> StreamImpl<B>
         where B: Clone + 'static,
               S: Clone + 'static,
               F: Fn(&A,&S)->(B,S) + 'static
@@ -512,7 +810,7 @@ pub trait IsStream<A: Clone + 'static> {
         self.collect_lazy(sodium_ctx, Lazy::new(move || init_state.clone()), f)
     }
 
-    fn collect_lazy<B,S,F>(&self, sodium_ctx: &mut SodiumCtx, init_state: Lazy<S>, f: F) -> Stream<B>
+    fn collect_lazy<B,S,F>(&self, sodium_ctx: &mut SodiumCtx, init_state: Lazy<S>, f: F) -> StreamImpl<B>
         where B: Clone + 'static,
               S: Clone + 'static,
               F: Fn(&A,&S)->(B,S) + 'static
@@ -523,7 +821,7 @@ pub trait IsStream<A: Clone + 'static> {
             sodium_ctx,
             move |sodium_ctx| {
                 let mut es = StreamLoop::new(sodium_ctx);
-                let s = es.hold_lazy(sodium_ctx, init_state.clone());
+                let s = IsStreamPrivate::hold_lazy(&es, sodium_ctx, init_state.clone());
                 let f = f.clone();
                 let f2 = move |a: &A, s: &S| f(a,s);
                 let ebs = ea.snapshot(sodium_ctx, &s, f2);
@@ -531,20 +829,23 @@ pub trait IsStream<A: Clone + 'static> {
                 let es_out = ebs.map(sodium_ctx, |&(ref _b,ref s): &(B,S)| s.clone());
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;
-                es.loop_(sodium_ctx, es_out.weak(sodium_ctx2));
+                es.loop_(Stream {
+                    sodium_ctx: sodium_ctx2.clone(),
+                    stream_impl: es_out.weak(sodium_ctx2)
+                });
                 eb.keep_alive(sodium_ctx, es_out)
             }
         )
     }
 
-    fn accum<S,F>(&self, sodium_ctx: &mut SodiumCtx, init_state: S, f: F) -> Cell<S>
+    fn accum<S,F>(&self, sodium_ctx: &mut SodiumCtx, init_state: S, f: F) -> CellImpl<S>
         where S: Clone + 'static,
               F: Fn(&A,&S)->S + 'static
     {
         self.accum_lazy(sodium_ctx, Lazy::new(move || init_state.clone()), f)
     }
 
-    fn accum_lazy<S,F>(&self, sodium_ctx: &mut SodiumCtx, init_state: Lazy<S>, f: F) -> Cell<S>
+    fn accum_lazy<S,F>(&self, sodium_ctx: &mut SodiumCtx, init_state: Lazy<S>, f: F) -> CellImpl<S>
         where S: Clone + 'static,
               F: Fn(&A,&S)->S + 'static
     {
@@ -554,19 +855,24 @@ pub trait IsStream<A: Clone + 'static> {
             sodium_ctx,
             move |sodium_ctx| {
                 let mut es = StreamLoop::new(sodium_ctx);
-                let s = es.hold_lazy(sodium_ctx, init_state.clone());
+                let s = IsStreamPrivate::hold_lazy(&es, sodium_ctx, init_state.clone());
                 let f = f.clone();
                 let f2 = move |a: &A,s: &S| f(a,s);
                 let es_out = ea.snapshot(sodium_ctx, &s, f2);
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;
-                es.loop_(sodium_ctx, es_out.weak(sodium_ctx2));
+                es.loop_(
+                    Stream {
+                        sodium_ctx: sodium_ctx2.clone(),
+                        stream_impl: es_out.weak(sodium_ctx2)
+                    }
+                );
                 es_out.hold_lazy(sodium_ctx, init_state.clone())
             }
         )
     }
 
-    fn once(&self, sodium_ctx: &mut SodiumCtx) -> Stream<A> {
+    fn once(&self, sodium_ctx: &mut SodiumCtx) -> StreamImpl<A> {
         let out = StreamWithSend::new(sodium_ctx);
         let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
         let l_cell = Rc::new(RefCell::new(None));
@@ -603,7 +909,7 @@ pub trait IsStream<A: Clone + 'static> {
         out.unsafe_add_cleanup(l).to_stream()
     }
 
-    fn keep_alive<X:'static>(&self, sodium_ctx: &mut SodiumCtx, object: X) -> Stream<A> {
+    fn keep_alive<X:'static>(&self, sodium_ctx: &mut SodiumCtx, object: X) -> StreamImpl<A> {
         let l = Listener::new(sodium_ctx, move || { let _object2 = &object; });
         self.add_cleanup(sodium_ctx, l)
     }
@@ -616,7 +922,7 @@ pub trait IsStream<A: Clone + 'static> {
         self
     }
 
-    fn add_cleanup(&self, sodium_ctx: &mut SodiumCtx, cleanup: Listener) -> Stream<A> {
+    fn add_cleanup(&self, sodium_ctx: &mut SodiumCtx, cleanup: Listener) -> StreamImpl<A> {
         self
             .map(sodium_ctx, |a: &A| a.clone())
             .unsafe_add_cleanup(cleanup)
@@ -624,23 +930,23 @@ pub trait IsStream<A: Clone + 'static> {
     }
 }
 
-impl<A: 'static + Clone> IsStream<A> for Stream<A> {
-    fn to_stream_ref(&self) -> &Stream<A> {
+impl<A: 'static + Clone> IsStreamPrivate<A> for StreamImpl<A> {
+    fn to_stream_ref(&self) -> &StreamImpl<A> {
         self
     }
 }
 
-impl<A> Clone for Stream<A> {
+impl<A> Clone for StreamImpl<A> {
     fn clone(&self) -> Self {
-        Stream {
+        StreamImpl {
             data: self.data.clone()
         }
     }
 }
 
-impl<A> Clone for WeakStream<A> {
+impl<A> Clone for WeakStreamImpl<A> {
     fn clone(&self) -> Self {
-        WeakStream {
+        WeakStreamImpl {
             data: self.data.clone()
         }
     }
@@ -670,8 +976,8 @@ impl<A> HasNode for StreamData<A> {
 }
 
 enum WeakOrStrongStream<A> {
-    WeakS(WeakStream<A>),
-    StrongS(Stream<A>)
+    WeakS(WeakStreamImpl<A>),
+    StrongS(StreamImpl<A>)
 }
 
 use self::WeakOrStrongStream::WeakS;
@@ -731,11 +1037,11 @@ impl<A: Clone + 'static> ListenerImpl<A> {
     }
 }
 
-impl<A: Clone + 'static> Stream<A> {
-    pub fn new(sodium_ctx: &mut SodiumCtx) -> Stream<A> {
+impl<A: Clone + 'static> StreamImpl<A> {
+    pub fn new(sodium_ctx: &mut SodiumCtx) -> StreamImpl<A> {
         let mut sodium_ctx2 = sodium_ctx.clone();
         let sodium_ctx2 = &mut sodium_ctx2;
-        Stream {
+        StreamImpl {
             data: sodium_ctx.new_gc(RefCell::new(
                 StreamData {
                     node: Node::new(sodium_ctx2, 0),
@@ -746,16 +1052,16 @@ impl<A: Clone + 'static> Stream<A> {
         }
     }
 
-    pub fn downgrade(&self) -> WeakStream<A> {
-        WeakStream {
+    pub fn downgrade(&self) -> WeakStreamImpl<A> {
+        WeakStreamImpl {
             data: self.data.downgrade()
         }
     }
 
-    pub fn or_else<IT>(sodium_ctx: &mut SodiumCtx, ss: IT) -> Stream<A>
-        where IT: Iterator<Item=Stream<A>>
+    pub fn or_else<IT>(sodium_ctx: &mut SodiumCtx, ss: IT) -> StreamImpl<A>
+        where IT: Iterator<Item=StreamImpl<A>>
     {
-        Stream::merge(
+        StreamImpl::merge(
             sodium_ctx,
             ss,
             |left, _right|
@@ -763,27 +1069,27 @@ impl<A: Clone + 'static> Stream<A> {
         )
     }
 
-    pub fn merge<IT,F>(sodium_ctx: &mut SodiumCtx, ss: IT, f: F) -> Stream<A>
-        where IT: Iterator<Item=Stream<A>>,
+    pub fn merge<IT,F>(sodium_ctx: &mut SodiumCtx, ss: IT, f: F) -> StreamImpl<A>
+        where IT: Iterator<Item=StreamImpl<A>>,
               F: Fn(&A,&A)->A + 'static
     {
-        let ss_vec: Vec<Stream<A>> = ss.collect();
+        let ss_vec: Vec<StreamImpl<A>> = ss.collect();
         let ss_vec_len = ss_vec.len();
-        Stream::merge_(sodium_ctx, &ss_vec, 0, ss_vec_len, f)
+        StreamImpl::merge_(sodium_ctx, &ss_vec, 0, ss_vec_len, f)
     }
 
-    fn merge_<F>(sodium_ctx: &mut SodiumCtx, ss: &Vec<Stream<A>>, start: usize, end: usize, f: F) -> Stream<A>
+    fn merge_<F>(sodium_ctx: &mut SodiumCtx, ss: &Vec<StreamImpl<A>>, start: usize, end: usize, f: F) -> StreamImpl<A>
         where F: Fn(&A,&A)->A + 'static
     {
-        Stream::merge__(sodium_ctx, ss, start, end, &Rc::new(f))
+        StreamImpl::merge__(sodium_ctx, ss, start, end, &Rc::new(f))
     }
 
-    fn merge__<F>(sodium_ctx: &mut SodiumCtx, ss: &Vec<Stream<A>>, start: usize, end: usize, f: &Rc<F>) -> Stream<A>
+    fn merge__<F>(sodium_ctx: &mut SodiumCtx, ss: &Vec<StreamImpl<A>>, start: usize, end: usize, f: &Rc<F>) -> StreamImpl<A>
         where F: Fn(&A,&A)->A + 'static
     {
         let len = end - start;
         if len == 0 {
-            Stream::new(sodium_ctx)
+            StreamImpl::new(sodium_ctx)
         } else if len == 1 {
             ss[start].clone()
         } else if len == 2 {
@@ -795,7 +1101,7 @@ impl<A: Clone + 'static> Stream<A> {
             let f3 = move |a: &A, b: &A| f2(a, b);
             let mid = (start + end) / 2;
             let s1 =
-                Stream::merge__(
+                StreamImpl::merge__(
                     sodium_ctx,
                     &ss,
                     start,
@@ -803,7 +1109,7 @@ impl<A: Clone + 'static> Stream<A> {
                     f
                 );
             let s2 =
-                Stream::merge__(
+                StreamImpl::merge__(
                     sodium_ctx,
                     &ss,
                     mid,
@@ -815,10 +1121,10 @@ impl<A: Clone + 'static> Stream<A> {
     }
 }
 
-impl<A: Clone + 'static> WeakStream<A> {
-    pub fn upgrade(&self) -> Option<Stream<A>> {
+impl<A: Clone + 'static> WeakStreamImpl<A> {
+    pub fn upgrade(&self) -> Option<StreamImpl<A>> {
         self.data.upgrade().map(|data| {
-            Stream {
+            StreamImpl {
                 data: data
             }
         })

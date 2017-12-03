@@ -11,13 +11,12 @@ fn constant_cell() {
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
     {
-        let c = Cell::new(sodium_ctx, 12);
+        let c = sodium_ctx.new_cell(12);
         let out = Rc::new(RefCell::new(Vec::new()));
         let l;
         {
             let out = out.clone();
             l = c.listen(
-                sodium_ctx,
                 move |a|
                     (*out).borrow_mut().push(a.clone())
             );
@@ -76,18 +75,17 @@ fn map_c() {
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
     {
-        let c = CellSink::new(sodium_ctx, 6);
+        let c = sodium_ctx.new_cell_sink(6);
         let out = Rc::new(RefCell::new(Vec::new()));
         let l;
         {
             let out = out.clone();
-            l = c.map(sodium_ctx, |a| format!("{}", a)).listen(
-                sodium_ctx,
+            l = c.map(|a: &i32| format!("{}", a)).listen(
                 move |a|
                     out.borrow_mut().push(a.clone())
             );
         }
-        c.send(sodium_ctx, &8);
+        c.send(&8);
         l.unlisten();
         assert_eq!(vec![String::from("6"), String::from("8")], *out.borrow());
     }

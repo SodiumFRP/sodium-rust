@@ -1,20 +1,33 @@
 use sodium::HasNode;
-use sodium::IsStream;
-use sodium::SodiumCtx;
 use sodium::Stream;
+use sodium::stream;
+use sodium::stream::HasStream;
+use sodium::stream::IsStreamPrivate;
+use sodium::SodiumCtx;
+use sodium::stream::StreamImpl;
 use sodium::StreamWithSend;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
 use std::cell::RefCell;
 
 pub struct StreamLoop<A> {
+    sodium_ctx: SodiumCtx,
     stream: StreamWithSend<A>,
     assigned: bool
 }
 
-impl<A: 'static + Clone> IsStream<A> for StreamLoop<A> {
-    fn to_stream_ref(&self) -> &Stream<A> {
+impl<A: 'static + Clone> IsStreamPrivate<A> for StreamLoop<A> {
+    fn to_stream_ref(&self) -> &StreamImpl<A> {
         &self.stream.stream
+    }
+}
+
+impl<A: Clone + 'static> HasStream<A> for StreamLoop<A> {
+    fn stream(&self) -> Stream<A> {
+        stream::make_stream(
+            self.sodium_ctx.clone(),
+            self.stream.stream.clone()
+        )
     }
 }
 
@@ -25,12 +38,15 @@ impl<A: 'static + Clone> StreamLoop<A> {
             panic!("StreamLoop/CellLoop must be used within an explicit transaction");
         }
         StreamLoop {
+            sodium_ctx: sodium_ctx.clone(),
             stream: StreamWithSend::new(sodium_ctx),
             assigned: false
         }
     }
 
-    pub fn loop_(&mut self, sodium_ctx: &mut SodiumCtx, ea_out: Stream<A>) {
+    pub fn loop_(&mut self, ea_out: Stream<A>) {
+        let mut sodium_ctx = stream::get_sodium_ctx(&ea_out);
+        let sodium_ctx = &mut sodium_ctx;
         if self.assigned {
             panic!("StreamLoop looped more than once");
         }
@@ -42,7 +58,7 @@ impl<A: 'static + Clone> StreamLoop<A> {
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;
                 self.unsafe_add_cleanup(
-                    ea_out.listen_(
+                    stream::get_stream_impl(&ea_out).listen_(
                         sodium_ctx,
                         self.stream.stream.data.clone().upcast(|x| x as &RefCell<HasNode>),
                         TransactionHandlerRef::new(

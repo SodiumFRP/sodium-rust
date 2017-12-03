@@ -1,4 +1,3 @@
-use sodium::Cell;
 use sodium::CellLoop;
 use sodium::CellSink;
 use sodium::IsCell;
@@ -23,21 +22,20 @@ fn loop_value_snapshot() {
             l = Transaction::run(
                 sodium_ctx,
                 |sodium_ctx| {
-                    let a = Cell::new(sodium_ctx, "lettuce");
-                    let b = CellLoop::new(sodium_ctx);
+                    let a = sodium_ctx.new_cell("lettuce");
+                    let mut b = CellLoop::new(sodium_ctx);
                     let e_snap =
                         Operational
-                            ::value(sodium_ctx, &a)
+                            ::value(&a)
                             .snapshot(
-                                sodium_ctx,
                                 &b,
                                 |aa: &&str, bb: &&str|
                                     format!("{} {}", aa, bb)
                             );
                     let mut sodium_ctx2 = sodium_ctx.clone();
                     let sodium_ctx2 = &mut sodium_ctx2;
-                    b.loop_(sodium_ctx, &Cell::new(sodium_ctx2, "cheese"));
-                    e_snap.listen(sodium_ctx, move |x| out.borrow_mut().push(x.clone()))
+                    b.loop_(&sodium_ctx2.new_cell("cheese"));
+                    e_snap.listen(move |x| out.borrow_mut().push(x.clone()))
                 }
             );
         }
@@ -56,24 +54,23 @@ fn loop_value_hold() {
         let value = Transaction::run(
             sodium_ctx,
             |sodium_ctx| {
-                let a = CellLoop::new(sodium_ctx);
-                let value_ = Operational::value(sodium_ctx, &a).hold(sodium_ctx, "onion");
+                let mut a = sodium_ctx.new_cell_loop();
+                let value_ = Operational::value(&a).hold("onion");
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;
-                a.loop_(sodium_ctx, &Cell::new(sodium_ctx2, "cheese"));
+                a.loop_(&sodium_ctx2.new_cell("cheese"));
                 value_
             }
         );
-        let s_tick = StreamSink::new(sodium_ctx);
+        let s_tick = sodium_ctx.new_stream_sink();
         let l;
         {
             let out = out.clone();
-            l = s_tick.snapshot_to(sodium_ctx, &value).listen(
-                sodium_ctx,
+            l = s_tick.snapshot_to(&value).listen(
                 move |x| out.borrow_mut().push(x.clone())
             );
         }
-        s_tick.send(sodium_ctx, &());
+        s_tick.send(&());
         l.unlisten();
         assert_eq!(vec!["cheese"], *out.borrow());
     }
@@ -90,11 +87,11 @@ fn lift_loop() {
         let c = Transaction::run(
             sodium_ctx,
             |sodium_ctx| {
-                let a = CellLoop::new(sodium_ctx);
-                let c_ = a.lift2(sodium_ctx, &b, |aa, bb| format!("{} {}", aa, bb));
+                let mut a = CellLoop::new(sodium_ctx);
+                let c_ = a.lift2(&b, |aa: &&'static str, bb: &&'static str| format!("{} {}", aa, bb));
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;
-                a.loop_(sodium_ctx, &Cell::new(sodium_ctx2, "tea"));
+                a.loop_(&sodium_ctx2.new_cell("tea"));
                 c_
             }
         );
@@ -102,11 +99,10 @@ fn lift_loop() {
         {
             let out = out.clone();
             l = c.listen(
-                sodium_ctx,
                 move |x| out.borrow_mut().push(x.clone())
             );
         }
-        b.send(sodium_ctx, &"caddy");
+        b.send(&"caddy");
         l.unlisten();
         assert_eq!(vec!["tea kettle", "tea caddy"], *out.borrow());
     }

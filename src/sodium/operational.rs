@@ -1,21 +1,92 @@
+use sodium::Cell;
 use sodium::HandlerRefMut;
 use sodium::HasNode;
 use sodium::IsCell;
 use sodium::IsStream;
+use sodium::cell::IsCellPrivate;
+use sodium::stream::IsStreamPrivate;
 use sodium::SodiumCtx;
 use sodium::Stream;
+use sodium::stream::StreamImpl;
 use sodium::StreamWithSend;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
+use sodium::cell;
+use sodium::stream;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct Operational {}
 
 impl Operational {
-    pub fn updates<CA,A>(sodium_ctx: &mut SodiumCtx, c: &CA) -> Stream<A>
+    pub fn updates<CA,A>(c: &CA) -> Stream<A>
         where A: Clone + 'static,
               CA: IsCell<A>
+    {
+        let c = c.cell();
+        let c = &c;
+        stream::make_stream(
+            cell::get_sodium_ctx(c),
+            OperationalPrivate::updates(
+                &mut cell::get_sodium_ctx(c),
+                &cell::get_cell_impl(c)
+            )
+        )
+    }
+
+    pub fn value<CA,A>(c: &CA) -> Stream<A>
+        where A: Clone + 'static,
+              CA: IsCell<A>
+    {
+        let c = c.cell();
+        let c = &c;
+        stream::make_stream(
+            cell::get_sodium_ctx(c),
+            OperationalPrivate::value(
+                &mut cell::get_sodium_ctx(c),
+                &cell::get_cell_impl(c)
+            )
+        )
+    }
+
+    pub fn defer<SA,A>(s: &SA) -> Stream<A>
+        where A: Clone + 'static,
+              SA: IsStream<A>
+    {
+        let s = s.stream();
+        let s = &s;
+        stream::make_stream(
+            stream::get_sodium_ctx(s),
+            OperationalPrivate::defer(
+                &mut stream::get_sodium_ctx(s),
+                &stream::get_stream_impl(s)
+            )
+        )
+    }
+
+    pub fn split<SC,C,A>(s: &SC) -> Stream<A>
+        where A: Clone + 'static,
+              C: IntoIterator<Item=A> + 'static + Clone,
+              SC: IsStream<Rc<C>>
+    {
+        let s = s.stream();
+        let s = &s;
+        stream::make_stream(
+            stream::get_sodium_ctx(s),
+            OperationalPrivate::split(
+                &mut stream::get_sodium_ctx(s),
+                &stream::get_stream_impl(s)
+            )
+        )
+    }
+}
+
+struct OperationalPrivate {}
+
+impl OperationalPrivate {
+    pub fn updates<CA,A>(sodium_ctx: &mut SodiumCtx, c: &CA) -> StreamImpl<A>
+        where A: Clone + 'static,
+              CA: IsCellPrivate<A>
     {
         Transaction::apply(
             sodium_ctx,
@@ -25,9 +96,9 @@ impl Operational {
         )
     }
 
-    pub fn value<CA,A>(sodium_ctx: &mut SodiumCtx, c: &CA) -> Stream<A>
+    pub fn value<CA,A>(sodium_ctx: &mut SodiumCtx, c: &CA) -> StreamImpl<A>
         where A: Clone + 'static,
-              CA: IsCell<A>
+              CA: IsCellPrivate<A>
     {
         Transaction::apply(
             sodium_ctx,
@@ -37,13 +108,13 @@ impl Operational {
         )
     }
 
-    pub fn defer<SA,A>(sodium_ctx: &mut SodiumCtx, s: &SA) -> Stream<A>
+    pub fn defer<SA,A>(sodium_ctx: &mut SodiumCtx, s: &SA) -> StreamImpl<A>
         where A: Clone + 'static,
-              SA: IsStream<A>
+              SA: IsStreamPrivate<A>
     {
         let mut sodium_ctx2 = sodium_ctx.clone();
         let sodium_ctx2 = &mut sodium_ctx2;
-        Operational::split(
+        OperationalPrivate::split(
             sodium_ctx,
             &s.map(
                 sodium_ctx2,
@@ -54,10 +125,10 @@ impl Operational {
         )
     }
 
-    pub fn split<SC,C,A>(sodium_ctx: &mut SodiumCtx, s: &SC) -> Stream<A>
+    pub fn split<SC,C,A>(sodium_ctx: &mut SodiumCtx, s: &SC) -> StreamImpl<A>
         where A: Clone + 'static,
               C: IntoIterator<Item=A> + 'static + Clone,
-              SC: IsStream<Rc<C>>
+              SC: IsStreamPrivate<Rc<C>>
     {
         let out = StreamWithSend::new(sodium_ctx);
         let l1;

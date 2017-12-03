@@ -1,11 +1,15 @@
 use sodium::CoalesceHandler;
-use sodium::IsStream;
+use sodium::stream;
+use sodium::stream::HasStream;
+use sodium::stream::IsStreamPrivate;
 use sodium::SodiumCtx;
 use sodium::Stream;
+use sodium::stream::StreamImpl;
 use sodium::StreamWithSend;
 use sodium::Transaction;
 
 pub struct StreamSink<A> {
+    sodium_ctx: SodiumCtx,
     stream: StreamWithSend<A>,
     coalescer: CoalesceHandler<A>
 }
@@ -13,17 +17,27 @@ pub struct StreamSink<A> {
 impl<A> Clone for StreamSink<A> {
     fn clone(&self) -> Self {
         StreamSink {
+            sodium_ctx: self.sodium_ctx.clone(),
             stream: self.stream.clone(),
             coalescer: self.coalescer.clone()
         }
     }
 }
 
-impl<A: Clone + 'static> IsStream<A> for StreamSink<A> {
-    fn to_stream_ref(&self) -> &Stream<A> {
+impl<A: Clone + 'static> HasStream<A> for StreamSink<A> {
+    fn stream(&self) -> Stream<A> {
+        stream::make_stream(
+            self.sodium_ctx.clone(),
+            self.stream.stream.clone()
+        )
+    }
+}
+
+
+impl<A: Clone + 'static> IsStreamPrivate<A> for StreamSink<A> {
+    fn to_stream_ref(&self) -> &StreamImpl<A> {
         self.stream.to_stream_ref()
     }
-
 }
 
 impl<A: Clone + 'static> StreamSink<A> {
@@ -39,12 +53,15 @@ impl<A: Clone + 'static> StreamSink<A> {
     pub fn new_with_coalescer<F>(sodium_ctx: &mut SodiumCtx, f: F) -> StreamSink<A> where F: Fn(&A,&A)->A + 'static {
         let out = StreamWithSend::new(sodium_ctx);
         StreamSink {
+            sodium_ctx: sodium_ctx.clone(),
             stream: out.clone(),
             coalescer: CoalesceHandler::new(f, out.downgrade())
         }
     }
 
-    pub fn send(&self, sodium_ctx: &mut SodiumCtx, a: &A) {
+    pub fn send(&self, a: &A) {
+        let mut sodium_ctx = self.sodium_ctx.clone();
+        let sodium_ctx = &mut sodium_ctx;
         Transaction::run_trans(
             sodium_ctx,
             |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction| {

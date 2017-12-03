@@ -1,52 +1,32 @@
-use sodium::CellData;
-use sodium::IsCell;
-use sodium::IsStream;
-use sodium::HasCellData;
+use sodium::Cell;
+use sodium::cell::HasCell;
 use sodium::HasCellDataGc;
+use sodium::IsCell;
 use sodium::SodiumCtx;
 use sodium::StreamLoop;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
+use sodium::cell;
+use sodium::cell::CellData;
+use sodium::cell::IsCellPrivate;
+use sodium::stream;
+use sodium::stream::IsStreamPrivate;
 use sodium::gc::Gc;
 use std::cell::RefCell;
 
-pub struct CellLoop<A> {
-    data: Gc<RefCell<CellLoopData<A>>>
-}
-
-impl<A> Clone for CellLoop<A> {
-    fn clone(&self) -> Self {
-        CellLoop {
-            data: self.data.clone()
-        }
-    }
-}
-
-struct CellLoopData<A> {
-    cell_data: CellData<A>,
+pub struct CellLoop<A: Clone + 'static> {
+    sodium_ctx: SodiumCtx,
+    cell: cell::CellImpl<A>,
     str: StreamLoop<A>,
     is_assigned: bool
 }
 
-impl<A: Clone + 'static> HasCellDataGc<A> for CellLoop<A> {
-    fn cell_data(&self) -> Gc<RefCell<HasCellData<A>>> {
-        self.data.clone().upcast(|x| x as &RefCell<HasCellData<A>>)
-    }
-}
-
-impl<A> HasCellData<A> for CellLoopData<A> {
-    fn cell_data_ref(&self) -> &CellData<A> {
-        &self.cell_data
-    }
-    fn cell_data_mut(&mut self) -> &mut CellData<A> {
-        &mut self.cell_data
-    }
-
-    fn sample_no_trans_(&mut self) -> A where A: Clone + 'static {
-        if !self.is_assigned {
-            panic!("CellLoop sampled before it was looped");
-        }
-        self.cell_data.sample_no_trans_()
+impl<A: Clone + 'static> HasCell<A> for CellLoop<A> {
+    fn cell(&self) -> Cell<A> {
+        cell::make_cell(
+            self.sodium_ctx.clone(),
+            self.cell.clone()
+        )
     }
 }
 
@@ -54,21 +34,22 @@ impl<A: Clone + 'static> CellLoop<A> {
     pub fn new(sodium_ctx: &mut SodiumCtx) -> CellLoop<A> {
         let str = StreamLoop::new(sodium_ctx);
         let r = CellLoop {
-            data: sodium_ctx.new_gc(RefCell::new(
-                CellLoopData {
-                    cell_data: CellData {
+            sodium_ctx: sodium_ctx.clone(),
+            cell: cell::CellImpl {
+                data: sodium_ctx.new_gc(RefCell::new(
+                    cell::CellData {
                         str: str.to_stream_ref().clone(),
                         value: None,
                         value_update: None,
                         cleanup: None,
                         lazy_init_value: None
                     },
-                    str: str,
-                    is_assigned: false
-                }
-            ))
+                )).upcast(|x| x as &RefCell<cell::HasCellData<A>>)
+            },
+            str: str,
+            is_assigned: false
         };
-        let self_ = r.clone();
+        let self_ = r.cell.clone();
         Transaction::run_trans(
             sodium_ctx,
             move |sodium_ctx: &mut SodiumCtx, trans1: &mut Transaction| {
@@ -85,7 +66,7 @@ impl<A: Clone + 'static> CellLoop<A> {
                         TransactionHandlerRef::new(
                             &mut sodium_ctx3,
                             move |_sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction, a: &A| {
-                                let self___ = CellLoop { data: self__.upgrade().unwrap() };
+                                let self___ = cell::CellImpl { data: self__.upgrade().unwrap() };
                                 self___.clone().with_cell_data_mut(move |data| {
                                     if data.value_update.is_none() {
                                         trans2.last(
@@ -111,15 +92,22 @@ impl<A: Clone + 'static> CellLoop<A> {
         r
     }
 
-    pub fn loop_<CA>(&self, sodium_ctx: &mut SodiumCtx, a_out: &CA) where CA: IsCell<A> {
+    pub fn loop_<CA>(&mut self, a_out: &CA) where CA: IsCell<A> {
+        let mut sodium_ctx = cell::get_sodium_ctx(&a_out.cell());
+        let sodium_ctx = &mut sodium_ctx;
         Transaction::apply(
             sodium_ctx,
             |sodium_ctx, trans| {
-                let mut data = (*self.data).borrow_mut();
+                let a_out2 = cell::get_cell_impl(&a_out.cell());
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;
-                data.str.loop_(sodium_ctx, a_out.updates_(trans).weak(sodium_ctx2));
-                data.cell_data.lazy_init_value = Some(a_out.sample_lazy_(sodium_ctx, trans));
+                self.str.loop_(
+                    stream::make_stream(
+                        sodium_ctx2.clone(),
+                        a_out2.updates_(trans).weak(sodium_ctx2)
+                    )
+                );
+                self.cell.data.borrow_mut().cell_data_mut().lazy_init_value = Some(a_out2.sample_lazy_(sodium_ctx, trans));
             }
         )
     }
