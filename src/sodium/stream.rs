@@ -27,6 +27,7 @@ use sodium::TransactionHandlerRef;
 use sodium::gc::Gc;
 use sodium::gc::GcWeak;
 use std::cell::RefCell;
+use std::cell::RefMut;
 use std::rc::Rc;
 
 pub struct Stream<A: Clone + 'static> {
@@ -888,25 +889,21 @@ pub trait IsStreamPrivate<A: Clone + 'static> {
                 TransactionHandlerRef::new(
                     sodium_ctx2,
                     move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, a: &A| {
-                        let has_listener = l_cell.borrow().is_some();
-                        if has_listener {
-                            out.send(sodium_ctx, trans, a);
-                            {
-                                let l = l_cell.borrow();
-                                let l: &Option<Listener> = &l;
-                                match l.as_ref() {
-                                    Some(l2) => l2.unlisten(),
-                                    None => ()
-                                }
-                            }
-                            *l_cell.borrow_mut() = None;
+                        let mut l2: RefMut<Option<Listener>> = l_cell.borrow_mut();
+                        match l2.as_ref() {
+                            Some(ref l3) => {
+                                out.send(sodium_ctx, trans, a);
+                                l3.unlisten();
+                            },
+                            None => ()
                         }
+                        *l2 = None;
                     }
                 )
             );
         }
         *l_cell.borrow_mut() = Some(l.clone());
-        out.unsafe_add_cleanup(l).to_stream()
+        out.to_stream().unsafe_add_cleanup(l).to_stream()
     }
 
     fn keep_alive<X:'static>(&self, sodium_ctx: &mut SodiumCtx, object: X) -> StreamImpl<A> {
@@ -1009,29 +1006,43 @@ impl<A: Clone + 'static> ListenerImpl<A> {
             &WeakS(ref s) => vec![self.action.to_dep()],
             &StrongS(ref s) => vec![self.action.to_dep(), s.to_dep()]
         };
-        let self_ = RefCell::new(self);
+        let self_ = RefCell::new(Some(self));
+        let l_cell = Rc::new(RefCell::new(None));
+        let l_cell2 = l_cell.clone();
         let l = Listener::new(
             sodium_ctx,
             move || {
-                let mut self__ = self_.borrow_mut();
-                let self___ = &mut *self__;
-                if !self___.done {
-                    let s_op =
-                        match &self___.event {
-                            &WeakS(ref s) => s.upgrade(),
-                            &StrongS(ref s) => Some(s.clone())
-                        };
-                    match s_op {
-                        Some(s) => {
-                            let mut stream_data = s.data.borrow_mut();
-                            HasNode::unlink_to(&mut *stream_data as &mut HasNode, &self___.target);
-                        },
+                let mut self_ = self_.borrow_mut();
+                if self_.is_some() {
+                    {
+                        let self__ = self_.as_mut();
+                        let self__ = self__.unwrap();
+                        if !self__.done {
+                            let s_op =
+                                match &self__.event {
+                                    &WeakS(ref s) => s.upgrade(),
+                                    &StrongS(ref s) => Some(s.clone())
+                                };
+                            match s_op {
+                                Some(s) => {
+                                    let mut stream_data = s.data.borrow_mut();
+                                    HasNode::unlink_to(&mut *stream_data as &mut HasNode, &self__.target);
+                                },
+                                None => ()
+                            }
+                            self__.done = true;
+                        }
+                    }
+                    *self_ = None;
+                    let mut l2: RefMut<Option<Listener>> = l_cell2.borrow_mut();
+                    match l2.as_mut() {
+                        Some(l3) => l3.set_deps(vec![]),
                         None => ()
                     }
-                    self___.done = true;
                 }
             }
         );
+        *l_cell.borrow_mut() = Some(l.clone());
         l.set_deps(deps);
         l
     }
