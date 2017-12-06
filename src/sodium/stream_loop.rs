@@ -64,13 +64,7 @@ impl<A: 'static + Clone> StreamLoop<A> {
                         TransactionHandlerRef::new(
                             sodium_ctx2,
                             move |sodium_ctx, trans, a| {
-                                let me = me.upgrade();
-                                match me {
-                                    Some(me) => {
-                                        me.send(sodium_ctx, trans, a);
-                                    },
-                                    None => ()
-                                }
+                                me.send(sodium_ctx, trans, a);
                             }
                         )
                     )
