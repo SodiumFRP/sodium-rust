@@ -5,9 +5,12 @@
 
 use std::ptr;
 use std::ops::Deref;
+use std::ops::DerefMut;
 use std::mem::transmute;
 use std::mem::swap;
+use std::cell::Cell;
 use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::rc::Rc;
 
 pub struct GcCtx {
@@ -191,6 +194,157 @@ impl<A: ?Sized> GcWeak<A> {
                 }
             )
         }
+    }
+}
+
+#[derive(Clone,Copy)]
+enum GcCellFlags {
+    Unused,
+    Reading(u32),
+    Writing
+}
+
+impl GcCellFlags {
+    fn is_reading(&self) -> bool {
+        match self {
+            &GcCellFlags::Reading(_) => true,
+            _ => false
+        }
+    }
+
+    fn add_reading(&self) -> GcCellFlags {
+        match self {
+            &GcCellFlags::Reading(ref count) => GcCellFlags::Reading(*count + 1),
+            _ => self.clone(),
+        }
+    }
+
+    fn sub_reading(&self) -> GcCellFlags {
+        match self {
+            &GcCellFlags::Reading(ref count) => {
+                let count2 = *count - 1;
+                if count2 == 0 {
+                    GcCellFlags::Unused
+                } else {
+                    GcCellFlags::Reading(count2)
+                }
+            },
+            _ => self.clone(),
+        }
+    }
+
+    fn is_writing(&self) -> bool {
+        match self {
+            &GcCellFlags::Writing => true,
+            _ => false
+        }
+    }
+
+    fn set_writing(&self) -> GcCellFlags {
+        GcCellFlags::Writing
+    }
+
+    fn is_unused(&self) -> bool {
+        match self {
+            &GcCellFlags::Unused => true,
+            _ => false
+        }
+    }
+
+    fn set_unused(&self) -> GcCellFlags {
+        GcCellFlags::Unused
+    }
+}
+
+pub struct GcCell<A: ?Sized + 'static> {
+    flags: Cell<GcCellFlags>,
+    cell: UnsafeCell<A>
+}
+
+impl<A> GcCell<A> {
+    pub fn new(a: A) -> Self {
+        GcCell {
+            flags: Cell::new(GcCellFlags::Unused),
+            cell: UnsafeCell::new(a)
+        }
+    }
+
+    pub fn into_inner(self) -> A {
+        unsafe { self.cell.into_inner() }
+    }
+}
+
+impl<A: ?Sized> GcCell<A> {
+    pub fn borrow(&self) -> GcCellRef<A> {
+        if self.flags.get().is_writing() {
+            panic!("GcCell<T> already mutably borrowed");
+        }
+        self.flags.set(self.flags.get().add_reading());
+        unsafe {
+            GcCellRef {
+                flags: &self.flags,
+                value: &*self.cell.get(),
+            }
+        }
+    }
+
+    pub fn borrow_mut(&self) -> GcCellRefMut<A> {
+        if !self.flags.get().is_unused() {
+            panic!("GcCell<T> already borrowed");
+        }
+        self.flags.set(self.flags.get().set_writing());
+        unsafe {
+            GcCellRefMut {
+                flags: &self.flags,
+                value: &mut *self.cell.get(),
+            }
+        }
+    }
+}
+
+pub struct GcCellRef<'a, A: ?Sized + 'static> {
+    flags: &'a Cell<GcCellFlags>,
+    value: &'a A,
+}
+
+impl<'a, A: ?Sized> Deref for GcCellRef<'a, A> {
+    type Target = A;
+
+    fn deref(&self) -> &A {
+        self.value
+    }
+}
+
+impl<'a, A: ?Sized> Drop for GcCellRef<'a, A> {
+    fn drop(&mut self) {
+        debug_assert!(self.flags.get().is_reading());
+        self.flags.set(self.flags.get().sub_reading());
+    }
+}
+
+pub struct GcCellRefMut<'a, A: ?Sized + 'static> {
+    flags: &'a Cell<GcCellFlags>,
+    value: &'a mut A,
+}
+
+impl<'a, A: ?Sized> Deref for GcCellRefMut<'a, A> {
+    type Target = A;
+
+    fn deref(&self) -> &A {
+        self.value
+    }
+}
+
+impl<'a, A: ?Sized> DerefMut for GcCellRefMut<'a, A> {
+    fn deref_mut(&mut self) -> &mut A {
+        self.value
+    }
+}
+
+impl<'a, T: ?Sized> Drop for GcCellRefMut<'a, T> {
+    fn drop(&mut self) {
+        debug_assert!(self.flags.get().is_writing());
+        self.flags.set(self.flags.get().set_unused());
     }
 }
 
