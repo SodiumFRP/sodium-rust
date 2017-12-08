@@ -197,6 +197,24 @@ impl<A: ?Sized> GcWeak<A> {
     }
 }
 
+pub trait Trace {
+    fn trace(&self, f: &mut FnMut(&GcDep));
+}
+
+impl<A: Trace> Trace for Gc<A> {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {
+        let self2: &A = &*self;
+        self2.trace(f);
+    }
+}
+
+impl<A: Trace> Trace for GcCell<A> {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {
+        let self2: &A = unsafe { &*self.cell.get() };
+        self2.trace(f);
+    }
+}
+
 #[derive(Clone,Copy)]
 enum GcCellFlags {
     Unused,
