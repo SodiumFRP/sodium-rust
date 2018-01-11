@@ -4,6 +4,7 @@ use sodium::SodiumCtx;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
 use sodium::WeakStreamWithSend;
+use sodium::gc::GcCell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -64,7 +65,7 @@ impl<A: 'static + Clone> CoalesceHandler<A> {
                 Some(out) => {
                     trans1.prioritized(
                         sodium_ctx,
-                        out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>),
+                        out.stream.data.clone().upcast(|x| x as &GcCell<HasNode>),
                         HandlerRefMut::new(
                             move |sodium_ctx: &mut SodiumCtx, trans2: &mut Transaction| {
                                 let mut data = self_.data.borrow_mut();

@@ -13,6 +13,7 @@ use sodium::Transaction;
 use sodium::TransactionHandlerRef;
 use sodium::cell;
 use sodium::stream;
+use sodium::gc::GcCell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -133,7 +134,7 @@ impl OperationalPrivate {
         let out = StreamWithSend::new(sodium_ctx);
         let l1;
         {
-            let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
+            let out_node = out.stream.data.clone().upcast(|x| x as &GcCell<HasNode>);
             let out = out.downgrade();
             let mut sodium_ctx2 = sodium_ctx.clone();
             let sodium_ctx2 = &mut sodium_ctx2;

@@ -8,6 +8,7 @@ use sodium::stream::IsStreamPrivate;
 use sodium::SodiumCtx;
 use sodium::StreamSink;
 use sodium::gc::Gc;
+use sodium::gc::GcCell;
 use std::cell::RefCell;
 
 pub struct CellSink<A> {
@@ -17,7 +18,7 @@ pub struct CellSink<A> {
 }
 
 impl<A: Clone + 'static> HasCellDataGc<A> for CellSink<A> {
-    fn cell_data(&self) -> Gc<RefCell<HasCellData<A>>> {
+    fn cell_data(&self) -> Gc<GcCell<HasCellData<A>>> {
         self.cell.cell_data()
     }
 }

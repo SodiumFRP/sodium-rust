@@ -12,6 +12,7 @@ use sodium::cell::IsCellPrivate;
 use sodium::stream;
 use sodium::stream::IsStreamPrivate;
 use sodium::gc::Gc;
+use sodium::gc::GcCell;
 use std::cell::RefCell;
 
 pub struct CellLoop<A: Clone + 'static> {
@@ -36,7 +37,7 @@ impl<A: Clone + 'static> CellLoop<A> {
         let r = CellLoop {
             sodium_ctx: sodium_ctx.clone(),
             cell: cell::CellImpl {
-                data: sodium_ctx.new_gc(RefCell::new(
+                data: sodium_ctx.new_gc(GcCell::new(
                     cell::CellData {
                         str: str.to_stream_ref().clone(),
                         value: None,
@@ -44,7 +45,7 @@ impl<A: Clone + 'static> CellLoop<A> {
                         cleanup: None,
                         lazy_init_value: None
                     },
-                )).upcast(|x| x as &RefCell<cell::HasCellData<A>>)
+                )).upcast(|x| x as &GcCell<cell::HasCellData<A>>)
             },
             str: str,
             is_assigned: false

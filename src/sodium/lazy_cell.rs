@@ -6,6 +6,7 @@ use sodium::Lazy;
 use sodium::SodiumCtx;
 use sodium::stream::StreamImpl;
 use sodium::gc::Gc;
+use sodium::gc::GcCell;
 use std::cell::RefCell;
 
 pub struct LazyCell<A> {
@@ -30,7 +31,7 @@ trait HasCellData<A> {
 */
 
 impl<A: Clone + 'static> HasCellDataGc<A> for LazyCell<A> {
-    fn cell_data(&self) -> Gc<RefCell<HasCellData<A>>> {
+    fn cell_data(&self) -> Gc<GcCell<HasCellData<A>>> {
         self.cell.data.clone()
     }
 

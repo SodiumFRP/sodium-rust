@@ -11,6 +11,8 @@ use sodium::Transaction;
 use sodium::cell;
 use sodium::gc::GcCtx;
 use sodium::gc::Gc;
+use sodium::gc::GcCell;
+use sodium::gc::Trace;
 use sodium::stream;
 use std::borrow::Borrow;
 use std::cell::Ref;
@@ -32,7 +34,7 @@ impl Clone for SodiumCtx {
 
 pub struct SodiumCtxData {
     pub gc_ctx: GcCtx,
-    pub null_node: Option<Gc<RefCell<HasNode>>>,
+    pub null_node: Option<Gc<GcCell<HasNode>>>,
     pub next_id: u32,
     pub next_seq: u64,
     pub current_transaction_op: Option<Transaction>,
@@ -52,7 +54,7 @@ impl Drop for SodiumCtxData {
 impl SodiumCtx {
     pub fn new() -> SodiumCtx {
         let mut gc_ctx = GcCtx::new();
-        let null_node = gc_ctx.new_gc(RefCell::new(Node::new_(0, 0))).upcast(|x| x as &RefCell<HasNode>);
+        let null_node = gc_ctx.new_gc(GcCell::new(Node::new_(0, 0))).upcast(|x| x as &GcCell<HasNode>);
         SodiumCtx {
             data: Rc::new(RefCell::new(SodiumCtxData {
                 gc_ctx: gc_ctx,
@@ -123,7 +125,7 @@ impl SodiumCtx {
         gc_ctx.collect_cycles();
     }
 
-    pub fn null_node(&self) -> Gc<RefCell<HasNode>> {
+    pub fn null_node(&self) -> Gc<GcCell<HasNode>> {
         let self_: &RefCell<SodiumCtxData> = self.data.borrow();
         let self__: Ref<SodiumCtxData> = self_.borrow();
         let self___: &SodiumCtxData = &*self__;
@@ -144,7 +146,7 @@ impl SodiumCtx {
         r
     }
 
-    pub fn new_gc<A:'static>(&mut self, a: A) -> Gc<A> {
+    pub fn new_gc<A: Trace + 'static>(&mut self, a: A) -> Gc<A> {
         self.with_data_mut(|data| data.gc_ctx.new_gc(a))
     }
 }

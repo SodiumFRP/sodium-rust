@@ -23,6 +23,9 @@ use sodium::Transaction;
 use sodium::TransactionHandlerRef;
 use sodium::WeakStreamWithSend;
 use sodium::gc::Gc;
+use sodium::gc::GcCell;
+use sodium::gc::GcDep;
+use sodium::gc::Trace;
 use std::borrow::Borrow;
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
@@ -327,7 +330,7 @@ pub trait IsCellPrivate<A: Clone + 'static> {
 
     fn value_(&self, sodium_ctx: &mut SodiumCtx, trans: &mut Transaction) -> StreamImpl<A> {
         let s_spark = StreamWithSend::new(sodium_ctx);
-        let s_spark_node = s_spark.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
+        let s_spark_node = s_spark.stream.data.clone().upcast(|x| x as &GcCell<HasNode>);
         {
             let s_spark = s_spark.clone();
             trans.prioritized(
@@ -488,10 +491,10 @@ pub trait IsCellPrivate<A: Clone + 'static> {
             sodium_ctx,
             |sodium_ctx, trans| {
                 let out: StreamWithSend<Lazy<B>> = StreamWithSend::new(sodium_ctx);
-                let out_target = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
+                let out_target = out.stream.data.clone().upcast(|x| x as &GcCell<HasNode>);
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;
-                let in_target = sodium_ctx.new_gc(RefCell::new(Node::new(sodium_ctx2, 0))).upcast(|x| x as &RefCell<HasNode>);
+                let in_target = sodium_ctx.new_gc(GcCell::new(Node::new(sodium_ctx2, 0))).upcast(|x| x as &GcCell<HasNode>);
                 let (node_target,_) = ((in_target.deref()).borrow_mut().node_mut() as &mut HasNode).link_to::<Lazy<B>>(
                     sodium_ctx,
                     out_target,
@@ -638,7 +641,7 @@ pub trait IsCellPrivate<A: Clone + 'static> {
                         sodium_ctx,
                         move |sodium_ctx: &mut SodiumCtx, trans: &mut Transaction, ca: &CA| {
                             let out = out.clone();
-                            let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
+                            let out_node = out.stream.data.clone().upcast(|x| x as &GcCell<HasNode>);
                             let mut current_listener = (*current_listener).borrow_mut();
                             match current_listener.as_ref() {
                                 Some(current_listener) =>
@@ -669,7 +672,7 @@ pub trait IsCellPrivate<A: Clone + 'static> {
                         }
                     );
                 }
-                let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
+                let out_node = out.stream.data.clone().upcast(|x| x as &GcCell<HasNode>);
                 let l1 = cca.value_(sodium_ctx, trans).listen_(sodium_ctx, out_node, h);
                 out
                     .last_firing_only_(sodium_ctx, trans)
@@ -722,7 +725,7 @@ pub trait IsCellPrivate<A: Clone + 'static> {
                 }
             );
         }
-        let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
+        let out_node = out.stream.data.clone().upcast(|x| x as &GcCell<HasNode>);
         let current_listener: Rc<RefCell<Option<Listener>>> = Rc::new(RefCell::new(Some(
             csa.sample_no_trans_().listen2(
                 sodium_ctx,
@@ -753,7 +756,7 @@ pub trait IsCellPrivate<A: Clone + 'static> {
                             let mut trans3 = trans3.clone();
                             let trans3 = &mut trans3;
                             let out = out.upgrade().unwrap().clone();
-                            let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
+                            let out_node = out.stream.data.clone().upcast(|x| x as &GcCell<HasNode>);
                             let mut current_listener = (*current_listener).borrow_mut();
                             match current_listener.as_ref() {
                                 Some(current_listener) =>
@@ -776,7 +779,7 @@ pub trait IsCellPrivate<A: Clone + 'static> {
                 }
             );
         }
-        let out_node = out.stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
+        let out_node = out.stream.data.clone().upcast(|x| x as &GcCell<HasNode>);
         let l1 = csa.updates_(trans).listen2(
             sodium_ctx,
             out_node,
@@ -829,7 +832,7 @@ pub trait IsCellPrivate<A: Clone + 'static> {
 }
 
 pub struct CellImpl<A> {
-    pub data: Gc<RefCell<HasCellData<A>>>
+    pub data: Gc<GcCell<HasCellData<A>>>
 }
 
 pub struct CellData<A> {
@@ -840,13 +843,23 @@ pub struct CellData<A> {
     pub lazy_init_value: Option<Lazy<A>>
 }
 
+impl<A> Trace for CellData<A> {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {
+        self.str.trace(f);
+        match &self.cleanup {
+            &Some(ref cleanup) => cleanup.trace(f),
+            &None => ()
+        }
+    }
+}
+
 pub trait HasCellDataGc<A> {
-    fn cell_data(&self) -> Gc<RefCell<HasCellData<A>>>;
+    fn cell_data(&self) -> Gc<GcCell<HasCellData<A>>>;
 }
 
 impl<A: 'static> HasCellDataGc<A> for CellImpl<A> {
-    fn cell_data(&self) -> Gc<RefCell<HasCellData<A>>> {
-        self.data.clone().upcast(|x| x as &RefCell<HasCellData<A>>)
+    fn cell_data(&self) -> Gc<GcCell<HasCellData<A>>> {
+        self.data.clone().upcast(|x| x as &GcCell<HasCellData<A>>)
     }
 }
 
@@ -903,7 +916,7 @@ impl<A:'static + Clone> CellImpl<A> {
         let mut sodium_ctx2 = sodium_ctx.clone();
         let sodium_ctx2 = &mut sodium_ctx2;
         CellImpl {
-            data: sodium_ctx.new_gc(RefCell::new(
+            data: sodium_ctx.new_gc(GcCell::new(
                 CellData {
                     str: StreamImpl::new(sodium_ctx2),
                     value: Some(value),
@@ -911,13 +924,13 @@ impl<A:'static + Clone> CellImpl<A> {
                     cleanup: None,
                     lazy_init_value: None
                 }
-            )).upcast(|x| x as &RefCell<HasCellData<A>>)
+            )).upcast(|x| x as &GcCell<HasCellData<A>>)
         }
     }
 
     pub fn new_(sodium_ctx: &mut SodiumCtx, str: StreamImpl<A>, init_value: Option<A>) -> CellImpl<A> {
         let r = CellImpl {
-            data: sodium_ctx.new_gc(RefCell::new(
+            data: sodium_ctx.new_gc(GcCell::new(
                 CellData {
                     str: str.clone(),
                     value: init_value,
@@ -925,9 +938,8 @@ impl<A:'static + Clone> CellImpl<A> {
                     cleanup: None,
                     lazy_init_value: None
                 }
-            )).upcast(|x| x as &RefCell<HasCellData<A>>)
+            )).upcast(|x| x as &GcCell<HasCellData<A>>)
         };
-        r.data.add_deps(vec![str.to_dep().gc_dep]);
         let self_ = r.clone();
         Transaction::run_trans(
             sodium_ctx,
@@ -1039,7 +1051,7 @@ impl<A:'static + Clone,B:'static> ApplyHandler<A,B> {
         let out_node;
         match out.stream.upgrade() {
             Some(stream) => {
-                out_node = stream.data.clone().upcast(|x| x as &RefCell<HasNode>);
+                out_node = stream.data.clone().upcast(|x| x as &GcCell<HasNode>);
             },
             None => return
         }

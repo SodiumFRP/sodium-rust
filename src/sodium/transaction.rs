@@ -2,6 +2,7 @@ use sodium::HandlerRefMut;
 use sodium::HasNode;
 use sodium::SodiumCtx;
 use sodium::gc::Gc;
+use sodium::gc::GcCell;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::cmp::PartialEq;
@@ -15,13 +16,13 @@ use std::mem::swap;
 use std::rc::Rc;
 
 pub struct Entry {
-    pub rank: Gc<RefCell<HasNode>>,
+    pub rank: Gc<GcCell<HasNode>>,
     pub action: HandlerRefMut<Transaction>,
     pub seq: u64
 }
 
 impl Entry {
-    fn new(sodium_ctx: &mut SodiumCtx, rank: Gc<RefCell<HasNode>>, action: HandlerRefMut<Transaction>) -> Entry {
+    fn new(sodium_ctx: &mut SodiumCtx, rank: Gc<GcCell<HasNode>>, action: HandlerRefMut<Transaction>) -> Entry {
         Entry {
             rank: rank,
             action: action,
@@ -180,7 +181,7 @@ impl Transaction {
         }
     }
 
-    pub fn prioritized(&mut self, sodium_ctx: &mut SodiumCtx, rank: Gc<RefCell<HasNode>>, action: HandlerRefMut<Transaction>) {
+    pub fn prioritized(&mut self, sodium_ctx: &mut SodiumCtx, rank: Gc<GcCell<HasNode>>, action: HandlerRefMut<Transaction>) {
         let e = Entry::new(sodium_ctx, rank, action);
         self.with_data_mut(|data| {
             data.prioritized_q.push(e.clone());

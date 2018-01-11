@@ -3,7 +3,10 @@ use sodium::SodiumCtxData;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
 use sodium::gc::Gc;
+use sodium::gc::GcCell;
+use sodium::gc::GcDep;
 use sodium::gc::GcWeak;
+use sodium::gc::Trace;
 use std::any::Any;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -50,6 +53,11 @@ impl Node {
     }
 }
 
+impl Trace for Node {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {
+    }
+}
+
 impl Drop for Node {
     fn drop(&mut self) {
         match self.weak_ctx_op.as_ref() {
@@ -69,7 +77,7 @@ impl Drop for Node {
 
 pub struct Target {
     pub id: u32,
-    pub node: GcWeak<RefCell<HasNode>>,
+    pub node: GcWeak<GcCell<HasNode>>,
     // action here is really a strong reference to a weak reference, meaning it is still a weak
     // reference overall. This had to be done so we can use "Any" here.
     pub action: TransactionHandlerRef<Any>
@@ -95,7 +103,7 @@ impl HasNode for Node {
 }
 
 impl Target {
-    pub fn new<A:'static>(sodium_ctx: &mut SodiumCtx, node: Gc<RefCell<HasNode>>, action: TransactionHandlerRef<A>) -> Target {
+    pub fn new<A:'static>(sodium_ctx: &mut SodiumCtx, node: Gc<GcCell<HasNode>>, action: TransactionHandlerRef<A>) -> Target {
         let action = action.downgrade();
         let mut sodium_ctx2 = sodium_ctx.clone();
         let sodium_ctx2 = &mut sodium_ctx2;
@@ -121,7 +129,7 @@ impl Target {
 }
 
 impl HasNode {
-    pub fn link_to<A:'static>(&mut self, sodium_ctx: &mut SodiumCtx, target: Gc<RefCell<HasNode>>, action: TransactionHandlerRef<A>) -> (Target, bool) {
+    pub fn link_to<A:'static>(&mut self, sodium_ctx: &mut SodiumCtx, target: Gc<GcCell<HasNode>>, action: TransactionHandlerRef<A>) -> (Target, bool) {
         let changed;
         {
             changed = HasNode::ensure_bigger_than(target.clone(), self.node_ref().rank, &mut HashSet::new());
@@ -141,7 +149,7 @@ impl HasNode {
         )
     }
 
-    pub fn ensure_bigger_than(self_: Gc<RefCell<Self>>, limit: u64, visited: &mut HashSet<u32>) -> bool {
+    pub fn ensure_bigger_than(self_: Gc<GcCell<Self>>, limit: u64, visited: &mut HashSet<u32>) -> bool {
         let listeners;
         let rank;
         {

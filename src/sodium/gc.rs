@@ -38,7 +38,8 @@ pub struct GcDep {
 
 impl Clone for GcDep {
     fn clone(&self) -> Self {
-        self.ctx.increment(self.node);
+        let n: &mut Node = unsafe { &mut *self.node };
+        n.weak = n.weak + 1;
         GcDep {
             ctx: self.ctx.clone(),
             node: self.node
@@ -48,7 +49,8 @@ impl Clone for GcDep {
 
 impl Drop for GcDep {
     fn drop(&mut self) {
-        self.ctx.decrement(self.node);
+        let n: &mut Node = unsafe { &mut *self.node };
+        n.weak = n.weak - 1;
     }
 }
 
@@ -86,36 +88,12 @@ impl<A: ?Sized> Deref for Gc<A> {
 
 impl<A: ?Sized> Gc<A> {
     pub fn to_dep(&self) -> GcDep {
-        self.ctx.increment(self.node);
+        let n: &mut Node = unsafe { &mut *self.node };
+        n.weak = n.weak + 1;
         GcDep {
             ctx: self.ctx.clone(),
             node: self.node
         }
-    }
-
-    pub fn set_deps(&self, deps: Vec<GcDep>) {
-        let node = unsafe { &mut *self.node };
-        node.children.clear();
-        for dep in deps {
-            if !node.children.contains(&dep.node) {
-                node.children.push(dep.node);
-            }
-        }
-    }
-
-    pub fn add_deps(&self, deps: Vec<GcDep>) {
-        let node = unsafe { &mut *self.node };
-        for dep in deps {
-            if !node.children.contains(&dep.node) {
-                node.children.push(dep.node);
-            }
-        }
-    }
-
-    pub fn remove_deps(&self, deps: Vec<GcDep>) {
-        let node = unsafe { &mut *self.node };
-        let dep_nodes: Vec<*mut Node> = deps.iter().map(|dep| dep.node).collect();
-        node.children.retain(|node| !dep_nodes.contains(node));
     }
 
     pub fn strong_count(&self) -> usize {
@@ -215,6 +193,35 @@ impl<A: Trace> Trace for GcCell<A> {
     }
 }
 
+impl<A: Trace> Trace for Option<A> {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {
+        match self {
+            &Some(ref a) => a.trace(f),
+            &None => ()
+        }
+    }
+}
+
+impl<A: Trace> Trace for Vec<A> {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {
+        for a in self {
+            a.trace(f);
+        }
+    }
+}
+
+impl Trace for i32 {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {}
+}
+
+impl Trace for &'static str {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {}
+}
+
+impl Trace for String {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {}
+}
+
 #[derive(Clone,Copy)]
 enum GcCellFlags {
     Unused,
@@ -233,6 +240,7 @@ impl GcCellFlags {
     fn add_reading(&self) -> GcCellFlags {
         match self {
             &GcCellFlags::Reading(ref count) => GcCellFlags::Reading(*count + 1),
+            &GcCellFlags::Unused => GcCellFlags::Reading(1),
             _ => self.clone(),
         }
     }
@@ -274,7 +282,7 @@ impl GcCellFlags {
     }
 }
 
-pub struct GcCell<A: ?Sized + 'static> {
+pub struct GcCell<A: ?Sized> {
     flags: Cell<GcCellFlags>,
     cell: UnsafeCell<A>
 }
@@ -379,8 +387,16 @@ struct Node {
     weak: usize,
     colour: Colour,
     buffered: bool,
-    children: Vec<*mut Node>,
+    trace: Box<Fn(&mut FnMut(*mut Node))>,
     cleanup: Box<Fn()>
+}
+
+impl Node {
+    fn trace(&self, f: &mut FnMut(*mut Node)) {
+        if self.strong > 0 {
+            (self.trace)(f);
+        }
+    }
 }
 
 impl GcCtx {
@@ -397,8 +413,9 @@ impl GcCtx {
         }
     }
 
-    pub fn new_gc<A: 'static>(&mut self, value: A) -> Gc<A> {
+    pub fn new_gc<A: Trace + 'static>(&mut self, value: A) -> Gc<A> {
         let value = Box::into_raw(Box::new(value));
+        let value2 = value.clone();
         let r = Gc {
             ctx: self.clone(),
             value: value,
@@ -407,7 +424,9 @@ impl GcCtx {
                 weak: 1,
                 colour: Colour::Black,
                 buffered: false,
-                children: Vec::new(),
+                trace: Box::new(move |f: &mut FnMut(*mut Node)| {
+                    unsafe { &*value2 }.trace(&mut |dep: &GcDep| f(dep.node))
+                }),
                 cleanup: Box::new(move || {
                     unsafe { Box::from_raw(value);
                 } })
@@ -490,7 +509,8 @@ impl GcCtx {
         let mut to_be_freed = Vec::new();
         self.with_data(|data| swap(&mut to_be_freed, &mut data.to_be_freed));
         for node in to_be_freed {
-            unsafe { Box::from_raw(node) };
+            // TODO: FIX ME! seems to be freed too soon.
+            //unsafe { Box::from_raw(node) };
         }
 
         self.with_data(|data| data.collecting_cycles = false);
@@ -536,11 +556,11 @@ impl GcCtx {
         let s = unsafe { &mut *s };
         if s.colour != Colour::Gray {
             s.colour = Colour::Gray;
-            for t in &s.children {
-                let t = unsafe { &mut **t };
+            s.trace(&mut |t| {
+                let t = unsafe { &mut *t };
                 t.strong = t.strong - 1;
                 self.mark_gray(t);
-            }
+            });
         }
     }
 
@@ -551,10 +571,10 @@ impl GcCtx {
                 self.scan_black(s);
             } else {
                 s.colour = Colour::White;
-                for t in &s.children {
-                    let t = unsafe { &mut **t };
+                s.trace(&mut |t| {
+                    let t = unsafe { &mut *t };
                     self.scan(t);
-                }
+                });
             }
         }
     }
@@ -562,22 +582,22 @@ impl GcCtx {
     fn scan_black(&self, s: *mut Node) {
         let s = unsafe { &mut *s };
         s.colour = Colour::Black;
-        for t in &s.children {
-            let t = unsafe { &mut **t };
+        s.trace(&mut |t| {
+            let t = unsafe { &mut *t };
             t.strong = t.strong + 1;
             if t.colour != Colour::Black {
                 self.scan_black(t);
             }
-        }
+        });
     }
 
     fn collect_white(&self, s: *mut Node) {
         let s = unsafe { &mut *s };
         if s.colour == Colour::White && !s.buffered {
             s.colour = Colour::Black;
-            for t in &s.children {
-                self.collect_white(*t);
-            }
+            s.trace(&mut |t| {
+                self.collect_white(t);
+            });
             self.system_free(s);
         }
     }

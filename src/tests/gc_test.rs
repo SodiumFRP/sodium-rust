@@ -1,4 +1,7 @@
 use sodium::gc::Gc;
+use sodium::gc::GcCell;
+use sodium::gc::GcDep;
+use sodium::gc::Trace;
 use sodium::gc::GcCtx;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -25,6 +28,14 @@ pub fn gc_loop() {
             }
         }
     }
+    impl Trace for A {
+        fn trace(&self, f: &mut FnMut(&GcDep)) {
+            match unsafe { &*self.x.as_ptr() } {
+                &Some(ref a) => f(&a.to_dep()),
+                &None => ()
+            }
+        }
+    }
     impl Drop for A {
         fn drop(&mut self) {
             let count = self.count.upgrade().unwrap();
@@ -35,11 +46,8 @@ pub fn gc_loop() {
     {
         let a = gc_ctx.new_gc(A::new(None, &count));
         let b = gc_ctx.new_gc(A::new(Some(a.clone()), &count));
-        b.set_deps(vec![a.to_dep()]);
         let c = gc_ctx.new_gc(A::new(Some(b.clone()), &count));
-        c.set_deps(vec![b.to_dep()]);
         a.x.set(Some(c.clone()));
-        a.set_deps(vec![c.to_dep()]);
     }
     assert_eq!(0, *count.borrow());
 }
@@ -68,6 +76,9 @@ fn gc_upcast() {
     struct Value {
         value: i32
     }
+    impl Trace for Value {
+        fn trace(&self, f: &mut FnMut(&GcDep)) {}
+    }
     trait Inc {
         fn inc(&mut self);
     }
@@ -80,21 +91,10 @@ fn gc_upcast() {
     {
         let a =
             gc_ctx
-                .new_gc(RefCell::new(Value { value: 3 }))
-                .upcast(|x| x as &RefCell<Inc>);
+                .new_gc(GcCell::new(Value { value: 3 }))
+                .upcast(|x| x as &GcCell<Inc>);
         (*a).borrow_mut().inc();
         let b = a.clone();
         (*b).borrow_mut().inc();
     }
-}
-
-#[test]
-fn gc_upcast2() {
-    let mut gc_ctx = GcCtx::new();
-    let a = gc_ctx.new_gc(5);
-    let a2 = a.clone();
-    let b = gc_ctx.new_gc(move |x| x + *a).upcast(|x| x as &Fn(i32)->i32);
-    b.add_deps(vec![a2.to_dep()]);
-    b(4);
-    b(3);
 }

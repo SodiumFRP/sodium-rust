@@ -8,6 +8,7 @@ use sodium::stream::StreamImpl;
 use sodium::StreamWithSend;
 use sodium::Transaction;
 use sodium::TransactionHandlerRef;
+use sodium::gc::GcCell;
 use std::cell::RefCell;
 
 pub struct StreamLoop<A> {
@@ -60,7 +61,7 @@ impl<A: 'static + Clone> StreamLoop<A> {
                 self.unsafe_add_cleanup(
                     stream::get_stream_impl(&ea_out).listen_(
                         sodium_ctx,
-                        self.stream.stream.data.clone().upcast(|x| x as &RefCell<HasNode>),
+                        self.stream.stream.data.clone().upcast(|x| x as &GcCell<HasNode>),
                         TransactionHandlerRef::new(
                             sodium_ctx2,
                             move |sodium_ctx, trans, a| {

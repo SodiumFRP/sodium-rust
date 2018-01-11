@@ -1,17 +1,29 @@
 use sodium::Dep;
 use sodium::SodiumCtx;
-use sodium::gc::Gc;
+use sodium::gc::GcDep;
+use sodium::gc::Trace;
+use std::rc::Rc;
 
 pub struct Listener {
     pub id: u32,
-    unlisten: Gc<Fn()>
+    unlisten: Rc<Fn()>,
+    deps: Vec<Dep>
 }
 
 impl Clone for Listener {
     fn clone(&self) -> Listener {
         Listener {
             id: self.id,
-            unlisten: self.unlisten.clone()
+            unlisten: self.unlisten.clone(),
+            deps: self.deps.clone()
+        }
+    }
+}
+
+impl Trace for Listener {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {
+        for dep in &self.deps {
+            f(&dep.gc_dep)
         }
     }
 }
@@ -20,16 +32,17 @@ impl Listener {
     pub fn new<F>(sodium_ctx: &mut SodiumCtx, unlisten: F) -> Listener where F: Fn() + 'static {
         Listener {
             id: sodium_ctx.new_id(),
-            unlisten: sodium_ctx.new_gc(unlisten).upcast(|a| a as &(Fn() + 'static))
+            unlisten: Rc::new(unlisten) as Rc<Fn()>,
+            deps: vec![]
         }
     }
 
-    pub fn to_dep(&self) -> Dep {
-        Dep::new(self.unlisten.clone())
-    }
-
-    pub fn set_deps(&self, deps: Vec<Dep>) {
-        self.unlisten.set_deps(deps.into_iter().map(|dep| dep.gc_dep).collect());
+    pub fn new_with_deps<F>(sodium_ctx: &mut SodiumCtx, unlisten: F, deps: Vec<Dep>) -> Listener where F: Fn() + 'static {
+        Listener {
+            id: sodium_ctx.new_id(),
+            unlisten: Rc::new(unlisten) as Rc<Fn()>,
+            deps: deps
+        }
     }
 
     pub fn unlisten(&self) {
@@ -41,14 +54,21 @@ impl Listener {
         let l2 = other.clone();
         let l12 = l1.clone();
         let l22 = l2.clone();
-        let l = Listener::new(
+        let mut deps = Vec::new();
+        for dep in &self.deps {
+            deps.push(dep.clone());
+        }
+        for dep in &other.deps {
+            deps.push(dep.clone());
+        }
+        let l = Listener::new_with_deps(
             sodium_ctx,
             move || {
                 l1.unlisten();
                 l2.unlisten();
-            }
+            },
+            deps
         );
-        l.unlisten.set_deps(vec![l12.unlisten.to_dep(), l22.unlisten.to_dep()]);
         l
     }
 }
