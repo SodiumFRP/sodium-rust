@@ -149,6 +149,9 @@ impl<A: ?Sized> Drop for GcWeak<A> {
         let node = unsafe { &mut *self.node };
         if node.weak > 0 {
             node.weak = node.weak - 1;
+            if node.weak == 0 {
+                unsafe { Box::from_raw(node); }
+            }
         }
     }
 }
@@ -423,8 +426,8 @@ impl GcCtx {
                     unsafe { &*value2 }.trace(&mut |dep: &GcDep| f(dep.node))
                 }),
                 cleanup: Box::new(move || {
-                    unsafe { Box::from_raw(value);
-                } })
+                    unsafe { Box::from_raw(value); }
+                })
             }))
         };
         r
