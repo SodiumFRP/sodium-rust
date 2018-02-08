@@ -110,6 +110,7 @@ pub struct TransactionData {
     pub to_regen: bool,
     pub prioritized_q: BinaryHeap<Entry>,
     pub entries: HashSet<WrappedEntry>,
+    pub sample_q: Vec<Box<FnMut()>>,
     pub last_q: Vec<Box<Fn()>>,
     pub post_q: HashMap<i32,HandlerRefMut<Option<Transaction>>>
 }
@@ -130,6 +131,7 @@ impl Transaction {
                 to_regen: false,
                 prioritized_q: BinaryHeap::new(),
                 entries: HashSet::new(),
+                sample_q: Vec::new(),
                 last_q: Vec::new(),
                 post_q: HashMap::new()
             }))
@@ -189,6 +191,12 @@ impl Transaction {
         });
     }
 
+    pub fn sample<F: FnMut() + 'static>(&mut self, sodium_ctx: &mut SodiumCtx, action: F) {
+        self.with_data_mut(|data| {
+            data.sample_q.push(Box::new(action));
+        });
+    }
+
     pub fn last<F>(&mut self, action: F) where F: Fn() + 'static {
         self.with_data_mut(|data| {
             data.last_q.push(Box::new(action));
@@ -243,16 +251,26 @@ impl Transaction {
 
     pub fn close(&mut self, sodium_ctx: &mut SodiumCtx) {
         loop {
-            self.check_regen();
-            match self.with_data_mut(|data| data.prioritized_q.pop()) {
-                Some(e) => {
-                    {
-                        let e = e.clone();
-                        self.with_data_mut(move |data| data.entries.remove(&WrappedEntry { entry: e }));
-                    }
-                    e.action.run(sodium_ctx, self);
-                },
-                None => break
+            loop {
+                self.check_regen();
+                match self.with_data_mut(|data| data.prioritized_q.pop()) {
+                    Some(e) => {
+                        {
+                            let e = e.clone();
+                            self.with_data_mut(move |data| data.entries.remove(&WrappedEntry { entry: e }));
+                        }
+                        e.action.run(sodium_ctx, self);
+                    },
+                    None => break
+                }
+            }
+            let mut sample_q = Vec::new();
+            self.with_data_mut(|data| swap(&mut sample_q, &mut data.sample_q));
+            for mut sq in sample_q {
+                sq();
+            }
+            if self.with_data_ref(|data| data.sample_q.is_empty() && data.prioritized_q.is_empty()) {
+                break;
             }
         }
         let mut last_q = Vec::new();
