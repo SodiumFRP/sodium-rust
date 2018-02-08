@@ -120,6 +120,10 @@ impl SodiumCtx {
         Transaction::run(self, |_: &mut SodiumCtx| code())
     }
 
+    pub fn is_transaction_active(&self) -> bool {
+        Transaction::is_active(self)
+    }
+
     pub fn gc(&self) {
         let gc_ctx = self.with_data_ref(|data| data.gc_ctx.clone());
         gc_ctx.collect_cycles();

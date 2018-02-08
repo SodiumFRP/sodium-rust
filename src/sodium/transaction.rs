@@ -138,6 +138,10 @@ impl Transaction {
         }
     }
 
+    pub fn is_active(sodium_ctx: &SodiumCtx) -> bool {
+        sodium_ctx.with_data_ref(|data| data.current_transaction_op.is_some())
+    }
+
     pub fn run<F,A>(sodium_ctx: &mut SodiumCtx, code: F) -> A where F: FnOnce(&mut SodiumCtx)->A {
         Transaction::run_trans(
             sodium_ctx,
