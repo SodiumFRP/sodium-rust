@@ -101,7 +101,7 @@ fn lift_cells_in_switch_c() {
         let sodium_ctx2 = &mut sodium_ctx2;
         let out = Rc::new(RefCell::new(Vec::new()));
         let s = sodium_ctx.new_cell_sink(0);
-        let c = sodium_ctx.new_cell(sodium_ctx2.new_cell(0));
+        let c = sodium_ctx.new_cell(sodium_ctx2.new_cell(1));
         let r;
         {
             let s = s.clone();
