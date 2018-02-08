@@ -292,7 +292,7 @@ pub trait IsCellPrivate<A: Clone + 'static> {
         let s = LazySample::new(me.clone());
         {
             let s = s.clone();
-            trans.last(
+            trans.sample(
                 move || {
                     let sample_no_trans = me.sample_no_trans_();
                     let mut s = s.data.deref().borrow_mut();

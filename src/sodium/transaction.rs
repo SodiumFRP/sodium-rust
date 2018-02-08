@@ -191,7 +191,7 @@ impl Transaction {
         });
     }
 
-    pub fn sample<F: FnMut() + 'static>(&mut self, sodium_ctx: &mut SodiumCtx, action: F) {
+    pub fn sample<F: FnMut() + 'static>(&mut self, action: F) {
         self.with_data_mut(|data| {
             data.sample_q.push(Box::new(action));
         });
