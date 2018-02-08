@@ -17,6 +17,16 @@ pub struct CellSink<A> {
     str: StreamSink<A>
 }
 
+impl<A: Clone + 'static> Clone for CellSink<A> {
+    fn clone(&self) -> Self {
+        CellSink {
+            sodium_ctx: self.sodium_ctx.clone(),
+            cell: self.cell.clone(),
+            str: self.str.clone()
+        }
+    }
+}
+
 impl<A: Clone + 'static> HasCellDataGc<A> for CellSink<A> {
     fn cell_data(&self) -> Gc<GcCell<HasCellData<A>>> {
         self.cell.cell_data()

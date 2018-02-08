@@ -92,6 +92,36 @@ fn map_c() {
     assert_memory_freed(sodium_ctx);
 }
 
+#[test]
+fn lift_cells_in_switch_c() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let mut sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &mut sodium_ctx2;
+        let out = Rc::new(RefCell::new(Vec::new()));
+        let s = sodium_ctx.new_cell_sink(0);
+        let c = sodium_ctx.new_cell(sodium_ctx2.new_cell(0));
+        let r;
+        {
+            let s = s.clone();
+            r = c.map(move |c2:&Cell<i32>| c2.lift2(&s, |v1:&i32, v2:&i32| *v1 + *v2));
+        }
+        let l;
+        {
+            let out = out.clone();
+            l = Cell::switch_c(&r).listen(move |a:&i32| {
+                out.borrow_mut().push(*a);
+            });
+        }
+        s.send(&2);
+        s.send(&4);
+        l.unlisten();
+        assert_eq!(vec![1, 3, 5], *out.borrow());
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
 /*
   "should throw an error on mapCLateListen"() {
     const c = new CellSink<number>(6),
