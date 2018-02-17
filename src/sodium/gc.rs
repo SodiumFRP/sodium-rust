@@ -419,7 +419,7 @@ impl GcCtx {
             value: value,
             node: Box::into_raw(Box::new(Node {
                 strong: 1,
-                weak: 2,
+                weak: 1,
                 colour: Colour::Black,
                 buffered: false,
                 trace: Box::new(move |f: &mut FnMut(*mut Node)| {
@@ -509,10 +509,13 @@ impl GcCtx {
 
     fn mark_roots(&self) {
         let roots = self.with_data(|data| data.roots.clone());
+        let mut new_roots = Vec::new();
         for s in roots {
+            let s2 = s;
             let s = unsafe { &mut *s };
             if s.colour == Colour::Purple && s.strong > 0 {
                 self.mark_gray(s);
+                new_roots.push(s2);
             } else {
                 s.buffered = false;
                 self.with_data(|data| data.roots.retain(|s2| !ptr::eq(s, *s2)));
@@ -521,6 +524,9 @@ impl GcCtx {
                 }
             }
         }
+        self.with_data(|data| {
+            data.roots = new_roots;
+        });
     }
 
     fn scan_roots(&self) {
