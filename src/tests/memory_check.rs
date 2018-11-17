@@ -1,8 +1,8 @@
 use sodium::SodiumCtx;
 
 pub fn assert_memory_freed(sodium_ctx: &mut SodiumCtx) {
-    let num_nodes = (*sodium_ctx.data).borrow().num_nodes;
-    if num_nodes != 0 {
-        panic!("memory leak detected, {} nodes are remaining", num_nodes);
+    let node_count = sodium_ctx.node_count();
+    if node_count != 0 {
+        panic!("memory leak detected, {} nodes are remaining", node_count);
     }
 }

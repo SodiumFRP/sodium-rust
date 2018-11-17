@@ -4,12 +4,15 @@ use sodium::CellSink;
 use sodium::IsCell;
 use sodium::IsStream;
 use sodium::IsStreamOption;
+use sodium::Lambda;
 use sodium::Operational;
 use sodium::SodiumCtx;
 use sodium::Stream;
 use sodium::StreamLoop;
 use sodium::StreamSink;
-use sodium::Transaction;
+use sodium::gc::Finalize;
+use sodium::gc::GcDep;
+use sodium::gc::Trace;
 use tests::assert_memory_freed;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -49,14 +52,14 @@ fn map() {
 fn map_to() {
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
+    let l;
     {
         let s = sodium_ctx.new_stream_sink();
         let out = Rc::new(RefCell::new(Vec::new()));
-        let l;
         {
             let out = out.clone();
             l =
-                s.map_to("fusebox")
+                s.map_to(&"fusebox")
                     .listen(
                         move |a|
                             (*out).borrow_mut().push(*a)
@@ -65,8 +68,9 @@ fn map_to() {
         s.send(&7);
         s.send(&9);
         assert_eq!(vec!["fusebox", "fusebox"], *(*out).borrow());
-        l.unlisten();
     }
+    l.debug();
+    l.unlisten();
     assert_memory_freed(sodium_ctx);
 }
 
@@ -115,35 +119,35 @@ fn merge_simultaneous() {
                             (*out).borrow_mut().push(*a)
                     );
         }
-        sodium_ctx.run_transaction(
-            || {
+        sodium_ctx.transaction(
+            |_| {
                 s1.send(&7);
                 s2.send(&60);
             }
         );
-        sodium_ctx.run_transaction(
-            || {
+        sodium_ctx.transaction(
+            |_| {
                 s1.send(&9);
             }
         );
-        sodium_ctx.run_transaction(
-            || {
+        sodium_ctx.transaction(
+            |_| {
                 s1.send(&7);
                 s1.send(&60);
                 s2.send(&8);
                 s2.send(&90);
             }
         );
-        sodium_ctx.run_transaction(
-            || {
+        sodium_ctx.transaction(
+            |_| {
                 s2.send(&8);
                 s2.send(&90);
                 s1.send(&7);
                 s1.send(&60);
             }
         );
-        sodium_ctx.run_transaction(
-            || {
+        sodium_ctx.transaction(
+            |_| {
                 s2.send(&8);
                 s1.send(&7);
                 s2.send(&90);
@@ -171,13 +175,13 @@ fn coalesce() {
                     out.borrow_mut().push(*a)
             );
         }
-        sodium_ctx.run_transaction(
-            || {
+        sodium_ctx.transaction(
+            |_| {
                 s.send(&2);
             }
         );
-        sodium_ctx.run_transaction(
-            || {
+        sodium_ctx.transaction(
+            |_| {
                 s.send(&8);
                 s.send(&40);
             }
@@ -278,8 +282,8 @@ fn loop_() {
         let sa = sodium_ctx.new_stream_sink();
         let mut sodium_ctx2 = sodium_ctx.clone();
         let sodium_ctx2 = &mut sodium_ctx2;
-        let sc = sodium_ctx.run_transaction(
-            || {
+        let sc = sodium_ctx.transaction(
+            |sodium_ctx| {
                 let mut sb = sodium_ctx2.new_stream_loop();
                 let sc_ =
                     sa
@@ -345,11 +349,11 @@ fn gate() {
 fn collect() {
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
+    let l;
     {
         let ea = sodium_ctx.new_stream_sink();
         let out = Rc::new(RefCell::new(Vec::new()));
-        let sum = ea.collect(0, |a,s| (*a + *s + 100, *a + *s));
-        let l;
+        let sum = ea.collect(0, |a:&u32,s:&u32| (*a + *s + 100, *a + *s));
         {
             let out = out.clone();
             l =
@@ -363,9 +367,10 @@ fn collect() {
         ea.send(&1);
         ea.send(&2);
         ea.send(&3);
-        l.unlisten();
         assert_eq!(vec![105, 112, 113, 115, 118], *out.borrow());
     }
+    l.debug();
+    l.unlisten();
     assert_memory_freed(sodium_ctx);
 }
 
@@ -373,11 +378,11 @@ fn collect() {
 fn accum() {
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
+    let l;
     {
         let ea = sodium_ctx.new_stream_sink();
         let out = Rc::new(RefCell::new(Vec::new()));
-        let sum = ea.accum(100, |a, s| *a + *s);
-        let l;
+        let sum = ea.accum(100, |a:&u32, s:&u32| *a + *s);
         {
             let out = out.clone();
             l =
@@ -391,9 +396,10 @@ fn accum() {
         ea.send(&1);
         ea.send(&2);
         ea.send(&3);
-        l.unlisten();
         assert_eq!(vec![100, 105, 112, 113, 115, 118], *out.borrow());
     }
+    l.debug();
+    l.unlisten();
     assert_memory_freed(sodium_ctx);
 }
 
@@ -418,6 +424,7 @@ fn once() {
         s.send(&"A");
         s.send(&"B");
         s.send(&"C");
+        l.debug();
         l.unlisten();
         assert_eq!(vec!["A"], *out.borrow());
     }
@@ -438,7 +445,7 @@ fn defer() {
             l =
                 Operational
                     ::defer(&s)
-                    .snapshot_to(&c)
+                    .snapshot(&c)
                     .listen(
                         move |a|
                             out.borrow_mut().push(*a)
@@ -486,7 +493,7 @@ fn hold_is_delayed() {
     {
         let s = sodium_ctx.new_stream_sink();
         let h = s.hold(0);
-        let s_pair = s.snapshot(&h, |a: &i32, b: &i32| format!("{} {}", *a, *b));
+        let s_pair = s.snapshot2(&h, |a: &i32, b: &i32| format!("{} {}", *a, *b));
         let out = Rc::new(RefCell::new(Vec::new()));
         let l;
         {
@@ -510,6 +517,7 @@ fn hold_is_delayed() {
 fn switch_c() {
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
+    let l;
     {
         #[derive(Clone)]
         struct SC {
@@ -526,16 +534,27 @@ fn switch_c() {
                 }
             }
         }
+        impl Finalize for SC {
+            fn finalize(&mut self) {}
+        }
+        impl Trace for SC {
+            fn trace(&self, f: &mut FnMut(&GcDep)) {}
+        }
         let ssc = sodium_ctx.new_stream_sink();
-        let mut sodium_ctx2 = sodium_ctx.clone();
-        let sodium_ctx2 = &mut sodium_ctx2;
+        let sodium_ctx2 = sodium_ctx.clone();
         let ca = ssc.map(|s: &SC| s.a.clone()).filter_option().hold("A");
         let cb = ssc.map(|s: &SC| s.b.clone()).filter_option().hold("a");
         let csw_str = ssc.map(|s: &SC| s.sw.clone()).filter_option().hold("ca");
-        let csw = csw_str.map(move |s: &&'static str| if *s == "ca" { ca.clone() } else { cb.clone() });
+        let csw_deps = vec![ca.to_dep(), cb.to_dep()];
+        let csw = csw_str.map(
+            Lambda::new(
+                move |s: &&'static str|
+                    if *s == "ca" { ca.clone() } else { cb.clone() },
+                csw_deps
+            )
+        );
         let co = Cell::switch_c(&csw);
         let out = Rc::new(RefCell::new(Vec::new()));
-        let l;
         {
             let out = out.clone();
             l =
@@ -554,9 +573,10 @@ fn switch_c() {
         ssc.send(&SC::new(Some("G"), Some("g"), Some("cb")));
         ssc.send(&SC::new(Some("H"), Some("h"), Some("ca")));
         ssc.send(&SC::new(Some("I"), Some("i"), Some("ca")));
-        l.unlisten();
         assert_eq!(vec!["A", "B", "c", "d", "E", "F", "f", "F", "g", "H", "I"], *out.borrow());
     }
+    l.debug();
+    l.unlisten();
     assert_memory_freed(sodium_ctx);
 }
 
@@ -564,6 +584,7 @@ fn switch_c() {
 fn switch_s() {
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
+    let l;
     {
         #[derive(Clone)]
         struct SS {
@@ -580,7 +601,13 @@ fn switch_s() {
                 }
             }
         }
-        let sss = StreamSink::new(sodium_ctx);
+        impl Finalize for SS {
+            fn finalize(&mut self) {}
+        }
+        impl Trace for SS {
+            fn trace(&self, f: &mut FnMut(&GcDep)) {}
+        }
+        let sss = sodium_ctx.new_stream_sink();
         let sa = sss.map(|s: &SS| s.a.clone());
         let sb = sss.map(|s: &SS| s.b.clone());
         let mut sodium_ctx2 = sodium_ctx.clone();
@@ -592,13 +619,16 @@ fn switch_s() {
                 )
                 .filter_option()
                 .hold("sa");
+        let csw_deps = vec![sa.to_dep(), sb.to_dep()];
         let csw: Cell<Stream<&'static str>> = csw_str.map(
-            move |sw: &&'static str|
-                if *sw == "sa" { sa.clone() } else { sb.clone() }
+            Lambda::new(
+                move |sw: &&'static str|
+                    if *sw == "sa" { sa.clone() } else { sb.clone() },
+                csw_deps
+            )
         );
         let so = Cell::switch_s(&csw);
         let out = Rc::new(RefCell::new(Vec::<&'static str>::new()));
-        let l;
         {
             let out = out.clone();
             l = so.listen(
@@ -615,9 +645,10 @@ fn switch_s() {
         sss.send(&SS::new("G", "g", Some("sb")));
         sss.send(&SS::new("H", "h", Some("sa")));
         sss.send(&SS::new("I", "i", Some("sa")));
-        l.unlisten();
         assert_eq!(vec!["A", "B", "C", "d", "e", "F", "G", "h", "I"], *out.borrow());
     }
+    l.debug();
+    l.unlisten();
     assert_memory_freed(sodium_ctx);
 }
 
@@ -631,10 +662,18 @@ fn switch_s_simultaneous() {
             s: StreamSink<i32>
         }
         impl SS2 {
-            fn new(sodium_ctx: &mut SodiumCtx) -> SS2 {
+            fn new(sodium_ctx: &SodiumCtx) -> SS2 {
                 SS2 {
-                    s: StreamSink::new(sodium_ctx)
+                    s: sodium_ctx.new_stream_sink()
                 }
+            }
+        }
+        impl Finalize for SS2 {
+            fn finalize(&mut self) {}
+        }
+        impl Trace for SS2 {
+            fn trace(&self, f: &mut FnMut(&GcDep)) {
+                self.s.trace(f)
             }
         }
         let ss1 = SS2::new(sodium_ctx);
@@ -642,8 +681,8 @@ fn switch_s_simultaneous() {
         let ss3 = SS2::new(sodium_ctx);
         let ss4 = SS2::new(sodium_ctx);
         let css = sodium_ctx.new_cell_sink(ss1.clone());
-        let mut sodium_ctx2 = sodium_ctx.clone();
-        let sodium_ctx2 = &mut sodium_ctx2;
+        let sodium_ctx2 = sodium_ctx.clone();
+        let sodium_ctx2 = &sodium_ctx2;
         let so = Cell::switch_s(&css.map(|b: &SS2| b.s.clone()));
         let out = Rc::new(RefCell::new(Vec::new()));
         let l;
@@ -665,8 +704,8 @@ fn switch_s_simultaneous() {
         ss3.s.send(&5);
         ss3.s.send(&6);
         ss3.s.send(&7);
-        sodium_ctx.run_transaction(
-            || {
+        sodium_ctx.transaction(
+            |sodium_ctx| {
                 ss3.s.send(&8);
                 css.send(&ss4);
                 ss4.s.send(&2);
@@ -685,12 +724,11 @@ fn loop_cell() {
     let sodium_ctx = &mut sodium_ctx;
     {
         let sa = sodium_ctx.new_stream_sink();
-        let sum_out = Transaction::run(
-            sodium_ctx,
-            |sodium_ctx: &mut SodiumCtx| {
+        let sum_out = sodium_ctx.transaction(
+            |sodium_ctx: &SodiumCtx| {
                 let mut sum = sodium_ctx.new_cell_loop();
                 let sum_out = sa
-                    .snapshot(&sum, |x: &i32, y: &i32| *x + *y)
+                    .snapshot2(&sum, |x: &i32, y: &i32| *x + *y)
                     .hold(0);
                 sum.loop_(&sum_out);
                 sum_out

@@ -1,69 +1,28 @@
 use sodium::Cell;
-use sodium::cell;
-use sodium::cell::CellImpl;
-use sodium::cell::HasCell;
-use sodium::HasCellData;
-use sodium::HasCellDataGc;
-use sodium::stream::IsStreamPrivate;
-use sodium::SodiumCtx;
-use sodium::StreamSink;
-use sodium::gc::Gc;
-use sodium::gc::GcCell;
-use std::cell::RefCell;
+use sodium::gc::Finalize;
+use sodium::gc::Trace;
+use sodium::impl_;
 
 pub struct CellSink<A> {
-    sodium_ctx: SodiumCtx,
-    cell: CellImpl<A>,
-    str: StreamSink<A>
+    pub impl_: impl_::CellSink<A>
 }
 
-impl<A: Clone + 'static> Clone for CellSink<A> {
+impl<A: Clone + Trace + Finalize + 'static> CellSink<A> {
+    pub fn send(&self, a: &A) {
+        self.impl_.send(a.clone());
+    }
+
+    pub fn to_cell(&self) -> Cell<A> {
+        Cell {
+            impl_: self.impl_.to_cell()
+        }
+    }
+}
+
+impl<A: Clone + Trace + Finalize + 'static> Clone for CellSink<A> {
     fn clone(&self) -> Self {
         CellSink {
-            sodium_ctx: self.sodium_ctx.clone(),
-            cell: self.cell.clone(),
-            str: self.str.clone()
+            impl_: self.impl_.clone()
         }
-    }
-}
-
-impl<A: Clone + 'static> HasCellDataGc<A> for CellSink<A> {
-    fn cell_data(&self) -> Gc<GcCell<HasCellData<A>>> {
-        self.cell.cell_data()
-    }
-}
-
-impl<A: Clone + 'static> HasCell<A> for CellSink<A> {
-    fn cell(&self) -> Cell<A> {
-        cell::make_cell(
-            self.sodium_ctx.clone(),
-            self.cell.clone()
-        )
-    }
-}
-
-impl<A: Clone + 'static> CellSink<A> {
-    pub fn new(sodium_ctx: &mut SodiumCtx, init_value: A) -> CellSink<A> {
-        let str = StreamSink::new(sodium_ctx);
-        CellSink {
-            sodium_ctx: sodium_ctx.clone(),
-            cell: CellImpl::new_(sodium_ctx, str.to_stream_ref().clone(), Some(init_value)),
-            str: str
-        }
-    }
-
-    pub fn new_with_coalescer<F>(sodium_ctx: &mut SodiumCtx, init_value: A, f: F) -> CellSink<A>
-        where F: Fn(&A,&A)->A + 'static
-    {
-        let str = StreamSink::new_with_coalescer(sodium_ctx, f);
-        CellSink {
-            sodium_ctx: sodium_ctx.clone(),
-            cell: CellImpl::new_(sodium_ctx, str.to_stream_ref().clone(), Some(init_value)),
-            str: str
-        }
-    }
-
-    pub fn send(&self, a: &A) {
-        self.str.send(a)
     }
 }

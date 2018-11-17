@@ -1,5 +1,4 @@
-/.idea/
-target
-Cargo.lock
-/sodium-rust.iml
-/.vscode/
+/target
+**/*.rs.bk
+/.vscode
+/.idea

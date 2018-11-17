@@ -1,156 +1,91 @@
 use sodium::Cell;
 use sodium::CellLoop;
 use sodium::CellSink;
-use sodium::HasNode;
-use sodium::Listener;
-use sodium::Node;
+use sodium::IsLambda0;
+use sodium::MemoLazy;
 use sodium::Stream;
 use sodium::StreamLoop;
 use sodium::StreamSink;
-use sodium::Transaction;
-use sodium::cell;
+use sodium::gc::Finalize;
 use sodium::gc::GcCtx;
-use sodium::gc::Gc;
-use sodium::gc::GcCell;
 use sodium::gc::Trace;
-use sodium::stream;
-use std::borrow::Borrow;
-use std::cell::Ref;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
+use sodium::impl_;
 
 pub struct SodiumCtx {
-    pub data: Rc<RefCell<SodiumCtxData>>
+    impl_: impl_::SodiumCtx
+}
+
+impl SodiumCtx {
+    pub fn new() -> SodiumCtx {
+        SodiumCtx {
+            impl_: impl_::SodiumCtx::new()
+        }
+    }
+
+    pub fn new_lazy<A: Trace + Finalize + Clone + 'static,THUNK: IsLambda0<A> + 'static>(&self, thunk: THUNK) -> MemoLazy<A> {
+        self.impl_.new_lazy(thunk)
+    }
+
+    pub fn new_cell<A: Clone + Trace + Finalize + 'static>(&self, value: A) -> Cell<A> {
+        Cell {
+            impl_: impl_::Cell::new(&self.impl_, value)
+        }
+    }
+
+    pub fn new_stream<A: Clone + Trace + Finalize + 'static>(&self) -> Stream<A> {
+        Stream {
+            impl_: impl_::Stream::new(&self.impl_)
+        }
+    }
+
+    pub fn new_cell_loop<A: Clone + Trace + Finalize + 'static>(&self) -> CellLoop<A> {
+        CellLoop {
+            impl_: impl_::CellLoop::new(&self.impl_)
+        }
+    }
+
+    pub fn new_stream_loop<A: Clone + Trace + Finalize + 'static>(&self) -> StreamLoop<A> {
+        StreamLoop {
+            impl_: impl_::StreamLoop::new(&self.impl_)
+        }
+    }
+
+    pub fn new_cell_sink<A: Clone + Trace + Finalize + 'static>(&self, value: A) -> CellSink<A> {
+        CellSink {
+            impl_: impl_::CellSink::new(&self.impl_, value)
+        }
+    }
+
+    pub fn new_stream_sink<A: Clone + Trace + Finalize + 'static>(&self) -> StreamSink<A> {
+        StreamSink {
+            impl_: impl_::StreamSink::new(&self.impl_)
+        }
+    }
+
+    pub fn new_stream_sink_with_coalescer<A: Clone + Trace + Finalize + 'static, FN: Fn(&A,&A)->A+'static>(&self, coalescer: FN) -> StreamSink<A> {
+        StreamSink {
+            impl_: impl_::StreamSink::new_with_coalescer(&self.impl_, coalescer)
+        }
+    }
+
+    pub fn gc_ctx(&self) -> GcCtx {
+        self.impl_.gc_ctx()
+    }
+
+    pub fn transaction<A,CODE:FnOnce(&SodiumCtx)->A>(&self, code: CODE) -> A {
+        let sodium_ctx = self.clone();
+        self.impl_.transaction(|| code(&sodium_ctx))
+    }
+
+    pub fn node_count(&self) -> u32 {
+        self.impl_.node_count()
+    }
 }
 
 impl Clone for SodiumCtx {
     fn clone(&self) -> Self {
         SodiumCtx {
-            data: self.data.clone()
+            impl_: self.impl_.clone()
         }
-    }
-}
-
-pub struct SodiumCtxData {
-    pub gc_ctx: GcCtx,
-    pub null_node: Option<Gc<GcCell<HasNode>>>,
-    pub next_id: u32,
-    pub next_seq: u64,
-    pub current_transaction_op: Option<Transaction>,
-    pub in_callback: u32,
-    pub on_start_hooks: Vec<Box<Fn()>>,
-    pub running_on_start_hooks: bool,
-    pub keep_listeners_alive: HashMap<u32,Listener>,
-    pub num_nodes: u32
-}
-
-impl Drop for SodiumCtxData {
-    fn drop(&mut self) {
-        self.null_node = None;
-    }
-}
-
-impl SodiumCtx {
-    pub fn new() -> SodiumCtx {
-        let mut gc_ctx = GcCtx::new();
-        let null_node = gc_ctx.new_gc(GcCell::new(Node::new_(0, 0))).upcast(|x| x as &GcCell<HasNode>);
-        SodiumCtx {
-            data: Rc::new(RefCell::new(SodiumCtxData {
-                gc_ctx: gc_ctx,
-                null_node: Some(null_node),
-                next_id: 1,
-                next_seq: 1,
-                current_transaction_op: None,
-                in_callback: 0,
-                on_start_hooks: Vec::new(),
-                running_on_start_hooks: false,
-                keep_listeners_alive: HashMap::new(),
-                num_nodes: 0
-            }))
-        }
-    }
-
-    pub fn with_data_ref<F,A>(&self, f: F) -> A where F: FnOnce(&SodiumCtxData)->A {
-        let self_: &RefCell<SodiumCtxData> = self.data.borrow();
-        let self__: Ref<SodiumCtxData> = self_.borrow();
-        let self___: &SodiumCtxData = &*self__;
-        f(self___)
-    }
-
-    pub fn with_data_mut<F,A>(&self, f: F) -> A where F: FnOnce(&mut SodiumCtxData) -> A {
-        f(&mut *self.data.borrow_mut())
-    }
-
-    pub fn new_cell<A: Clone + 'static>(&mut self, a: A) -> Cell<A> {
-        cell::make_cell(
-            self.clone(),
-            cell::CellImpl::new(self, a)
-        )
-    }
-
-    pub fn new_stream<A: Clone + 'static>(&mut self) -> Stream<A> {
-        stream::make_stream(
-            self.clone(),
-            stream::StreamImpl::new(self)
-        )
-    }
-
-    pub fn new_stream_sink<A: Clone + 'static>(&mut self) -> StreamSink<A> {
-        StreamSink::new(self)
-    }
-
-    pub fn new_stream_sink_with_coalescer<A: Clone + 'static, F: Fn(&A,&A)->A + 'static>(&mut self, f: F) -> StreamSink<A> {
-        StreamSink::new_with_coalescer(self, f)
-    }
-
-    pub fn new_cell_sink<A: Clone + 'static>(&mut self, a: A) -> CellSink<A> {
-        CellSink::new(self, a)
-    }
-
-    pub fn new_stream_loop<A: Clone + 'static>(&mut self) -> StreamLoop<A> {
-        StreamLoop::new(self)
-    }
-
-    pub fn new_cell_loop<A: Clone + 'static>(&mut self) -> CellLoop<A> {
-        CellLoop::new(self)
-    }
-
-    pub fn run_transaction<A, F: FnOnce()->A>(&mut self, code: F) -> A {
-        Transaction::run(self, |_: &mut SodiumCtx| code())
-    }
-
-    pub fn is_transaction_active(&self) -> bool {
-        Transaction::is_active(self)
-    }
-
-    pub fn gc(&self) {
-        let gc_ctx = self.with_data_ref(|data| data.gc_ctx.clone());
-        gc_ctx.collect_cycles();
-    }
-
-    pub fn null_node(&self) -> Gc<GcCell<HasNode>> {
-        let self_: &RefCell<SodiumCtxData> = self.data.borrow();
-        let self__: Ref<SodiumCtxData> = self_.borrow();
-        let self___: &SodiumCtxData = &*self__;
-        self___.null_node.clone().unwrap()
-    }
-
-    pub fn new_id(&mut self) -> u32 {
-        let self_ = &mut *self.data.borrow_mut();
-        let r = self_.next_id;
-        self_.next_id = self_.next_id + 1;
-        r
-    }
-
-    pub fn new_seq(&mut self) -> u64 {
-        let self_ = &mut *self.data.borrow_mut();
-        let r = self_.next_seq;
-        self_.next_seq = self_.next_seq + 1;
-        r
-    }
-
-    pub fn new_gc<A: Trace + 'static>(&mut self, a: A) -> Gc<A> {
-        self.with_data_mut(|data| data.gc_ctx.new_gc(a))
     }
 }

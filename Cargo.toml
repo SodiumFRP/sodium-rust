@@ -1,7 +1,6 @@
 [package]
-name = "rusty-frp"
-version = "0.1.0"
+name = "sodium-rust"
+version = "1.0.0"
 authors = ["Clinton Selke <clinuxrulz@gmail.com>"]
 
 [dependencies]
-log = "0.3.7"

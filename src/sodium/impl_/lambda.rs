@@ -5,10 +5,10 @@ pub struct Lambda<FN: ?Sized> {
     deps: Vec<Dep>
 }
 
-impl<FN: ?Sized> Lambda<FN> {
-    pub fn new(apply: Box<FN>, deps: Vec<Dep>) -> Lambda<FN> {
+impl<FN> Lambda<FN> {
+    pub fn new(apply: FN, deps: Vec<Dep>) -> Lambda<FN> {
         Lambda {
-            apply: apply,
+            apply: Box::new(apply),
             deps: deps
         }
     }
@@ -25,11 +25,16 @@ impl<FN: ?Sized> Lambda<FN> {
 
 macro_rules! lambda {
     ($f:expr) => {{
-        Lambda::new(Box::new($f), Vec::new())
+        Lambda::new($f, Vec::new())
     }};
     ($f:expr, $($deps:expr),*) => {{
-        Lambda::new(Box::new($f), vec![$($deps,)*])
+        Lambda::new($f, vec![$($deps,)*])
     }}
+}
+
+pub trait IsLambda0<R> {
+    fn apply(&self) -> R;
+    fn deps(&self) -> Vec<Dep>;
 }
 
 pub trait IsLambda1<A,R> {
@@ -60,6 +65,15 @@ pub trait IsLambda5<A,B,C,D,E,R> {
 pub trait IsLambda6<A,B,C,D,E,F,R> {
     fn apply(&self, a: &A, b: &B, c: &C, d: &D, e: &E, f: &F) -> R;
     fn deps(&self) -> Vec<Dep>;
+}
+
+impl<R,FN:Fn()->R> IsLambda0<R> for FN {
+    fn apply(&self) -> R {
+        self()
+    }
+    fn deps(&self) -> Vec<Dep> {
+        Vec::new()
+    }
 }
 
 impl<A,R,FN:Fn(&A)->R> IsLambda1<A,R> for FN {
@@ -113,6 +127,15 @@ impl<A,B,C,D,E,F,R,FN:Fn(&A,&B,&C,&D,&E,&F)->R> IsLambda6<A,B,C,D,E,F,R> for FN 
     }
     fn deps(&self) -> Vec<Dep> {
         Vec::new()
+    }
+}
+
+impl<R,FN:Fn()->R> IsLambda0<R> for Lambda<FN> {
+    fn apply(&self) -> R {
+        (self.apply)()
+    }
+    fn deps(&self) -> Vec<Dep> {
+        self.deps.clone()
     }
 }
 

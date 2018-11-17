@@ -5,7 +5,6 @@ use sodium::IsStream;
 use sodium::Operational;
 use sodium::SodiumCtx;
 use sodium::StreamSink;
-use sodium::Transaction;
 use tests::assert_memory_freed;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -19,15 +18,14 @@ fn loop_value_snapshot() {
         let l;
         {
             let out = out.clone();
-            l = Transaction::run(
-                sodium_ctx,
+            l = sodium_ctx.transaction(
                 |sodium_ctx| {
                     let a = sodium_ctx.new_cell("lettuce");
-                    let mut b = CellLoop::new(sodium_ctx);
+                    let mut b = sodium_ctx.new_cell_loop();
                     let e_snap =
                         Operational
                             ::value(&a)
-                            .snapshot(
+                            .snapshot2(
                                 &b,
                                 |aa: &&str, bb: &&str|
                                     format!("{} {}", aa, bb)
@@ -51,8 +49,7 @@ fn loop_value_hold() {
     let sodium_ctx = &mut sodium_ctx;
     {
         let out = Rc::new(RefCell::new(Vec::new()));
-        let value = Transaction::run(
-            sodium_ctx,
+        let value = sodium_ctx.transaction(
             |sodium_ctx| {
                 let mut a = sodium_ctx.new_cell_loop();
                 let value_ = Operational::value(&a).hold("onion");
@@ -66,7 +63,7 @@ fn loop_value_hold() {
         let l;
         {
             let out = out.clone();
-            l = s_tick.snapshot_to(&value).listen(
+            l = s_tick.snapshot(&value).listen(
                 move |x| out.borrow_mut().push(x.clone())
             );
         }
@@ -83,11 +80,10 @@ fn lift_loop() {
     let sodium_ctx = &mut sodium_ctx;
     {
         let out = Rc::new(RefCell::new(Vec::new()));
-        let b = CellSink::new(sodium_ctx, "kettle");
-        let c = Transaction::run(
-            sodium_ctx,
+        let b = sodium_ctx.new_cell_sink("kettle");
+        let c = sodium_ctx.transaction(
             |sodium_ctx| {
-                let mut a = CellLoop::new(sodium_ctx);
+                let mut a = sodium_ctx.new_cell_loop();
                 let c_ = a.lift2(&b, |aa: &&'static str, bb: &&'static str| format!("{} {}", aa, bb));
                 let mut sodium_ctx2 = sodium_ctx.clone();
                 let sodium_ctx2 = &mut sodium_ctx2;

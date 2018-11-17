@@ -12,6 +12,8 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::rc::Rc;
+use std::collections::HashSet;
+use std::collections::HashMap;
 
 pub struct GcCtx {
     data: Rc<RefCell<GcCtxData>>
@@ -27,7 +29,8 @@ impl Clone for GcCtx {
 
 struct GcCtxData {
     roots: Vec<*mut Node>,
-    collecting_cycles: bool
+    collecting_cycles: bool,
+    to_be_freed: Vec<*mut Node>
 }
 
 pub struct GcDep {
@@ -86,6 +89,11 @@ impl<A: ?Sized> Deref for Gc<A> {
 }
 
 impl<A: ?Sized> Gc<A> {
+    pub fn debug(&self) {
+        let node = unsafe { &*self.node };
+        node.debug();
+    }
+
     pub fn to_dep(&self) -> GcDep {
         let n: &mut Node = unsafe { &mut *self.node };
         n.weak = n.weak + 1;
@@ -95,12 +103,12 @@ impl<A: ?Sized> Gc<A> {
         }
     }
 
-    pub fn strong_count(&self) -> usize {
+    pub fn strong_count(&self) -> i32 {
         let node = unsafe { &*self.node };
         node.strong
     }
 
-    pub fn weak_count(&self) -> usize {
+    pub fn weak_count(&self) -> i32 {
         let node = unsafe { &*self.node };
         node.weak
     }
@@ -178,10 +186,15 @@ pub trait Trace {
     fn trace(&self, f: &mut FnMut(&GcDep));
 }
 
+pub trait Finalize {
+    fn finalize(&mut self) {
+        // default impl: Do nothing.
+    }
+}
+
 impl<A: Trace> Trace for Gc<A> {
     fn trace(&self, f: &mut FnMut(&GcDep)) {
-        let self2: &A = &*self;
-        self2.trace(f);
+        f(&self.to_dep());
     }
 }
 
@@ -209,16 +222,100 @@ impl<A: Trace> Trace for Vec<A> {
     }
 }
 
+impl Trace for () {
+    fn trace(&self, _f: &mut FnMut(&GcDep)) {}
+}
+
+impl<A:Trace,B:Trace> Trace for (A,B) {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {
+        let &(ref a, ref b) = self;
+        a.trace(f);
+        b.trace(f);
+    }
+}
+
+impl Trace for bool {
+    fn trace(&self, _f: &mut FnMut(&GcDep)) {}
+}
+
 impl Trace for i32 {
-    fn trace(&self, f: &mut FnMut(&GcDep)) {}
+    fn trace(&self, _f: &mut FnMut(&GcDep)) {}
+}
+
+impl Trace for u32 {
+    fn trace(&self, _f: &mut FnMut(&GcDep)) {}
 }
 
 impl Trace for &'static str {
-    fn trace(&self, f: &mut FnMut(&GcDep)) {}
+    fn trace(&self, _f: &mut FnMut(&GcDep)) {}
 }
 
 impl Trace for String {
-    fn trace(&self, f: &mut FnMut(&GcDep)) {}
+    fn trace(&self, _f: &mut FnMut(&GcDep)) {}
+}
+
+impl<A:Trace> Trace for UnsafeCell<A> {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {
+        let val = unsafe { &*self.get() };
+        val.trace(f);
+    }
+}
+
+impl<A: Finalize> Finalize for Gc<A> {
+    fn finalize(&mut self) {
+        // Already handled by the finalize for A when Gc is finished,
+        // do nothing here.
+    }
+}
+
+impl<A: Finalize> Finalize for GcCell<A> {
+    fn finalize(&mut self) {
+        let self2: &mut A = unsafe { &mut *self.cell.get() };
+        self2.finalize();
+    }
+}
+impl<A: Finalize> Finalize for Option<A> {
+    fn finalize(&mut self) {
+        match self {
+            &mut Some(ref mut a) => a.finalize(),
+            &mut None => ()
+        }
+    }
+}
+
+impl<A: Finalize> Finalize for Vec<A> {
+    fn finalize(&mut self) {
+        for a in self {
+            a.finalize();
+        }
+    }
+}
+
+impl Finalize for () {}
+
+impl<A:Finalize,B:Finalize> Finalize for (A,B) {
+    fn finalize(&mut self) {
+        let &mut (ref mut a, ref mut b) = self;
+        a.finalize();
+        b.finalize();
+    }
+}
+
+impl Finalize for bool {}
+
+impl Finalize for i32 {}
+
+impl Finalize for u32 {}
+
+impl Finalize for &'static str {}
+
+impl Finalize for String {}
+
+impl<A:Finalize> Finalize for UnsafeCell<A> {
+    fn finalize(&mut self) {
+        let self_ = unsafe { &mut *self.get() };
+        self_.finalize();
+    }
 }
 
 #[derive(Clone,Copy)]
@@ -295,7 +392,7 @@ impl<A> GcCell<A> {
     }
 
     pub fn into_inner(self) -> A {
-        unsafe { self.cell.into_inner() }
+        self.cell.into_inner()
     }
 }
 
@@ -382,19 +479,62 @@ enum Colour {
 }
 
 struct Node {
-    strong: usize,
-    weak: usize,
+    desc_op: Option<String>,
+    strong: i32,
+    weak: i32,
     colour: Colour,
     buffered: bool,
     trace: Box<Fn(&mut FnMut(*mut Node))>,
+    finalize: Box<Fn()>,
+    freed: bool,
     cleanup: Box<Fn()>
 }
 
 impl Node {
     fn trace(&self, f: &mut FnMut(*mut Node)) {
-        if self.strong > 0 {
+        if !self.freed {
             (self.trace)(f);
         }
+    }
+
+    fn debug(&self) {
+        self.debug2(&mut HashSet::new(), &mut HashMap::new(), &mut 1);
+    }
+
+    fn node_id(&self, id_map: &mut HashMap<*const Node,u32>, next_id: &mut u32) -> u32 {
+        {
+            let id_op = id_map.get(&(self as *const Node));
+            if let Some(id) = id_op {
+                return id.clone();
+            }
+        }
+        let id = *next_id;
+        id_map.insert(self as *const Node, id);
+        *next_id = *next_id + 1;
+        id
+    }
+
+    fn debug2(&self, visited: &mut HashSet<*const Node>, id_map: &mut HashMap<*const Node,u32>, next_id: &mut u32) {
+        if visited.contains(&(self as *const Node)) {
+            return;
+        }
+        visited.insert(self as *const Node);
+        let id = self.node_id(id_map, next_id);
+        print!("node");
+        if let &Some(ref desc) = &self.desc_op {
+            print!("({})", desc);
+        }
+        print!(" {}/{} {}: ", self.strong, self.weak, id);
+        self.trace(&mut |node:*mut Node| {
+            let node = unsafe { &*node };
+            let id = node.node_id(id_map, next_id);
+            print!(" {}", id);
+        });
+        println!();
+        self.trace(&mut |node:*mut Node| {
+            let node = unsafe { &*node };
+            node.debug2(visited, id_map, next_id);
+        });
     }
 }
 
@@ -405,19 +545,30 @@ impl GcCtx {
             data: Rc::new(RefCell::new(
                 GcCtxData {
                     roots: Vec::new(),
-                    collecting_cycles: false
+                    collecting_cycles: false,
+                    to_be_freed: Vec::new()
                 }
             ))
         }
     }
 
-    pub fn new_gc<A: Trace + 'static>(&mut self, value: A) -> Gc<A> {
+    pub fn new_gc<A: Trace + Finalize + 'static>(&mut self, value: A) -> Gc<A> {
+        self._new_gc(value, None)
+    }
+
+    pub fn new_gc_with_desc<A: Trace + Finalize + 'static>(&mut self, value: A, desc: String) -> Gc<A> {
+        self._new_gc(value, Some(desc))
+    }
+
+    fn _new_gc<A: Trace + Finalize + 'static>(&mut self, value: A, desc_op: Option<String>) -> Gc<A> {
         let value = Box::into_raw(Box::new(value));
         let value2 = value.clone();
+        let value3 = value.clone();
         let r = Gc {
             ctx: self.clone(),
             value: value,
             node: Box::into_raw(Box::new(Node {
+                desc_op: desc_op,
                 strong: 1,
                 weak: 1,
                 colour: Colour::Black,
@@ -425,6 +576,10 @@ impl GcCtx {
                 trace: Box::new(move |f: &mut FnMut(*mut Node)| {
                     unsafe { &*value2 }.trace(&mut |dep: &GcDep| f(dep.node))
                 }),
+                finalize: Box::new(move || {
+                    unsafe { &mut *value3 }.finalize()
+                }),
+                freed: false,
                 cleanup: Box::new(move || {
                     unsafe { Box::from_raw(value); }
                 })
@@ -460,7 +615,7 @@ impl GcCtx {
         debug_assert!(s.strong == 0);
         s.colour = Colour::Black;
         if !s.buffered {
-            self.system_free(s);
+            self.finalize_and_mark_to_be_freed(s);
         }
     }
 
@@ -469,6 +624,7 @@ impl GcCtx {
         let s = unsafe { &mut *s };
         debug_assert!(s.strong == 0);
         (s.cleanup)();
+        s.freed = true;
         if s.weak > 0 {
             s.weak = s.weak - 1;
             if s.weak == 0 {
@@ -504,7 +660,15 @@ impl GcCtx {
         self.scan_roots();
         self.collect_roots();
 
+        let again = self.with_data(|data| data.to_be_freed.len() != 0);
+
+        self.free_to_be_freed();
+
         self.with_data(|data| data.collecting_cycles = false);
+
+        if again {
+            self.collect_cycles();
+        }
     }
 
     fn mark_roots(&self) {
@@ -520,7 +684,7 @@ impl GcCtx {
                 s.buffered = false;
                 self.with_data(|data| data.roots.retain(|s2| !ptr::eq(s, *s2)));
                 if s.colour == Colour::Black && s.strong == 0 {
-                    self.system_free(s);
+                    self.finalize_and_mark_to_be_freed(s);
                 }
             }
         }
@@ -595,7 +759,20 @@ impl GcCtx {
             s.trace(&mut |t| {
                 self.collect_white(t);
             });
-            self.system_free(s);
+            self.finalize_and_mark_to_be_freed(s);
+        }
+    }
+
+    fn finalize_and_mark_to_be_freed(&self, s: *mut Node) {
+        unsafe { ((*s).finalize)() };
+        self.with_data(|data| data.to_be_freed.push(s));
+    }
+
+    fn free_to_be_freed(&self) {
+        let mut to_be_freed = Vec::new();
+        self.with_data(|data| swap(&mut data.to_be_freed, &mut to_be_freed));
+        for node in to_be_freed {
+            self.system_free(node);
         }
     }
 }

@@ -1,5 +1,5 @@
-use sodium::gc::Gc;
-use sodium::gc::GcDep;
+use sodium::impl_::gc::Gc;
+use sodium::impl_::gc::GcDep;
 
 pub struct Dep {
     pub gc_dep: GcDep

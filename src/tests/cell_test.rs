@@ -96,6 +96,7 @@ fn map_c() {
 fn lift_cells_in_switch_c() {
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
+    let l;
     {
         let mut sodium_ctx2 = sodium_ctx.clone();
         let sodium_ctx2 = &mut sodium_ctx2;
@@ -107,7 +108,6 @@ fn lift_cells_in_switch_c() {
             let s = s.clone();
             r = c.map(move |c2:&Cell<i32>| c2.lift2(&s, |v1:&i32, v2:&i32| *v1 + *v2));
         }
-        let l;
         {
             let out = out.clone();
             l = Cell::switch_c(&r).listen(move |a:&i32| {
@@ -116,9 +116,10 @@ fn lift_cells_in_switch_c() {
         }
         s.send(&2);
         s.send(&4);
-        l.unlisten();
         assert_eq!(vec![1, 3, 5], *out.borrow());
     }
+    l.debug();
+    l.unlisten();
     assert_memory_freed(sodium_ctx);
 }
 
