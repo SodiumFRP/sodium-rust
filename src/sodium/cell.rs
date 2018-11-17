@@ -91,6 +91,13 @@ impl<A: Clone + Trace + Finalize + 'static> Cell<A> {
     ) -> Listener {
         self.impl_.listen(callback)
     }
+
+    pub fn listen_weak<CALLBACK:FnMut(&A)+'static>(
+        &self,
+        callback: CALLBACK
+    ) -> Listener {
+        self.impl_.listen_weak(callback)
+    }
 }
 
 impl<A: Clone + Trace + Finalize + 'static> Clone for Cell<A> {

@@ -55,6 +55,13 @@ pub trait IsCell<A: Finalize + Trace + Clone + 'static>: Sized {
     ) -> Listener {
         self.to_cell().listen(callback)
     }
+
+    fn listen_weak<CALLBACK:FnMut(&A)+'static>(
+        &self,
+        callback: CALLBACK
+    ) -> Listener {
+        self.to_cell().listen(callback)
+    }
 }
 
 impl<A: Finalize + Trace + Clone + 'static> IsCell<A> for Cell<A> {

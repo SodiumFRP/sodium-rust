@@ -2,6 +2,7 @@ use sodium::gc::Finalize;
 use sodium::gc::GcCtx;
 use sodium::gc::Trace;
 use sodium::impl_::IsLambda0;
+use sodium::impl_::Listener;
 use sodium::impl_::MemoLazy;
 use sodium::impl_::Node;
 use std::cell::UnsafeCell;
@@ -28,7 +29,8 @@ pub struct SodiumCtxData {
     pub resort_required: bool,
     pub pre_trans: Vec<Box<FnMut()>>,
     pub post_trans: Vec<Box<FnMut()>>,
-    pub node_count: u32
+    pub node_count: u32,
+    pub keep_alive: HashSet<Node>
 }
 
 impl SodiumCtx {
@@ -43,7 +45,8 @@ impl SodiumCtx {
                 resort_required: false,
                 pre_trans: Vec::new(),
                 post_trans: Vec::new(),
-                node_count: 0
+                node_count: 0,
+                keep_alive: HashSet::new()
             }))
         }
     }
@@ -70,6 +73,16 @@ impl SodiumCtx {
         let id = self_.next_id;
         self_.next_id = self_.next_id + 1;
         id
+    }
+
+    pub fn add_keep_alive(&self, node: Node) {
+        let self_ = unsafe { &mut *(*self.data).get() };
+        self_.keep_alive.insert(node);
+    }
+
+    pub fn remove_keep_alive(&self, node: &Node) {
+        let self_ = unsafe { &mut *(*self.data).get() };
+        self_.keep_alive.remove(node);
     }
 
     pub fn inc_node_count(&self) {

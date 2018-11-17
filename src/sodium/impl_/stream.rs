@@ -452,6 +452,21 @@ impl<A: Clone + Trace + Finalize + 'static> Stream<A> {
         &self,
         callback: CALLBACK
     ) -> Listener {
+        self._listen(callback, false)
+    }
+
+    pub fn listen_weak<CALLBACK:FnMut(&A)+'static>(
+        &self,
+        callback: CALLBACK
+    ) -> Listener {
+        self._listen(callback, true)
+    }
+
+    pub fn _listen<CALLBACK:FnMut(&A)+'static>(
+        &self,
+        callback: CALLBACK,
+        weak: bool
+    ) -> Listener {
         let sodium_ctx = self._node().sodium_ctx();
         let sodium_ctx = &sodium_ctx;
         let callback = Rc::new(UnsafeCell::new(callback));
@@ -482,7 +497,7 @@ impl<A: Clone + Trace + Finalize + 'static> Stream<A> {
             vec![self._node().clone()],
             || {},
             String::from("Stream::listen_node")
-        ))
+        ), weak)
     }
 }
 

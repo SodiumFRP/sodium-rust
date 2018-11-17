@@ -117,6 +117,13 @@ pub trait IsStream<A: Finalize + Trace + Clone + 'static> {
     ) -> Listener {
         self.to_stream().listen(callback)
     }
+
+    fn listen_weak<CALLBACK:FnMut(&A)+'static>(
+        &self,
+        callback: CALLBACK
+    ) -> Listener {
+        self.to_stream().listen_weak(callback)
+    }
 }
 
 impl<A: Finalize + Trace + Clone + 'static> IsStream<A> for Stream<A> {
