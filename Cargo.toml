@@ -3,6 +3,6 @@ name = "sodium-rust"
 description = "Sodium FRP (Functional Reactive Programming)"
 version = "1.0.0"
 authors = ["Clinton Selke <clinuxrulz@gmail.com>"]
-license = "BSD 3-Clause License"
+license = "BSD-3-Clause"
 
 [dependencies]
