@@ -192,6 +192,40 @@ pub trait Finalize {
     }
 }
 
+#[cfg(feature = "nightly")]
+default impl<T> Trace for T {
+    #[inline]
+    default fn trace(&self, _tracer: &mut FnMut(&GcDep)) {
+        // default impl: Do nothing.
+    }
+}
+
+#[cfg(feature = "nightly")]
+default impl<T> Finalize for T {
+    #[inline]
+    default fn finalize(&mut self) {
+        // default impl: Do nothing.
+    }
+}
+
+macro_rules! mk_empty_finalize_trace {
+    ($($T:ty),*) => {
+        $(
+            impl Finalize for $T {}
+            impl Trace for $T {
+                fn trace(&self, _tracer: &mut FnMut(&GcDep)) {
+                }
+            }
+        )*
+    }
+}
+
+mk_empty_finalize_trace![(), isize, usize, bool, i8, u8, i16, u16, i32,
+    u32, i64, u64, f32, f64, char, String];
+
+#[cfg(feature = "nightly")]
+mk_empty_finalize_trace![i128, u128];
+
 impl<A: Trace> Trace for Gc<A> {
     fn trace(&self, f: &mut FnMut(&GcDep)) {
         f(&self.to_dep());
@@ -222,10 +256,6 @@ impl<A: Trace> Trace for Vec<A> {
     }
 }
 
-impl Trace for () {
-    fn trace(&self, _f: &mut FnMut(&GcDep)) {}
-}
-
 impl<A:Trace,B:Trace> Trace for (A,B) {
     fn trace(&self, f: &mut FnMut(&GcDep)) {
         let &(ref a, ref b) = self;
@@ -234,23 +264,7 @@ impl<A:Trace,B:Trace> Trace for (A,B) {
     }
 }
 
-impl Trace for bool {
-    fn trace(&self, _f: &mut FnMut(&GcDep)) {}
-}
-
-impl Trace for i32 {
-    fn trace(&self, _f: &mut FnMut(&GcDep)) {}
-}
-
-impl Trace for u32 {
-    fn trace(&self, _f: &mut FnMut(&GcDep)) {}
-}
-
 impl Trace for &'static str {
-    fn trace(&self, _f: &mut FnMut(&GcDep)) {}
-}
-
-impl Trace for String {
     fn trace(&self, _f: &mut FnMut(&GcDep)) {}
 }
 
@@ -291,8 +305,6 @@ impl<A: Finalize> Finalize for Vec<A> {
     }
 }
 
-impl Finalize for () {}
-
 impl<A:Finalize,B:Finalize> Finalize for (A,B) {
     fn finalize(&mut self) {
         let &mut (ref mut a, ref mut b) = self;
@@ -301,15 +313,7 @@ impl<A:Finalize,B:Finalize> Finalize for (A,B) {
     }
 }
 
-impl Finalize for bool {}
-
-impl Finalize for i32 {}
-
-impl Finalize for u32 {}
-
 impl Finalize for &'static str {}
-
-impl Finalize for String {}
 
 impl<A:Finalize> Finalize for UnsafeCell<A> {
     fn finalize(&mut self) {
