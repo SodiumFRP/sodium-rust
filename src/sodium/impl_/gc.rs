@@ -12,8 +12,8 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::rc::Rc;
-use std::collections::HashSet;
-use std::collections::HashMap;
+use std::hash::Hash;
+use std::collections::{BinaryHeap, BTreeMap, BTreeSet, HashMap, HashSet, LinkedList, VecDeque};
 
 pub struct GcCtx {
     data: Rc<RefCell<GcCtxData>>
@@ -248,10 +248,83 @@ impl<A: Trace> Trace for Option<A> {
     }
 }
 
+impl<A: Trace, E: Trace> Trace for Result<A,E> {
+    fn trace(&self, tracer: &mut FnMut(&GcDep)) {
+        match self {
+            &Ok(ref x) => x.trace(tracer),
+            &Err(ref x) => x.trace(tracer)
+        }
+    }
+}
+
+impl<A: Trace> Trace for Box<A> {
+    fn trace(&self, tracer: &mut FnMut(&GcDep)) {
+        (**self).trace(tracer);
+    }
+}
+
 impl<A: Trace> Trace for Vec<A> {
     fn trace(&self, f: &mut FnMut(&GcDep)) {
         for a in self {
             a.trace(f);
+        }
+    }
+}
+
+impl <A: Ord + Trace> Trace for BinaryHeap<A> {
+    fn trace(&self, tracer: &mut FnMut(&GcDep)) {
+        for v in self.into_iter() {
+            v.trace(tracer);
+        }
+    }
+}
+
+impl<K: Trace, V: Trace> Trace for BTreeMap<K,V> {
+    fn trace(&self, tracer: &mut FnMut(&GcDep)) {
+        for (k,v) in self {
+            k.trace(tracer);
+            v.trace(tracer);
+        }
+    }
+}
+
+impl<A: Trace> Trace for BTreeSet<A> {
+    fn trace(&self, tracer: &mut FnMut(&GcDep)) {
+        for v in self {
+            v.trace(tracer);
+        }
+    }
+}
+
+impl<K: Eq + Hash + Trace, V: Trace> Trace for HashMap<K,V> {
+    fn trace(&self, tracer: &mut FnMut(&GcDep)) {
+        for (k,v) in self.iter() {
+            k.trace(tracer);
+            v.trace(tracer);
+        }
+    }
+}
+
+impl<A: Eq + Hash + Trace> Trace for HashSet<A> {
+    fn trace(&self, tracer: &mut FnMut(&GcDep)) {
+        for v in self.iter() {
+            v.trace(tracer);
+        }
+    }
+}
+
+impl<A: Trace> Trace for LinkedList<A> {
+    fn trace(&self, tracer: &mut FnMut(&GcDep)) {
+        for v in self.iter() {
+            v.trace(tracer);
+        }
+    }
+}
+
+impl<A: Trace> Trace for VecDeque<A> {
+    fn trace(&self, tracer: &mut FnMut(&GcDep)) {
+        for v in self.iter() {
+            v.trace(tracer);
         }
     }
 }
@@ -261,6 +334,48 @@ impl<A:Trace,B:Trace> Trace for (A,B) {
         let &(ref a, ref b) = self;
         a.trace(f);
         b.trace(f);
+    }
+}
+
+impl<A:Trace,B:Trace,C:Trace> Trace for (A,B,C) {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {
+        let &(ref a, ref b, ref c) = self;
+        a.trace(f);
+        b.trace(f);
+        c.trace(f);
+    }
+}
+
+impl<A:Trace,B:Trace,C:Trace,D:Trace> Trace for (A,B,C,D) {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {
+        let &(ref a, ref b, ref c, ref d) = self;
+        a.trace(f);
+        b.trace(f);
+        c.trace(f);
+        d.trace(f);
+    }
+}
+
+impl<A:Trace,B:Trace,C:Trace,D:Trace,E:Trace> Trace for (A,B,C,D,E) {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {
+        let &(ref a, ref b, ref c, ref d, ref e) = self;
+        a.trace(f);
+        b.trace(f);
+        c.trace(f);
+        d.trace(f);
+        e.trace(f);
+    }
+}
+
+impl<A:Trace,B:Trace,C:Trace,D:Trace,E:Trace,F:Trace> Trace for (A,B,C,D,E,F) {
+    fn trace(&self, f: &mut FnMut(&GcDep)) {
+        let &(ref a, ref b, ref c, ref d, ref e, ref f2) = self;
+        a.trace(f);
+        b.trace(f);
+        c.trace(f);
+        d.trace(f);
+        e.trace(f);
+        f2.trace(f);
     }
 }
 
@@ -288,12 +403,28 @@ impl<A: Finalize> Finalize for GcCell<A> {
         self2.finalize();
     }
 }
+
 impl<A: Finalize> Finalize for Option<A> {
     fn finalize(&mut self) {
         match self {
             &mut Some(ref mut a) => a.finalize(),
             &mut None => ()
         }
+    }
+}
+
+impl<A: Finalize, E: Finalize> Finalize for Result<A,E> {
+    fn finalize(&mut self) {
+        match self {
+            &mut Ok(ref mut a) => a.finalize(),
+            &mut Err(ref mut a) => a.finalize()
+        }
+    }
+}
+
+impl<A: Finalize> Finalize for Box<A> {
+    fn finalize(&mut self) {
+        (**self).finalize();
     }
 }
 
@@ -305,11 +436,111 @@ impl<A: Finalize> Finalize for Vec<A> {
     }
 }
 
+impl<A: Ord + Finalize> Finalize for BinaryHeap<A> {
+    fn finalize(&mut self) {
+        for mut a in self.drain() {
+            a.finalize();
+        }
+    }
+}
+
+impl<K: Clone + Finalize, V: Finalize> Finalize for BTreeMap<K,V> {
+    fn finalize(&mut self) {
+        for (k, v) in self.iter_mut() {
+            k.clone().finalize();
+            v.finalize();
+        }
+    }
+}
+
+impl<A: Clone + Finalize> Finalize for BTreeSet<A> {
+    fn finalize(&mut self) {
+        for v in self.iter() {
+            v.clone().finalize();
+        }
+    }
+}
+
+impl<K: Eq + Hash + Finalize + Clone, V: Finalize> Finalize for HashMap<K,V> {
+    fn finalize(&mut self) {
+        for (k,v) in self.iter_mut() {
+            k.clone().finalize();
+            v.finalize();
+        }
+    }
+}
+
+impl<A: Eq + Hash + Finalize + Clone> Finalize for HashSet<A> {
+    fn finalize(&mut self) {
+        for v in self.iter() {
+            v.clone().finalize();
+        }
+    }
+}
+
+impl<A: Finalize> Finalize for LinkedList<A> {
+    fn finalize(&mut self) {
+        for v in self {
+            v.finalize();
+        }
+    }
+}
+
+impl<A: Finalize> Finalize for VecDeque<A> {
+    fn finalize(&mut self) {
+        for v in self {
+            v.finalize();
+        }
+    }
+}
+
 impl<A:Finalize,B:Finalize> Finalize for (A,B) {
     fn finalize(&mut self) {
         let &mut (ref mut a, ref mut b) = self;
         a.finalize();
         b.finalize();
+    }
+}
+
+impl<A:Finalize,B:Finalize,C:Finalize> Finalize for (A,B,C) {
+    fn finalize(&mut self) {
+        let &mut (ref mut a, ref mut b, ref mut c) = self;
+        a.finalize();
+        b.finalize();
+        c.finalize();
+    }
+}
+
+impl<A:Finalize,B:Finalize,C:Finalize,D:Finalize> Finalize for (A,B,C,D) {
+    fn finalize(&mut self) {
+        let &mut (ref mut a, ref mut b, ref mut c, ref mut d) = self;
+        a.finalize();
+        b.finalize();
+        c.finalize();
+        d.finalize();
+    }
+}
+
+impl<A:Finalize,B:Finalize,C:Finalize,D:Finalize,E:Finalize> Finalize for (A,B,C,D,E) {
+    fn finalize(&mut self) {
+        let &mut (ref mut a, ref mut b, ref mut c, ref mut d, ref mut e) = self;
+        a.finalize();
+        b.finalize();
+        c.finalize();
+        d.finalize();
+        e.finalize();
+    }
+}
+
+impl<A:Finalize,B:Finalize,C:Finalize,D:Finalize,E:Finalize,F:Finalize> Finalize for (A,B,C,D,E,F) {
+    fn finalize(&mut self) {
+        let &mut (ref mut a, ref mut b, ref mut c, ref mut d, ref mut e, ref mut f) = self;
+        a.finalize();
+        b.finalize();
+        c.finalize();
+        d.finalize();
+        e.finalize();
+        f.finalize();
     }
 }
 
