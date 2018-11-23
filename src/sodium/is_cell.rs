@@ -60,7 +60,7 @@ pub trait IsCell<A: Finalize + Trace + Clone + 'static>: Sized {
         &self,
         callback: CALLBACK
     ) -> Listener {
-        self.to_cell().listen(callback)
+        self.to_cell().listen_weak(callback)
     }
 }
 
