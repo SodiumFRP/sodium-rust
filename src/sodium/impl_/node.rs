@@ -33,7 +33,7 @@ pub struct NodeData {
     dependencies: Vec<Node>,
     dependents: Vec<WeakNode>,
     cleanup: Box<FnMut()>,
-    weak_sodium_ctx: WeakSodiumCtx
+    sodium_ctx: SodiumCtx
 }
 
 impl Node {
@@ -97,7 +97,7 @@ impl Node {
                     dependencies: dependencies.clone(),
                     dependents: Vec::new(),
                     cleanup: Box::new(cleanup2),
-                    weak_sodium_ctx: sodium_ctx.downgrade()
+                    sodium_ctx: sodium_ctx.clone()
                 }
             ), desc)
         };
@@ -174,42 +174,27 @@ impl Node {
 
     pub fn mark_dirty(&self) {
         let self_ = unsafe { &*(*self).data.get() };
-        match self_.weak_sodium_ctx.upgrade() {
-            Some(sodium_ctx) => {
-                let sodium_ctx = unsafe { &mut *(*sodium_ctx.data).get() };
-                if !sodium_ctx.to_be_updated_set.contains(self) {
-                    sodium_ctx.to_be_updated.push(self.clone());
-                    sodium_ctx.to_be_updated_set.insert(self.clone());
-                }
-            },
-            None => ()
+        let sodium_ctx = unsafe { &mut *(*self_.sodium_ctx.data).get() };
+        if !sodium_ctx.to_be_updated_set.contains(self) {
+            sodium_ctx.to_be_updated.push(self.clone());
+            sodium_ctx.to_be_updated_set.insert(self.clone());
         }
     }
 
     pub fn undirty(&self) {
         let self_ = unsafe { &*(*self).data.get() };
-        match self_.weak_sodium_ctx.upgrade() {
-            Some(sodium_ctx) => {
-                let sodium_ctx = unsafe { &mut *(*sodium_ctx.data).get() };
-                sodium_ctx.to_be_updated_set.remove(self);
-                sodium_ctx.to_be_updated.clear();
-                for node in &sodium_ctx.to_be_updated_set {
-                    sodium_ctx.to_be_updated.push(node.clone());
-                }
-            },
-            None => ()
+        let sodium_ctx = unsafe { &mut *(*self_.sodium_ctx.data).get() };
+        sodium_ctx.to_be_updated_set.remove(self);
+        sodium_ctx.to_be_updated.clear();
+        for node in &sodium_ctx.to_be_updated_set {
+            sodium_ctx.to_be_updated.push(node.clone());
         }
     }
 
     pub fn is_dirty(&self) -> bool {
         let self_ = unsafe { &*(*self).data.get() };
-        match self_.weak_sodium_ctx.upgrade() {
-            Some(sodium_ctx) => {
-                let sodium_ctx = unsafe { &*(*sodium_ctx.data).get() };
-                sodium_ctx.to_be_updated_set.contains(self)
-            },
-            None => false
-        }
+        let sodium_ctx = unsafe { &mut *(*self_.sodium_ctx.data).get() };
+        sodium_ctx.to_be_updated_set.contains(self)
     }
 
     pub fn rank(&self) -> u32 {
@@ -249,7 +234,7 @@ impl Node {
 
     pub fn sodium_ctx(&self) -> SodiumCtx {
         let self_ = unsafe { &*(*self.data).get() };
-        self_.weak_sodium_ctx.upgrade().unwrap()
+        self_.sodium_ctx.clone()
     }
 
     pub fn downgrade(&self) -> WeakNode {
@@ -261,10 +246,7 @@ impl Node {
 
 impl Drop for NodeData {
     fn drop(&mut self) {
-        match self.weak_sodium_ctx.upgrade() {
-            Some(sodium_ctx) => sodium_ctx.dec_node_count(),
-            None => ()
-        }
+        self.sodium_ctx.dec_node_count();
     }
 }
 
