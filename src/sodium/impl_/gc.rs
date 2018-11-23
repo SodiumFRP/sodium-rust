@@ -192,6 +192,29 @@ pub trait Finalize {
     }
 }
 
+pub struct NoGc<A:?Sized>(A);
+
+impl<A> NoGc<A> {
+    pub fn new(a: A) -> NoGc<A> {
+        NoGc(a)
+    }
+}
+
+impl<A:?Sized> Deref for NoGc<A> {
+    type Target=A;
+    fn deref(&self) -> &A {
+        let NoGc(x) = self;
+        x
+    }
+}
+
+impl<A:?Sized> DerefMut for NoGc<A> {
+    fn deref_mut(&mut self) -> &mut A {
+        let NoGc(x) = self;
+        x
+    }
+}
+
 #[cfg(feature = "nightly")]
 default impl<T> Trace for T {
     #[inline]
@@ -205,6 +228,18 @@ default impl<T> Finalize for T {
     #[inline]
     default fn finalize(&mut self) {
         // default impl: Do nothing.
+    }
+}
+
+impl<A> Trace for NoGc<A> {
+    fn trace(&self, _tracer: &mut FnMut(&GcDep)) {}
+}
+
+impl<A> Finalize for NoGc<A> {}
+
+impl<A:Clone> Clone for NoGc<A> {
+    fn clone(&self) -> Self {
+        NoGc((**self).clone())
     }
 }
 
