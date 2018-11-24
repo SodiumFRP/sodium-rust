@@ -1,8 +1,10 @@
 [package]
 name = "sodium-rust"
 description = "Sodium FRP (Functional Reactive Programming)"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Clinton Selke <clinuxrulz@gmail.com>"]
 license = "BSD-3-Clause"
+repository = "https://github.com/SodiumFRP/sodium-rust"
+keywords = ["frp"]
 
 [dependencies]
