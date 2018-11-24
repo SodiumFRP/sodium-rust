@@ -39,6 +39,9 @@ impl<A: Trace + Finalize + Clone + 'static> CellSink<A> {
 
     pub fn send(&self, value: A) {
         let sodium_ctx = self.cell._node().sodium_ctx();
+        if sodium_ctx.callback_depth() > 0 {
+            panic!("StreamSink::send / CellSink::send can not be called from a sodium callback, consider using SodiumCtx::post to send after the end of transaction.")
+        }
         sodium_ctx.transaction(|| {
             let next_value_op = unsafe { &mut *(*self.next_value_op).get() };
             *next_value_op = Some(sodium_ctx.new_lazy(move || value.clone()));

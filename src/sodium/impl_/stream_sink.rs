@@ -59,6 +59,9 @@ impl<A: Trace + Finalize + Clone + 'static> StreamSink<A> {
 
     pub fn send(&self, value: A) {
         let sodium_ctx = self.node.sodium_ctx();
+        if sodium_ctx.callback_depth() > 0 {
+            panic!("StreamSink::send / CellSink::send can not be called from a sodium callback, consider using SodiumCtx::post to send after the end of transaction.")
+        }
         sodium_ctx.transaction(|| {
             let will_clear = unsafe { &mut *(*self.will_clear).get() };
             if !*will_clear {

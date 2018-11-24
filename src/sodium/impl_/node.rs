@@ -39,7 +39,7 @@ pub struct NodeData {
 impl Node {
     pub fn new<UPDATE: FnMut()->bool + 'static, CLEANUP: FnMut() + 'static>(
         sodium_ctx: &SodiumCtx,
-        update: UPDATE,
+        mut update: UPDATE,
         update_dependencies: Vec<Dep>,
         dependencies: Vec<Node>,
         mut cleanup: CLEANUP,
@@ -53,6 +53,16 @@ impl Node {
             if rank <= dependency.rank {
                 rank = dependency.rank + 1;
             }
+        }
+        let update2;
+        {
+            let sodium_ctx = sodium_ctx.clone();
+            update2 = move || {
+                sodium_ctx.inc_callback_depth();
+                let result = update();
+                sodium_ctx.dec_callback_depth();
+                result
+            };
         }
         let self_: Rc<UnsafeCell<Option<WeakNode>>> = Rc::new(UnsafeCell::new(None));
         let cleanup2;
@@ -92,7 +102,7 @@ impl Node {
                 NodeData {
                     id,
                     rank,
-                    update: Box::new(update),
+                    update: Box::new(update2),
                     update_dependencies,
                     dependencies: dependencies.clone(),
                     dependents: Vec::new(),

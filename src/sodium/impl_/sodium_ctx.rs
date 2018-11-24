@@ -2,7 +2,6 @@ use sodium::gc::Finalize;
 use sodium::gc::GcCtx;
 use sodium::gc::Trace;
 use sodium::impl_::IsLambda0;
-use sodium::impl_::Listener;
 use sodium::impl_::MemoLazy;
 use sodium::impl_::Node;
 use std::cell::UnsafeCell;
@@ -24,6 +23,7 @@ pub struct SodiumCtxData {
     pub gc_ctx: GcCtx,
     pub next_id: u32,
     pub transaction_depth: u32,
+    pub callback_depth: u32,
     pub to_be_updated: BinaryHeap<Node>,
     pub to_be_updated_set: HashSet<Node>,
     pub resort_required: bool,
@@ -40,6 +40,7 @@ impl SodiumCtx {
                 gc_ctx: GcCtx::new(),
                 next_id: 0,
                 transaction_depth: 0,
+                callback_depth: 0,
                 to_be_updated: BinaryHeap::new(),
                 to_be_updated_set: HashSet::new(),
                 resort_required: false,
@@ -98,6 +99,21 @@ impl SodiumCtx {
     pub fn node_count(&self) -> u32 {
         let self_ = unsafe { &*(*self.data).get() };
         self_.node_count
+    }
+
+    pub fn inc_callback_depth(&self) {
+        let self_ = unsafe { &mut *(*self.data).get() };
+        self_.callback_depth = self_.callback_depth + 1;
+    }
+
+    pub fn dec_callback_depth(&self) {
+        let self_ = unsafe { &mut *(*self.data).get() };
+        self_.callback_depth = self_.callback_depth - 1;
+    }
+
+    pub fn callback_depth(&self) -> u32 {
+        let self_ = unsafe { &*(*self.data).get() };
+        self_.callback_depth
     }
 
     pub fn pre<F: FnMut() + 'static>(&self, f: F) {

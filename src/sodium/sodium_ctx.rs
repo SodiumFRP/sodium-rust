@@ -77,6 +77,10 @@ impl SodiumCtx {
         self.impl_.transaction(|| code(&sodium_ctx))
     }
 
+    pub fn post<F: FnMut() + 'static>(&self, f: F) {
+        self.impl_.post(f);
+    }
+
     pub fn node_count(&self) -> u32 {
         self.impl_.node_count()
     }
