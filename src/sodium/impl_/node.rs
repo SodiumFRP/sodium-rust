@@ -1,6 +1,6 @@
 use sodium::impl_::Dep;
+use sodium::impl_::IsLambdaMut0;
 use sodium::impl_::SodiumCtx;
-use sodium::impl_::WeakSodiumCtx;
 use sodium::gc::Finalize;
 use sodium::gc::Gc;
 use sodium::gc::GcDep;
@@ -33,6 +33,7 @@ pub struct NodeData {
     dependencies: Vec<Node>,
     dependents: Vec<WeakNode>,
     cleanup: Box<FnMut()>,
+    additional_cleanups: Vec<Box<IsLambdaMut0<()>>>,
     sodium_ctx: SodiumCtx
 }
 
@@ -75,7 +76,7 @@ impl Node {
                     Some(ref mut self_) => {
                         match self_.upgrade() {
                             Some(self_2) => {
-                                let self_ = unsafe { &*(*self_2.data).get() };
+                                let self_ = unsafe { &mut *(*self_2.data).get() };
                                 self_.dependencies.iter().for_each(|dependency| {
                                     let dependency = unsafe { &mut *(*dependency.data).get() };
                                     dependency.dependents.retain(|dependent| {
@@ -88,6 +89,7 @@ impl Node {
                                         }
                                     });
                                 });
+                                self_.additional_cleanups.iter_mut().for_each(|additional_cleanup| additional_cleanup.apply());
                             },
                             None => ()
                         }
@@ -107,6 +109,7 @@ impl Node {
                     dependencies: dependencies.clone(),
                     dependents: Vec::new(),
                     cleanup: Box::new(cleanup2),
+                    additional_cleanups: Vec::new(),
                     sodium_ctx: sodium_ctx.clone()
                 }
             ), desc)
@@ -120,6 +123,11 @@ impl Node {
             dependency.dependents.push(weak_node.clone());
         }
         node
+    }
+
+    pub fn add_cleanup<CLEANUP:IsLambdaMut0<()>+'static>(&self, cleanup: CLEANUP) {
+        let data = unsafe { &mut *(*self.data).get() };
+        data.additional_cleanups.push(Box::new(cleanup));
     }
 
     pub fn set_update<UPDATE: FnMut()->bool + 'static>(&self, update: UPDATE, update_deps: Vec<Dep>) {
@@ -297,6 +305,12 @@ impl Trace for NodeData {
     fn trace(&self, f: &mut FnMut(&GcDep)) {
         self.dependencies.trace(f);
         self.update_dependencies.iter().for_each(|update_dep| f(&update_dep.gc_dep));
+        self.additional_cleanups.iter().for_each(|additional_cleanup| {
+            let deps = additional_cleanup.deps();
+            for dep in deps {
+                f(&dep.gc_dep)
+            }
+        });
     }
 }
 

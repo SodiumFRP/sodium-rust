@@ -1,6 +1,7 @@
 use sodium::Cell;
 use sodium::CellLoop;
 use sodium::CellSink;
+use sodium::IsLambdaMut0;
 use sodium::IsLambda1;
 use sodium::IsLambda2;
 use sodium::IsLambda3;
@@ -47,6 +48,10 @@ pub trait IsCell<A: Finalize + Trace + Clone + 'static>: Sized {
 
     fn lift6<B,C,D,E,F,G,CB:IsCell<B>,CC:IsCell<C>,CD:IsCell<D>,CE:IsCell<E>,CF:IsCell<F>,FN: IsLambda6<A,B,C,D,E,F,G> + 'static>(&self, cb: CB, cc: CC, cd: CD, ce: CE, cf: CF, f: FN) -> Cell<G> where B: Clone + Trace + Finalize + 'static, C: Clone + Trace + Finalize + 'static, D: Clone + Trace + Finalize + 'static, E: Clone + Trace + Finalize + 'static, F: Clone + Trace + Finalize + 'static, G: Clone + Trace + Finalize + 'static {
         self.to_cell().lift6(cb, cc, cd, ce, cf, f)
+    }
+
+    fn add_cleanup<CLEANUP:IsLambdaMut0<()>+'static>(&self, cleanup: CLEANUP) {
+        self.to_cell().add_cleanup(cleanup);
     }
 
     fn listen<CALLBACK:FnMut(&A)+'static>(

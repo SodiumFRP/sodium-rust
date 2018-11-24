@@ -1,5 +1,6 @@
 use sodium::Cell;
 use sodium::IsCell;
+use sodium::IsLambdaMut0;
 use sodium::IsLambda1;
 use sodium::IsLambda2;
 use sodium::IsLambda3;
@@ -109,6 +110,10 @@ pub trait IsStream<A: Finalize + Trace + Clone + 'static> {
 
     fn snapshot6<B,C,D,E,F,G,CB:IsCell<B>,CC:IsCell<C>,CD:IsCell<D>,CE:IsCell<E>,CF:IsCell<F>,FN:IsLambda6<A,B,C,D,E,F,G> + 'static>(&self, cb: CB, cc: CC, cd: CD, ce: CE, cf: CF, f: FN) -> Stream<G> where B: Trace + Finalize + Clone + 'static, C: Trace + Finalize + Clone + 'static, D: Trace + Finalize + Clone + 'static, E: Trace + Finalize + Clone + 'static, E: Trace + Finalize + Clone + 'static, F: Trace + Finalize + Clone + 'static, G: Trace + Finalize + Clone + 'static {
         self.to_stream().snapshot6(cb, cc, cd, ce, cf, f)
+    }
+
+    fn add_cleanup<CLEANUP:IsLambdaMut0<()>+'static>(&self, cleanup: CLEANUP) {
+        self.to_stream().add_cleanup(cleanup);
     }
 
     fn listen<CALLBACK:FnMut(&A)+'static>(

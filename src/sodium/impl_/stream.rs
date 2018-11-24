@@ -1,6 +1,7 @@
 use sodium::impl_::Cell;
 use sodium::impl_::Dep;
 use sodium::impl_::IsLambda0;
+use sodium::impl_::IsLambdaMut0;
 use sodium::impl_::IsLambda1;
 use sodium::impl_::IsLambda2;
 use sodium::impl_::IsLambda3;
@@ -446,6 +447,10 @@ impl<A: Clone + Trace + Finalize + 'static> Stream<A> {
         deps.push(ce.to_dep());
         deps.push(cf.to_dep());
         self.map(Lambda::new(move |a: &A| f.apply(a, &cb.sample_no_trans(), &cc.sample_no_trans(), &cd.sample_no_trans(), &ce.sample_no_trans(), &cf.sample_no_trans()), deps))
+    }
+
+    pub fn add_cleanup<CLEANUP:IsLambdaMut0<()>+'static>(&self, cleanup: CLEANUP) {
+        self._node().add_cleanup(cleanup);
     }
 
     pub fn listen<CALLBACK:FnMut(&A)+'static>(

@@ -1,6 +1,7 @@
 use sodium::impl_::Dep;
 use sodium::impl_::Lambda;
 use sodium::impl_::IsLambda0;
+use sodium::impl_::IsLambdaMut0;
 use sodium::impl_::IsLambda1;
 use sodium::impl_::IsLambda2;
 use sodium::impl_::IsLambda3;
@@ -403,6 +404,10 @@ impl<A: Clone + Trace + Finalize + 'static> Cell<A> {
             ::switch_s(cca.map(|ca:&Cell<A>| Operational::updates(ca.clone())))
             .merge(Operational::updates(cca.clone()).map(|ca:&Cell<A>| ca._next_value_thunk().get().clone()), |_l,r| r.clone())
             .hold(cca.sample_no_trans().sample_no_trans())
+    }
+
+    pub fn add_cleanup<CLEANUP:IsLambdaMut0<()>+'static>(&self, cleanup: CLEANUP) {
+        self._node().add_cleanup(cleanup);
     }
 
     pub fn listen<CALLBACK:FnMut(&A)+'static>(

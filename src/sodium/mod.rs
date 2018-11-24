@@ -14,6 +14,7 @@ pub use self::impl_::Lambda;
 pub use self::impl_::Listener;
 pub use self::impl_::MemoLazy;
 pub use self::impl_::IsLambda0;
+pub use self::impl_::IsLambdaMut0;
 pub use self::impl_::IsLambda1;
 pub use self::impl_::IsLambda2;
 pub use self::impl_::IsLambda3;

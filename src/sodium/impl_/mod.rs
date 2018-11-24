@@ -4,6 +4,7 @@ pub use self::cell_sink::CellSink;
 pub use self::dep::Dep;
 pub use self::lambda::Lambda;
 pub use self::lambda::IsLambda0;
+pub use self::lambda::IsLambdaMut0;
 pub use self::lambda::IsLambda1;
 pub use self::lambda::IsLambda2;
 pub use self::lambda::IsLambda3;

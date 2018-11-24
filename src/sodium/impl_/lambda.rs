@@ -37,6 +37,11 @@ pub trait IsLambda0<R> {
     fn deps(&self) -> Vec<Dep>;
 }
 
+pub trait IsLambdaMut0<R> {
+    fn apply(&mut self) -> R;
+    fn deps(&self) -> Vec<Dep>;
+}
+
 pub trait IsLambda1<A,R> {
     fn apply(&self, a: &A) -> R;
     fn deps(&self) -> Vec<Dep>;
@@ -69,6 +74,15 @@ pub trait IsLambda6<A,B,C,D,E,F,R> {
 
 impl<R,FN:Fn()->R> IsLambda0<R> for FN {
     fn apply(&self) -> R {
+        self()
+    }
+    fn deps(&self) -> Vec<Dep> {
+        Vec::new()
+    }
+}
+
+impl<R,FN:FnMut()->R> IsLambdaMut0<R> for FN {
+    fn apply(&mut self) -> R {
         self()
     }
     fn deps(&self) -> Vec<Dep> {
@@ -132,6 +146,14 @@ impl<A,B,C,D,E,F,R,FN:Fn(&A,&B,&C,&D,&E,&F)->R> IsLambda6<A,B,C,D,E,F,R> for FN 
 
 impl<R,FN:Fn()->R> IsLambda0<R> for Lambda<FN> {
     fn apply(&self) -> R {
+        (self.apply)()
+    }
+    fn deps(&self) -> Vec<Dep> {
+        self.deps.clone()
+    }
+}
+impl<R,FN:FnMut()->R> IsLambdaMut0<R> for Lambda<FN> {
+    fn apply(&mut self) -> R {
         (self.apply)()
     }
     fn deps(&self) -> Vec<Dep> {
