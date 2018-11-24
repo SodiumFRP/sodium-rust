@@ -5,7 +5,7 @@ Avaliable on crates.io: https://crates.io/crates/sodium-rust
 
 # Pitfalls
 
-To allow for sodium objects or structs containing to be sent through ```StreamSink``` / ```CellSink```, ```Trace``` and ```Finalize``` traits must be implemented for them. If you have a struct that you know will not contain any objects that would cause a cycle in memory, then you can wrap it in ```NoGc``` to avoid having to implement those ```Trace``` and ```Finalize``` traits for it.
+To allow for sodium objects (or structs containing them) to be sent through ```StreamSink``` / ```CellSink```, ```Trace``` and ```Finalize``` traits must be implemented for them. If you have a struct that you know will not contain any sodium objects, then you can wrap it in ```NoGc``` to avoid having to implement those ```Trace``` and ```Finalize``` traits for it.
 
 E.g.
 ```
