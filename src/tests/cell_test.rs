@@ -1,10 +1,10 @@
-use sodium::Cell;
-use sodium::CellSink;
-use sodium::IsCell;
-use sodium::SodiumCtx;
-use tests::assert_memory_freed;
-use std::cell::RefCell;
-use std::rc::Rc;
+use crate::Cell;
+use crate::SodiumCtx;
+use crate::tests::assert_memory_freed;
+use crate::tests::init;
+
+use std::sync::Arc;
+use std::sync::Mutex;
 
 #[test]
 fn constant_cell() {
@@ -12,16 +12,20 @@ fn constant_cell() {
     let sodium_ctx = &mut sodium_ctx;
     {
         let c = sodium_ctx.new_cell(12);
-        let out = Rc::new(RefCell::new(Vec::new()));
+        let out = Arc::new(Mutex::new(Vec::new()));
         let l;
         {
             let out = out.clone();
             l = c.listen(
-                move |a|
-                    (*out).borrow_mut().push(a.clone())
+                move |a: &i32|
+                    out.lock().as_mut().unwrap().push(a.clone())
             );
         }
-        assert_eq!(vec![12], *(*out).borrow());
+        {
+            let l = out.lock();
+            let out: &Vec<i32> = l.as_ref().unwrap();
+            assert_eq!(vec![12], *out);
+        }
         l.unlisten();
     }
     assert_memory_freed(sodium_ctx);
@@ -72,22 +76,27 @@ fn constant_cell() {
 
 #[test]
 fn map_c() {
+    init();
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
     {
         let c = sodium_ctx.new_cell_sink(6);
-        let out = Rc::new(RefCell::new(Vec::new()));
+        let out = Arc::new(Mutex::new(Vec::new()));
         let l;
         {
             let out = out.clone();
-            l = c.map(|a: &i32| format!("{}", a)).listen(
-                move |a|
-                    out.borrow_mut().push(a.clone())
+            l = c.cell().map(|a: &i32| format!("{}", a)).listen(
+                move |a: &String|
+                    out.lock().as_mut().unwrap().push(a.clone())
             );
         }
-        c.send(&8);
+        c.send(8);
         l.unlisten();
-        assert_eq!(vec![String::from("6"), String::from("8")], *out.borrow());
+        {
+            let l = out.lock();
+            let out: &Vec<String> = l.as_ref().unwrap();
+            assert_eq!(vec![String::from("6"), String::from("8")], *out);
+        }
     }
     assert_memory_freed(sodium_ctx);
 }
@@ -98,27 +107,28 @@ fn lift_cells_in_switch_c() {
     let sodium_ctx = &mut sodium_ctx;
     let l;
     {
-        let mut sodium_ctx2 = sodium_ctx.clone();
-        let sodium_ctx2 = &mut sodium_ctx2;
-        let out = Rc::new(RefCell::new(Vec::new()));
+        let out = Arc::new(Mutex::new(Vec::new()));
         let s = sodium_ctx.new_cell_sink(0);
-        let c = sodium_ctx.new_cell(sodium_ctx2.new_cell(1));
+        let c = sodium_ctx.new_cell(sodium_ctx.new_cell(1));
         let r;
         {
             let s = s.clone();
-            r = c.map(move |c2:&Cell<i32>| c2.lift2(&s, |v1:&i32, v2:&i32| *v1 + *v2));
+            r = c.map(move |c2:&Cell<i32>| c2.lift2(&s.cell(), |v1:&i32, v2:&i32| *v1 + *v2));
         }
         {
             let out = out.clone();
             l = Cell::switch_c(&r).listen(move |a:&i32| {
-                out.borrow_mut().push(*a);
+                out.lock().as_mut().unwrap().push(*a);
             });
         }
-        s.send(&2);
-        s.send(&4);
-        assert_eq!(vec![1, 3, 5], *out.borrow());
+        s.send(2);
+        s.send(4);
+        {
+            let l = out.lock();
+            let out: &Vec<i32> = l.as_ref().unwrap();
+            assert_eq!(vec![1, 3, 5], *out);
+        }
     }
-    l.debug();
     l.unlisten();
     assert_memory_freed(sodium_ctx);
 }
