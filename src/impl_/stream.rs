@@ -418,6 +418,7 @@ impl<A:Send+'static> Stream<A> {
 
     pub fn _listen<K:IsLambda1<A,()>+Send+Sync+'static>(&self, mut k: K, weak: bool) -> Listener {
         let self_ = self.clone();
+        let f_deps = lambda1_deps(&k);
         let node =
             Node::new(
                 &self.sodium_ctx(),
@@ -432,6 +433,7 @@ impl<A:Send+'static> Stream<A> {
                 vec![self.box_clone()]
             );
         IsNode::add_update_dependencies(&node, vec![self.to_dep()]);
+        IsNode::add_update_dependencies(&node, f_deps);
         Listener::new(&self.sodium_ctx(), weak, node)
     }
 

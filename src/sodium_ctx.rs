@@ -6,6 +6,7 @@ use crate::StreamSink;
 use crate::StreamLoop;
 use crate::impl_::sodium_ctx::SodiumCtx as SodiumCtxImpl;
 
+#[derive(Clone)]
 pub struct SodiumCtx {
     pub impl_: SodiumCtxImpl
 }
