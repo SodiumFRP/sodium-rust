@@ -31,32 +31,32 @@ pub fn lambda6_deps<A,B,C,D,E,F,G,FN:IsLambda6<A,B,C,D,E,F,G>>(f: &FN) -> Vec<De
 
 pub trait IsLambda1<A,B> {
     fn call(&mut self, a: &A) -> B;
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>>;
+    fn deps_op(&self) -> Option<&Vec<Dep>>;
 }
 
 pub trait IsLambda2<A,B,C> {
     fn call(&mut self, a: &A, b: &B) -> C;
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>>;
+    fn deps_op(&self) -> Option<&Vec<Dep>>;
 }
 
 pub trait IsLambda3<A,B,C,D> {
     fn call(&mut self, a: &A, b: &B, c: &C) -> D;
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>>;
+    fn deps_op(&self) -> Option<&Vec<Dep>>;
 }
 
 pub trait IsLambda4<A,B,C,D,E> {
     fn call(&mut self, a: &A, b: &B, c: &C, d: &D) -> E;
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>>;
+    fn deps_op(&self) -> Option<&Vec<Dep>>;
 }
 
 pub trait IsLambda5<A,B,C,D,E,F> {
     fn call(&mut self, a: &A, b: &B, c: &C, d: &D, e: &E) -> F;
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>>;
+    fn deps_op(&self) -> Option<&Vec<Dep>>;
 }
 
 pub trait IsLambda6<A,B,C,D,E,F,G> {
     fn call(&mut self, a: &A, b: &B, c: &C, d: &D, e: &E, f: &F) -> G;
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>>;
+    fn deps_op(&self) -> Option<&Vec<Dep>>;
 }
 
 impl<A,B,FN:FnMut(&A)->B> IsLambda1<A,B> for Lambda<FN> {
@@ -65,7 +65,7 @@ impl<A,B,FN:FnMut(&A)->B> IsLambda1<A,B> for Lambda<FN> {
         (self.f)(a)
     }
 
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>> {
+    fn deps_op(&self) -> Option<&Vec<Dep>> {
         Some(&self.deps)
     }
 }
@@ -76,7 +76,7 @@ impl<A,B,FN:FnMut(&A)->B> IsLambda1<A,B> for FN {
         self(a)
     }
 
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>> {
+    fn deps_op(&self) -> Option<&Vec<Dep>> {
         None
     }
 }
@@ -87,7 +87,7 @@ impl<A,B,C,FN:FnMut(&A,&B)->C> IsLambda2<A,B,C> for Lambda<FN> {
         (self.f)(a,b)
     }
 
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>> {
+    fn deps_op(&self) -> Option<&Vec<Dep>> {
         Some(&self.deps)
     }
 }
@@ -98,7 +98,7 @@ impl<A,B,C,FN:FnMut(&A,&B)->C> IsLambda2<A,B,C> for FN {
         self(a,b)
     }
 
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>> {
+    fn deps_op(&self) -> Option<&Vec<Dep>> {
         None
     }
 }
@@ -109,7 +109,7 @@ impl<A,B,C,D,FN:FnMut(&A,&B,&C)->D> IsLambda3<A,B,C,D> for Lambda<FN> {
         (self.f)(a,b,c)
     }
 
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>> {
+    fn deps_op(&self) -> Option<&Vec<Dep>> {
         Some(&self.deps)
     }
 }
@@ -120,7 +120,7 @@ impl<A,B,C,D,FN:FnMut(&A,&B,&C)->D> IsLambda3<A,B,C,D> for FN {
         self(a,b,c)
     }
 
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>> {
+    fn deps_op(&self) -> Option<&Vec<Dep>> {
         None
     }
 }
@@ -131,7 +131,7 @@ impl<A,B,C,D,E,FN:FnMut(&A,&B,&C,&D)->E> IsLambda4<A,B,C,D,E> for Lambda<FN> {
         (self.f)(a,b,c,d)
     }
 
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>> {
+    fn deps_op(&self) -> Option<&Vec<Dep>> {
         Some(&self.deps)
     }
 }
@@ -142,7 +142,7 @@ impl<A,B,C,D,E,FN:FnMut(&A,&B,&C,&D)->E> IsLambda4<A,B,C,D,E> for FN {
         self(a,b,c,d)
     }
 
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>> {
+    fn deps_op(&self) -> Option<&Vec<Dep>> {
         None
     }
 }
@@ -153,7 +153,7 @@ impl<A,B,C,D,E,F,FN:FnMut(&A,&B,&C,&D,&E)->F> IsLambda5<A,B,C,D,E,F> for Lambda<
         (self.f)(a,b,c,d,e)
     }
 
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>> {
+    fn deps_op(&self) -> Option<&Vec<Dep>> {
         Some(&self.deps)
     }
 }
@@ -164,7 +164,7 @@ impl<A,B,C,D,E,F,FN:FnMut(&A,&B,&C,&D,&E)->F> IsLambda5<A,B,C,D,E,F> for FN {
         self(a,b,c,d,e)
     }
 
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>> {
+    fn deps_op(&self) -> Option<&Vec<Dep>> {
         None
     }
 }
@@ -175,7 +175,7 @@ impl<A,B,C,D,E,F,G,FN:FnMut(&A,&B,&C,&D,&E,&F)->G> IsLambda6<A,B,C,D,E,F,G> for 
         (self.f)(a,b,c,d,e,f)
     }
 
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>> {
+    fn deps_op(&self) -> Option<&Vec<Dep>> {
         Some(&self.deps)
     }
 }
@@ -186,7 +186,7 @@ impl<A,B,C,D,E,F,G,FN:FnMut(&A,&B,&C,&D,&E,&F)->G> IsLambda6<A,B,C,D,E,F,G> for 
         self(a,b,c,d,e,f)
     }
 
-    fn deps_op<'r>(&'r self) -> Option<&'r Vec<Dep>> {
+    fn deps_op(&self) -> Option<&Vec<Dep>> {
         None
     }
 }
