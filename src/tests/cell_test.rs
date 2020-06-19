@@ -211,6 +211,33 @@ fn lift() {
     assert_memory_freed(sodium_ctx);
 }
 
+#[test]
+fn lift_glitch() {
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
+    let l;
+    {
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let a = sodium_ctx.new_cell_sink(1);
+        let ac = a.cell();
+        let a3 = ac.map(|x: &i32| x * 3);
+        let a5 = ac.map(|x: &i32| x * 5);
+        let b = a3.lift2(&a5, |x: &i32, y: &i32| format!("{} {}", x, y));
+        {
+            let out = out.clone();
+            l = b.listen(move |a: &String| out.lock().as_mut().unwrap().push(a.clone()));
+        }
+        a.send(2);
+        {
+            let l = out.lock();
+            let out: &Vec<String> = l.as_ref().unwrap();
+            assert_eq!(vec!["3 5", "6 10"], *out);
+        }
+    }
+    l.unlisten();
+    assert_memory_freed(sodium_ctx);
+}
+
 /*
   "should test apply"(done) {
     const cf = new CellSink<(a: number) => string>(a => "1 " + a),
@@ -228,25 +255,6 @@ fn lift() {
     kill();
 
     expect(["1 5", "12 5", "12 6"]).to.deep.equal(out);
-  };
-
-  "should test liftGlitch"(done) {
-    const a = new CellSink(1),
-      a3 = a.map(x => x * 3),
-      a5 = a.map(x => x * 5),
-      b = a3.lift(a5, (x, y) => x + " " + y),
-      out: string[] = [],
-      kill = b.listen(x => {
-        out.push(x);
-        if (out.length === 2) {
-          done();
-        }
-
-      });
-    a.send(2);
-    kill();
-
-    expect(["3 5", "6 10"]).to.deep.equal(out);
   };
 
   "should test liftFromSimultaneous"(done) {
