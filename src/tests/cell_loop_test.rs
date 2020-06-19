@@ -7,8 +7,8 @@ use std::sync::Mutex;
 
 #[test]
 fn loop_value_snapshot() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let out = Arc::new(Mutex::new(Vec::new()));
         let l;
@@ -44,8 +44,8 @@ fn loop_value_snapshot() {
 
 #[test]
 fn loop_value_hold() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let out = Arc::new(Mutex::new(Vec::new()));
         let value = sodium_ctx.transaction(
@@ -77,8 +77,8 @@ fn loop_value_hold() {
 
 #[test]
 fn lift_loop() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let out = Arc::new(Mutex::new(Vec::new()));
         let b = sodium_ctx.new_cell_sink("kettle");

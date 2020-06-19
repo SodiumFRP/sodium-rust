@@ -12,8 +12,8 @@ use std::sync::Mutex;
 
 #[test]
 fn map() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let s: StreamSink<i32> = sodium_ctx.new_stream_sink();
         let out = Arc::new(Mutex::new(Vec::new()));
@@ -41,8 +41,8 @@ fn map() {
 #[test]
 fn map_to() {
     init();
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     let l;
     {
         let s = sodium_ctx.new_stream_sink();
@@ -71,8 +71,8 @@ fn map_to() {
 
 #[test]
 fn merge_non_simultaneous() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let s1 = sodium_ctx.new_stream_sink();
         let s2 = sodium_ctx.new_stream_sink();
@@ -102,8 +102,8 @@ fn merge_non_simultaneous() {
 
 #[test]
 fn merge_simultaneous() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let s1 = sodium_ctx.new_stream_sink_with_coalescer(|_l, r| *r);
         let s2 = sodium_ctx.new_stream_sink_with_coalescer(|_l, r| *r);
@@ -165,8 +165,8 @@ fn merge_simultaneous() {
 
 #[test]
 fn coalesce() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let s = sodium_ctx.new_stream_sink_with_coalescer(|a, b| *a + *b);
         let out = Arc::new(Mutex::new(Vec::new()));
@@ -201,8 +201,8 @@ fn coalesce() {
 
 #[test]
 fn filter() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let s = sodium_ctx.new_stream_sink();
         let out = Arc::new(Mutex::new(Vec::new()));
@@ -232,8 +232,8 @@ fn filter() {
 
 #[test]
 fn filter_option() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let s: StreamSink<Option<&'static str>> = sodium_ctx.new_stream_sink();
         let out = Arc::new(Mutex::new(Vec::new()));
@@ -264,8 +264,8 @@ fn filter_option() {
 #[test]
 fn merge() {
     init();
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let sa = sodium_ctx.new_stream_sink();
         let sb =
@@ -301,8 +301,8 @@ fn merge() {
 
 #[test]
 fn loop_() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let sa = sodium_ctx.new_stream_sink();
         let sc = sodium_ctx.transaction(
@@ -346,8 +346,8 @@ fn loop_() {
 #[test]
 fn gate() {
     init();
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let s = sodium_ctx.new_stream_sink();
         let pred = sodium_ctx.new_cell_sink(true);
@@ -381,8 +381,8 @@ fn gate() {
 
 #[test]
 fn collect() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     let l;
     {
         let ea = sodium_ctx.new_stream_sink();
@@ -414,8 +414,8 @@ fn collect() {
 #[test]
 fn accum() {
     init();
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     let l;
     {
         let ea = sodium_ctx.new_stream_sink();
@@ -446,8 +446,8 @@ fn accum() {
 
 #[test]
 fn once() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let s = sodium_ctx.new_stream_sink();
         let out = Arc::new(Mutex::new(Vec::new()));
@@ -479,8 +479,8 @@ fn once() {
 #[test]
 fn defer() {
     init();
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let s = sodium_ctx.new_stream_sink();
         let c = s.stream().hold(" ");
@@ -512,8 +512,8 @@ fn defer() {
 
 #[test]
 fn hold() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let s = sodium_ctx.new_stream_sink();
         let c = s.stream().hold(0);
@@ -543,8 +543,8 @@ fn hold() {
 #[test]
 fn hold_is_delayed() {
     init();
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let s = sodium_ctx.new_stream_sink();
         let h = s.stream().hold(0);
@@ -574,8 +574,8 @@ fn hold_is_delayed() {
 
 #[test]
 fn switch_c() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     let l;
     {
         #[derive(Clone)]
@@ -638,8 +638,8 @@ fn switch_c() {
 
 #[test]
 fn switch_s() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     let l;
     {
         #[derive(Clone)]
@@ -706,8 +706,8 @@ fn switch_s() {
 
 #[test]
 fn switch_s_simultaneous() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         #[derive(Clone)]
         struct SS2 {
@@ -767,8 +767,8 @@ fn switch_s_simultaneous() {
 #[test]
 fn loop_cell() {
     init();
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let sa = sodium_ctx.new_stream_sink();
         let sum_out = sodium_ctx.transaction(

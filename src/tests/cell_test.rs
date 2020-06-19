@@ -8,8 +8,8 @@ use std::sync::Mutex;
 
 #[test]
 fn constant_cell() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let c = sodium_ctx.new_cell(12);
         let out = Arc::new(Mutex::new(Vec::new()));
@@ -77,8 +77,8 @@ fn constant_cell() {
 #[test]
 fn map_c() {
     init();
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     {
         let c = sodium_ctx.new_cell_sink(6);
         let out = Arc::new(Mutex::new(Vec::new()));
@@ -103,8 +103,8 @@ fn map_c() {
 
 #[test]
 fn lift_cells_in_switch_c() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
     let l;
     {
         let out = Arc::new(Mutex::new(Vec::new()));
