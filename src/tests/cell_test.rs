@@ -238,6 +238,36 @@ fn lift_glitch() {
     assert_memory_freed(sodium_ctx);
 }
 
+#[test]
+fn lift_from_simultaneous() {
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
+    let l;
+    {
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let (b1, b2) = sodium_ctx.transaction(|| {
+            let b1 = sodium_ctx.new_cell_sink(3);
+            let b2 = sodium_ctx.new_cell_sink(5);
+            b2.send(7);
+            (b1, b2)
+        });
+        {
+            let out = out.clone();
+            l = b1
+                .cell()
+                .lift2(&b2.cell(), |x: &i32, y: &i32| x + y)
+                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(a.clone()));
+        }
+        {
+            let l = out.lock();
+            let out: &Vec<i32> = l.as_ref().unwrap();
+            assert_eq!(vec![10], *out);
+        }
+    }
+    l.unlisten();
+    assert_memory_freed(sodium_ctx);
+}
+
 /*
   "should test apply"(done) {
     const cf = new CellSink<(a: number) => string>(a => "1 " + a),
@@ -256,26 +286,4 @@ fn lift_glitch() {
 
     expect(["1 5", "12 5", "12 6"]).to.deep.equal(out);
   };
-
-  "should test liftFromSimultaneous"(done) {
-    const t = Transaction.run(() => {
-      const b1 = new CellSink(3),
-        b2 = new CellSink(5);
-      b2.send(7);
-      return new Tuple2(b1, b2);
-    });
-
-    const b1 = t.a,
-      b2 = t.b,
-      out: number[] = [],
-      kill = b1.lift(b2, (x, y) => x + y)
-        .listen(a => {
-          out.push(a);
-          done();
-        });
-    kill();
-
-    expect([10]).to.deep.equal(out);
-  };
-
 }*/
