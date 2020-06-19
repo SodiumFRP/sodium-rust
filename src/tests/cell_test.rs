@@ -180,6 +180,37 @@ fn send_before_listen() {
     assert_memory_freed(sodium_ctx);
 }
 
+#[test]
+fn lift() {
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
+    let l;
+    {
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let a = sodium_ctx.new_cell_sink(1);
+        let b = sodium_ctx.new_cell_sink(5);
+        {
+            let out = out.clone();
+            l = a
+                .cell()
+                .lift2(&b.cell(), |aa: &i32, bb: &i32| format!("{} {}", aa, bb))
+                .listen(move |a: &String| out.lock().as_mut().unwrap().push(a.clone()));
+        }
+        a.send(12);
+        b.send(6);
+        {
+            let l = out.lock();
+            let out: &Vec<String> = l.as_ref().unwrap();
+            assert_eq!(
+                vec!["1 5", "12 5", "12 6"],
+                out.iter().map(|s| s.as_str()).collect::<Vec<&str>>()
+            );
+        }
+    }
+    l.unlisten();
+    assert_memory_freed(sodium_ctx);
+}
+
 /*
   "should test apply"(done) {
     const cf = new CellSink<(a: number) => string>(a => "1 " + a),
@@ -194,24 +225,6 @@ fn send_before_listen() {
 
     cf.send(a => "12 " + a);
     ca.send(6);
-    kill();
-
-    expect(["1 5", "12 5", "12 6"]).to.deep.equal(out);
-  };
-
-  "should test lift"(done) {
-    const a = new CellSink<number>(1),
-      b = new CellSink<number>(5),
-      out: string[] = [],
-      kill = a.lift(b, (aa, bb) => aa + " " + bb)
-        .listen(a => {
-          out.push(a);
-          if (out.length === 3) {
-            done();
-          }
-        });
-    a.send(12);
-    b.send(6);
     kill();
 
     expect(["1 5", "12 5", "12 6"]).to.deep.equal(out);
