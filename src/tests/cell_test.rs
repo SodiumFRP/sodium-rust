@@ -152,25 +152,35 @@ fn lift_cells_in_switch_c() {
     assert_memory_freed(sodium_ctx);
 }
 
-/*
-  "should throw an error on mapCLateListen"() {
-    const c = new CellSink<number>(6),
-      out: string[] = [],
-      cm = c.map(a => "" + a);
-
-    try {
-      c.send(2);
-      const kill = cm.listen(a => out.push(a));
-      c.send(8);
-      kill();
-    } catch (e) {
-
-      expect(e.message).to.equal('send() was invoked before listeners were registered');
+#[test]
+fn send_before_listen() {
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
+    let l;
+    {
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let c = sodium_ctx.new_cell_sink(9_i32);
+        let cm = c.cell().map(|a: &i32| format!("{}", a));
+        c.send(2);
+        {
+            let out = out.clone();
+            l = cm.listen(move |a: &String| out.lock().as_mut().unwrap().push(a.clone()));
+            c.send(8);
+        }
+        {
+            let l = out.lock();
+            let out: &Vec<String> = l.as_ref().unwrap();
+            assert_eq!(
+                vec!["2", "8"],
+                out.iter().map(|s| s.as_str()).collect::<Vec<&str>>()
+            );
+        }
     }
+    l.unlisten();
+    assert_memory_freed(sodium_ctx);
+}
 
-    //assertEquals(["2", "8"], out);
-  };
-
+/*
   "should test apply"(done) {
     const cf = new CellSink<(a: number) => string>(a => "1 " + a),
       ca = new CellSink<number>(5),
