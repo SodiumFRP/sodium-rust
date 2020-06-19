@@ -67,24 +67,31 @@ fn snapshot() {
     assert_memory_freed(sodium_ctx);
 }
 
-/*
-  'should test values'(done) {
-    const c = new CellSink<number>(9),
-      out: number[] = [],
-      kill = c.listen(a => {
-        out.push(a);
-        if (out.length === 3) {
-          done();
+#[test]
+fn values() {
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
+    {
+        let c = sodium_ctx.new_cell_sink(9_i32);
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = c
+                .cell()
+                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(a.clone()));
         }
-      });
-
-    c.send(2);
-    c.send(7);
-    kill();
-
-    expect([9, 2, 7]).to.deep.equal(out);
-  };
-*/
+        c.send(2);
+        c.send(7);
+        {
+            let l = out.lock();
+            let out: &Vec<i32> = l.as_ref().unwrap();
+            assert_eq!(vec![9, 2, 7], *out);
+        }
+        l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
 
 #[test]
 fn map_c() {
