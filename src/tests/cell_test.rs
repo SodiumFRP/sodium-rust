@@ -31,31 +31,43 @@ fn constant_cell() {
     assert_memory_freed(sodium_ctx);
 }
 
+#[test]
+fn snapshot() {
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
+    {
+        let s = sodium_ctx.new_stream_sink::<usize>();
+        let c = sodium_ctx.new_cell_sink(0);
+
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = s
+                .stream()
+                .snapshot(&c.cell(), |x: &usize, y: &usize| format!("{} {}", x, y))
+                .listen(move |a: &String| out.lock().as_mut().unwrap().push(a.clone()));
+        }
+        s.send(100);
+        c.send(2);
+        s.send(200);
+        c.send(9);
+        c.send(1);
+        s.send(300);
+        {
+            let l = out.lock();
+            let out: &Vec<String> = l.as_ref().unwrap();
+            assert_eq!(
+                vec!["100 0", "200 2", "300 1"],
+                out.iter().map(|s| s.as_str()).collect::<Vec<&str>>()
+            );
+        }
+        l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
 
 /*
- 'should test snapshot'(done) {
-    const c = new CellSink<number>(0),
-      s = new StreamSink<number>(),
-      out: string[] = [],
-      kill = s.snapshot(c, (x, y) => x + " " + y)
-        .listen(a => {
-          out.push(a);
-          if (out.length === 3) {
-            done();
-          }
-        });
-
-    s.send(100);
-    c.send(2);
-    s.send(200);
-    c.send(9);
-    c.send(1);
-    s.send(300);
-    kill();
-
-    expect(["100 0", "200 2", "300 1"]).to.deep.equal(out);
-  };
-
   'should test values'(done) {
     const c = new CellSink<number>(9),
       out: number[] = [],
