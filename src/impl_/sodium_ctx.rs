@@ -32,8 +32,10 @@ pub struct ThreadedMode {
     pub spawner: ThreadSpawner
 }
 
+type SpawnFn = Box<dyn FnOnce()+Send>;
+
 pub struct ThreadSpawner {
-    pub spawn_fn: Box<dyn Fn(Box<dyn FnOnce()+Send>)->ThreadJoiner<()>+Send+Sync>
+    pub spawn_fn: Box<dyn Fn(SpawnFn)->ThreadJoiner<()>+Send+Sync>
 }
 
 pub struct ThreadJoiner<R> {
