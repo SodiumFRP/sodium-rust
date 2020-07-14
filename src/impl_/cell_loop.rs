@@ -44,8 +44,8 @@ impl<A:Send+Clone+'static> CellLoop<A> {
         let stream_loop = StreamLoop::new(sodium_ctx);
         let stream = stream_loop.stream();
         CellLoop {
-            init_value_op: init_value_op,
-            stream_loop: stream_loop,
+            init_value_op,
+            stream_loop,
             cell: stream.hold_lazy(init_value.clone()),
         }
     }

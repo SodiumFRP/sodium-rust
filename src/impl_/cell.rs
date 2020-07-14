@@ -180,7 +180,7 @@ impl<A:Send+'static> Cell<A> {
         }
         let c = Cell {
             data: cell_data,
-            node: node
+            node
         };
         c_forward_ref.assign(&c);
         c
