@@ -226,7 +226,7 @@ impl<A:Send+'static> Stream<A> {
 
     pub fn map<B:Send+'static,FN:IsLambda1<A,B>+Send+Sync+'static>(&self, mut f: FN) -> Stream<B> {
         let self_ = self.clone();
-        let sodium_ctx = self.sodium_ctx().clone();
+        let sodium_ctx = self.sodium_ctx();
         Stream::_new(
             &sodium_ctx,
             |s: StreamWeakForwardRef<B>| {
@@ -252,7 +252,7 @@ impl<A:Send+'static> Stream<A> {
 
     pub fn filter<PRED:IsLambda1<A,bool>+Send+Sync+'static>(&self, mut pred: PRED) -> Stream<A> where A: Clone {
         let self_ = self.clone();
-        let sodium_ctx = self.sodium_ctx().clone();
+        let sodium_ctx = self.sodium_ctx();
         Stream::_new(
             &sodium_ctx,
             |s: StreamWeakForwardRef<A>| {
@@ -286,7 +286,7 @@ impl<A:Send+'static> Stream<A> {
         let s2 = s2.clone();
         let s2_node = s2.box_clone();
         let s2_dep = s2.to_dep();
-        let sodium_ctx = self.sodium_ctx().clone();
+        let sodium_ctx = self.sodium_ctx();
         Stream::_new(
             &sodium_ctx,
             |s: StreamWeakForwardRef<A>| {
@@ -386,7 +386,7 @@ impl<A:Send+'static> Stream<A> {
 
     pub fn once(&self) -> Stream<A> where A: Clone {
         let self_ = self.clone();
-        let sodium_ctx = self.sodium_ctx().clone();
+        let sodium_ctx = self.sodium_ctx();
         Stream::_new(
             &sodium_ctx,
             |s: StreamWeakForwardRef<A>| {

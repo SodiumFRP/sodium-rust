@@ -36,7 +36,7 @@ impl<A:Send+Clone+'static> CellLoop<A> {
                 let mut result_op: Option<A> = None;
                 mem::swap(&mut result_op, init_value_op);
                 if let Some(init_value) = result_op {
-                    return init_value.clone();
+                    return init_value;
                 }
                 panic!("CellLoop sampled before looped.");
             });
@@ -46,7 +46,7 @@ impl<A:Send+Clone+'static> CellLoop<A> {
         CellLoop {
             init_value_op,
             stream_loop,
-            cell: stream.hold_lazy(init_value.clone()),
+            cell: stream.hold_lazy(init_value),
         }
     }
 
