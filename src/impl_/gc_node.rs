@@ -75,7 +75,7 @@ impl GcCtx {
     pub fn make_id(&self) -> u32 {
         self.with_data(|data: &mut GcCtxData| {
             let id = data.next_id;
-            data.next_id = data.next_id + 1;
+            data.next_id += 1;
             id
         })
     }

@@ -353,7 +353,7 @@ impl fmt::Debug for dyn IsNode+Sync+Sync {
                     node_id = existing;
                 } else {
                     node_id = next_id;
-                    next_id = next_id + 1;
+                    next_id += 1;
                     node_id_map.insert(node_data, node_id);
                 }
                 return format!("N{}", node_id);

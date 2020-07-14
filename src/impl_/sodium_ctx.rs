@@ -142,12 +142,12 @@ impl SodiumCtx {
 
     pub fn transaction<R,K:FnOnce()->R>(&self, k:K) -> R {
         self.with_data(|data: &mut SodiumCtxData| {
-            data.transaction_depth = data.transaction_depth + 1;
+            data.transaction_depth += 1;
         });
         let result = k();
         let is_end_of_transaction =
             self.with_data(|data: &mut SodiumCtxData| {
-                data.transaction_depth = data.transaction_depth - 1;
+                data.transaction_depth -= 1;
                 data.transaction_depth == 0
             });
         if is_end_of_transaction {
@@ -173,7 +173,7 @@ impl SodiumCtx {
             data.pre_post.push(Box::new(k));
         });
     }
-    
+
     pub fn post<K:FnMut()+Send+'static>(&self, k:K) {
         self.with_data(|data: &mut SodiumCtxData| {
             data.post.push(Box::new(k));
@@ -191,11 +191,11 @@ impl SodiumCtx {
     }
 
     pub fn inc_node_count(&self) {
-        self.with_node_count(|node_count: &mut usize| *node_count = *node_count + 1);
+        self.with_node_count(|node_count: &mut usize| *node_count += 1);
     }
 
     pub fn dec_node_count(&self) {
-        self.with_node_count(|node_count: &mut usize| *node_count = *node_count - 1);
+        self.with_node_count(|node_count: &mut usize| *node_count -= 1);
     }
 
     pub fn with_node_count<R,K:FnOnce(&mut usize)->R>(&self, k: K) -> R {
@@ -209,11 +209,11 @@ impl SodiumCtx {
     }
 
     pub fn inc_node_ref_count(&self) {
-        self.with_node_ref_count(|node_ref_count: &mut usize| *node_ref_count = *node_ref_count + 1);
+        self.with_node_ref_count(|node_ref_count: &mut usize| *node_ref_count += 1);
     }
 
     pub fn dec_node_ref_count(&self) {
-        self.with_node_ref_count(|node_ref_count: &mut usize| *node_ref_count = *node_ref_count - 1);
+        self.with_node_ref_count(|node_ref_count: &mut usize| *node_ref_count -= 1);
     }
 
     pub fn with_node_ref_count<R,K:FnOnce(&mut usize)->R>(&self, k: K) -> R {
@@ -224,8 +224,8 @@ impl SodiumCtx {
 
     pub fn end_of_transaction(&self) {
         self.with_data(|data: &mut SodiumCtxData| {
-            data.transaction_depth = data.transaction_depth + 1;
-            data.allow_collect_cycles_counter = data.allow_collect_cycles_counter + 1;
+            data.transaction_depth += 1;
+            data.allow_collect_cycles_counter += 1;
         });
         loop {
             let changed_nodes: Vec<Box<dyn IsNode>> =
@@ -242,7 +242,7 @@ impl SodiumCtx {
             }
         }
         self.with_data(|data: &mut SodiumCtxData| {
-            data.transaction_depth = data.transaction_depth - 1;
+            data.transaction_depth -= 1;
         });
         // pre_post
         let pre_post =
@@ -266,7 +266,7 @@ impl SodiumCtx {
         }
         let allow_collect_cycles =
             self.with_data(|data: &mut SodiumCtxData| {
-                data.allow_collect_cycles_counter = data.allow_collect_cycles_counter - 1;
+                data.allow_collect_cycles_counter -= 1;
                 data.allow_collect_cycles_counter == 0
             });
         if allow_collect_cycles {
