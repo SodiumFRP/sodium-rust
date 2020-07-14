@@ -1,3 +1,5 @@
+#![allow(clippy::many_single_char_names)]
+
 use crate::impl_::dep::Dep;
 
 pub struct Lambda<FN> {
