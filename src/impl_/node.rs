@@ -310,7 +310,7 @@ impl Node {
         }
         sodium_ctx.inc_node_ref_count();
         sodium_ctx.inc_node_count();
-        return result;
+        result
     }
 
     pub fn downgrade2(this: &Self) -> WeakNode {
@@ -371,7 +371,7 @@ impl fmt::Debug for dyn IsNode+Sync+Sync {
             pub fn is_visited(&self, node: &Box<dyn IsNode+Send+Sync>) -> bool {
                 let node_data: &NodeData = &node.data();
                 let node_data: *const NodeData = node_data;
-                return self.visited.contains(&node_data);
+                self.visited.contains(&node_data)
             }
             pub fn mark_visitied(&mut self, node: &Box<dyn IsNode+Send+Sync>) {
                 let node_data: &NodeData = &node.data();
@@ -424,6 +424,6 @@ impl fmt::Debug for dyn IsNode+Sync+Sync {
             }
             writeln!(f, "])")?;
         }
-        return fmt::Result::Ok(());
+        fmt::Result::Ok(())
     }
 }

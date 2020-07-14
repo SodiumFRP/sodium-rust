@@ -380,7 +380,7 @@ impl<A:Send+'static> Stream<A> {
                 sodium_ctx.post(move || ss.send(a.clone()))
             });
             IsNode::add_keep_alive(&s, &listener.gc_node);
-            return s;
+            s
         })
     }
 

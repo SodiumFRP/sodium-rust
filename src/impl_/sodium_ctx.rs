@@ -53,7 +53,7 @@ impl ThreadedMode {
                 *r = Some(r2);
             }));
         }
-        return ThreadJoiner {
+        ThreadJoiner {
             join_fn: Box::new(move || {
                 (thread_joiner.join_fn)();
                 let mut l = r.lock();
@@ -62,7 +62,7 @@ impl ThreadedMode {
                 mem::swap(r, &mut r2);
                 r2.unwrap()
             })
-        };
+        }
     }
 }
 
@@ -148,12 +148,12 @@ impl SodiumCtx {
         let is_end_of_transaction =
             self.with_data(|data: &mut SodiumCtxData| {
                 data.transaction_depth = data.transaction_depth - 1;
-                return data.transaction_depth == 0;
+                data.transaction_depth == 0
             });
         if is_end_of_transaction {
             self.end_of_transaction();
         }
-        return result;
+        result
     }
 
     pub fn add_dependents_to_changed_nodes(&self, node: &dyn IsNode) {
@@ -232,7 +232,7 @@ impl SodiumCtx {
                 self.with_data(|data: &mut SodiumCtxData| {
                     let mut changed_nodes: Vec<Box<dyn IsNode>> = Vec::new();
                     mem::swap(&mut changed_nodes, &mut data.changed_nodes);
-                    return changed_nodes;
+                    changed_nodes
                 });
             if changed_nodes.is_empty() {
                 break;
@@ -249,7 +249,7 @@ impl SodiumCtx {
             self.with_data(|data: &mut SodiumCtxData| {
                 let mut pre_post: Vec<Box<dyn FnMut()+Send>> = Vec::new();
                 mem::swap(&mut pre_post, &mut data.pre_post);
-                return pre_post;
+                pre_post
             });
         for mut k in pre_post {
             k();
@@ -259,7 +259,7 @@ impl SodiumCtx {
             self.with_data(|data: &mut SodiumCtxData| {
                 let mut post: Vec<Box<dyn FnMut()+Send>> = Vec::new();
                 mem::swap(&mut post, &mut data.post);
-                return post;
+                post
             });
         for mut k in post {
             k();

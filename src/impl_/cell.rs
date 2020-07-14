@@ -423,7 +423,7 @@ impl<A:Send+'static> Cell<A> {
                 }
                 IsNode::add_update_dependencies(&node2, vec![csa_updates_dep, Dep::new(node1.gc_node().clone())]);
                 IsNode::add_dependency(&node1, node2.clone());
-                return node1;
+                node1
             }
         )
     }
