@@ -11,6 +11,12 @@ pub struct SodiumCtx {
     pub impl_: SodiumCtxImpl
 }
 
+impl Default for SodiumCtx {
+    fn default() -> SodiumCtx {
+        SodiumCtx::new()
+    }
+}
+
 impl SodiumCtx {
     pub fn new() -> SodiumCtx {
         SodiumCtx { impl_: SodiumCtxImpl::new() }

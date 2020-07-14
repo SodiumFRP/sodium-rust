@@ -102,6 +102,12 @@ pub fn simple_threaded_mode() -> ThreadedMode {
 // TODO:
 //pub fn thread_pool_threaded_mode(num_threads: usize) -> ThreadedMode
 
+impl Default for SodiumCtx {
+    fn default() -> SodiumCtx {
+        SodiumCtx::new()
+    }
+}
+
 impl SodiumCtx {
     pub fn new() -> SodiumCtx {
         SodiumCtx {

@@ -49,6 +49,12 @@ struct GcCtxData {
     to_be_freed: Vec<GcNode>
 }
 
+impl Default for GcCtx {
+    fn default() -> GcCtx {
+        GcCtx::new()
+    }
+}
+
 impl GcCtx {
     pub fn new() -> GcCtx {
         GcCtx {

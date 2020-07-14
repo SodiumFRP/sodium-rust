@@ -27,6 +27,12 @@ impl<A> Clone for StreamWeakForwardRef<A> {
     }
 }
 
+impl<A: Send+'static> Default for StreamWeakForwardRef<A> {
+    fn default() -> StreamWeakForwardRef<A> {
+        StreamWeakForwardRef::new()
+    }
+}
+
 impl<A:Send+'static> StreamWeakForwardRef<A> {
     pub fn new() -> StreamWeakForwardRef<A> {
         StreamWeakForwardRef {
