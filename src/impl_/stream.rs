@@ -303,10 +303,8 @@ impl<A:Send+'static> Stream<A> {
                                     } else {
                                         s.unwrap()._send(firing1.clone());
                                     }
-                                } else {
-                                    if let Some(ref firing2) = firing2_op {
-                                        s.unwrap()._send(firing2.clone());
-                                    }
+                                } else if let Some(ref firing2) = firing2_op {
+                                    s.unwrap()._send(firing2.clone());
                                 }
                             })
                         })
