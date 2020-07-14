@@ -347,7 +347,7 @@ impl fmt::Debug for dyn IsNode+Sync+Sync {
             node_to_id = move |node: &Box<dyn IsNode+Send+Sync>| {
                 let node_data: &NodeData = &node.data();
                 let node_data: *const NodeData = node_data;
-                let existing_op = node_id_map.get(&node_data).map(|x| x.clone());
+                let existing_op = node_id_map.get(&node_data).copied();
                 let node_id;
                 if let Some(existing) = existing_op {
                     node_id = existing;
