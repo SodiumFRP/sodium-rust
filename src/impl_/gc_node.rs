@@ -132,7 +132,7 @@ impl GcCtx {
         trace!("end: mark_roots");
     }
 
-    fn display_graph(&self, roots: &Vec<GcNode>) {
+    fn display_graph(&self, roots: &[GcNode]) {
         let mut stack = Vec::new();
         let mut visited: HashSet<*const GcNodeData> = HashSet::new();
         let mut show_names_for = Vec::new();

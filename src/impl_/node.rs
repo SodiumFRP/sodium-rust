@@ -86,7 +86,7 @@ pub trait IsWeakNode: Send + Sync {
     }
 }
 
-pub fn box_clone_vec_is_node(xs: &Vec<Box<dyn IsNode + Send + Sync>>) -> Vec<Box<dyn IsNode + Send + Sync>> {
+pub fn box_clone_vec_is_node(xs: &[Box<dyn IsNode + Send + Sync>]) -> Vec<Box<dyn IsNode + Send + Sync>> {
     let mut result = Vec::with_capacity(xs.len());
     for x in xs {
         result.push(x.box_clone());
@@ -94,7 +94,7 @@ pub fn box_clone_vec_is_node(xs: &Vec<Box<dyn IsNode + Send + Sync>>) -> Vec<Box
     result
 }
 
-pub fn box_clone_vec_is_weak_node(xs: &Vec<Box<dyn IsWeakNode + Send + Sync>>) -> Vec<Box<dyn IsWeakNode + Send + Sync>> {
+pub fn box_clone_vec_is_weak_node(xs: &[Box<dyn IsWeakNode + Send + Sync>]) -> Vec<Box<dyn IsWeakNode + Send + Sync>> {
     let mut result = Vec::with_capacity(xs.len());
     for x in xs {
         result.push(x.box_clone());
