@@ -389,6 +389,49 @@ fn snapshot3() {
     assert_memory_freed(sodium_ctx);
 }
 
+fn deltas_with_initial<A, F, R>(sodium_ctx: &SodiumCtx, ca: &Cell<A>, a: A, f: F) -> Stream<R>
+where
+    A: 'static + Clone + Send,
+    R: 'static + Clone + Send,
+    F: 'static + Send + Sync + Fn(&A, &A) -> R
+{
+    sodium_ctx.transaction(|| {
+        let s = ca.value();
+        let previous = s.hold(a);
+        s.snapshot(&previous, f)
+    })
+}
+
+#[test]
+fn snapshot_initial_value() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let (sa, l) = sodium_ctx.transaction(|| {
+            let sa = sodium_ctx.new_stream_sink();
+            let a = sa.stream().hold(5);
+            sa.send(10);
+            let l;
+            {
+                let out = out.clone();
+                l = deltas_with_initial(sodium_ctx, &a, 0, |new: &i8, old: &i8| {println!("new {} old {}", new, old); new - old})
+                    .listen(move |a: &i8| out.lock().as_mut().unwrap().push(a.clone()));
+            }
+            (sa, l)
+        });
+        sa.send(12);
+        sa.send(30);
+        {
+            let l = out.lock();
+            let out: &Vec<_> = l.as_ref().unwrap();
+            assert_eq!(vec![10, 2, 18], *out);
+        }
+        l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
 #[test]
 fn value() {
     let mut sodium_ctx = SodiumCtx::new();
