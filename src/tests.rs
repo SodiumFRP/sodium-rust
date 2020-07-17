@@ -165,7 +165,34 @@ fn filter_option() {
     assert_memory_freed(sodium_ctx);
 }
 
-// TODO: missing loop_stream1
+#[test]
+fn loop_stream1() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let sa = sodium_ctx.new_stream_sink();
+        let sb = sodium_ctx.transaction(|| {
+            let sb = sodium_ctx.new_stream_loop();
+            sb.loop_(&sa.stream());
+            sb
+        });
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = sa.stream().listen(move |a: &u8| out.lock().as_mut().unwrap().push(*a));
+        }
+        sa.send(2);
+        sa.send(52);
+        {
+            let l = out.lock();
+            let out: &Vec<_> = l.as_ref().unwrap();
+            assert_eq!(vec![2, 52], *out);
+        }
+        l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
 
 #[test]
 fn loop_stream2() {
