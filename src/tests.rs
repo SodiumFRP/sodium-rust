@@ -278,25 +278,32 @@ fn lift_from_simultaneous() {
     assert_memory_freed(sodium_ctx);
 }
 
-/*
-"should test apply"(done) {
-const cf = new CellSink<(a: number) => string>(a => "1 " + a),
-ca = new CellSink<number>(5),
-out: string[] = [],
-kill = Cell.apply(cf, ca).listen(a => {
-out.push(a);
-if (out.length === 3) {
-done();
-}
-});
+// TODO(RadicalZephyr 2020-07-17): port apply and then uncomment this test
+// #[test]
+// fn apply() {
+//     let sodium_ctx = SodiumCtx::new();
+//     let sodium_ctx = &sodium_ctx;
+//     let l;
+//     {
+//         let out = Arc::new(Mutex::new(Vec::new()));
+//         let cf = sodium_ctx.new_cell_sink(Box::new(|a: &u8| format!("1 {}", a)) as Box<dyn Fn(&u8) -> String>);
+//         let ca = sodium_ctx.new_cell_sink(5);
 
-    cf.send(a => "12 " + a);
-    ca.send(6);
-    kill();
-
-    expect(["1 5", "12 5", "12 6"]).to.deep.equal(out);
-};
-}*/
+//         {
+//             let out = out.clone();
+//             l = Cell::apply(cf, ca).listen(move |a: &i32| out.lock().as_mut().unwrap().push(a.clone()));
+//         }
+//         cf.send(Box::new(|a: &u8| format!("12 {}", a)) as Box<dyn Fn(&u8) -> String>);
+//         ca.send(6);
+//         {
+//             let l = out.lock();
+//             let out: &Vec<i32> = l.as_ref().unwrap();
+//             assert_eq!(vec!["1 5", "12 5", "12 6"], *out);
+//         }
+//     }
+//     l.unlisten();
+//     assert_memory_freed(sodium_ctx);
+// }
 
 #[test]
 fn loop_value_snapshot() {
