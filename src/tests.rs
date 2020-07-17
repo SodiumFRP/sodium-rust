@@ -167,7 +167,39 @@ fn filter_option() {
 
 // TODO: missing loop_stream1
 
-// TODO: missing loop_stream2
+#[test]
+fn loop_stream2() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let sa = sodium_ctx.new_stream_sink();
+        let sc = sodium_ctx.transaction(|| {
+            let sb = sodium_ctx.new_stream_loop();
+            let sc_ = sa
+                .stream()
+                .map(|x: &i32| *x % 10)
+                .merge(&sb.stream(), |x: &i32, y: &i32| *x + *y);
+            let sb_out = sa.stream().map(|x: &i32| *x / 10).filter(|x: &i32| *x != 0);
+            sb.loop_(&sb_out);
+            sc_
+        });
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = sc.listen(move |a: &i32| out.lock().as_mut().unwrap().push(*a));
+        }
+        sa.send(2);
+        sa.send(52);
+        l.unlisten();
+        {
+            let lock = out.lock();
+            let out: &Vec<i32> = lock.as_ref().unwrap();
+            assert_eq!(vec![2, 7], *out);
+        }
+    }
+    assert_memory_freed(sodium_ctx);
+}
 
 #[test]
 fn gate() {
@@ -864,40 +896,6 @@ fn merge() {
             assert_eq!(vec![2, 7], *out);
         }
         l.unlisten();
-    }
-    assert_memory_freed(sodium_ctx);
-}
-
-#[test]
-fn loop_() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
-    {
-        let sa = sodium_ctx.new_stream_sink();
-        let sc = sodium_ctx.transaction(|| {
-            let sb = sodium_ctx.new_stream_loop();
-            let sc_ = sa
-                .stream()
-                .map(|x: &i32| *x % 10)
-                .merge(&sb.stream(), |x: &i32, y: &i32| *x + *y);
-            let sb_out = sa.stream().map(|x: &i32| *x / 10).filter(|x: &i32| *x != 0);
-            sb.loop_(&sb_out);
-            sc_
-        });
-        let out = Arc::new(Mutex::new(Vec::new()));
-        let l;
-        {
-            let out = out.clone();
-            l = sc.listen(move |a: &i32| out.lock().as_mut().unwrap().push(*a));
-        }
-        sa.send(2);
-        sa.send(52);
-        l.unlisten();
-        {
-            let lock = out.lock();
-            let out: &Vec<i32> = lock.as_ref().unwrap();
-            assert_eq!(vec![2, 7], *out);
-        }
     }
     assert_memory_freed(sodium_ctx);
 }
