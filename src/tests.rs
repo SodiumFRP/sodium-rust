@@ -19,24 +19,207 @@ pub fn assert_memory_freed(sodium_ctx: &SodiumCtx) {
     assert_eq!(node_count, 0);
 }
 
+// TODO: missing stream1
+
 #[test]
-fn constant_cell() {
+fn map() {
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
     {
-        let c = sodium_ctx.new_cell(12);
+        let s: StreamSink<i32> = sodium_ctx.new_stream_sink();
         let out = Arc::new(Mutex::new(Vec::new()));
         let l;
         {
             let out = out.clone();
-            l = c.listen(move |a: &i32| out.lock().as_mut().unwrap().push(a.clone()));
+            l = s
+                .stream()
+                .map(|a: &i32| *a + 1)
+                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(a.clone()));
         }
+        s.send(7);
         {
-            let l = out.lock();
-            let out: &Vec<i32> = l.as_ref().unwrap();
-            assert_eq!(vec![12], *out);
+            let lock = out.lock();
+            let out: &Vec<i32> = lock.as_ref().unwrap();
+            assert_eq!(vec![8], *out);
         }
         l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+// TODO: missing map_optional
+
+#[test]
+fn merge_non_simultaneous() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s1 = sodium_ctx.new_stream_sink();
+        let s2 = sodium_ctx.new_stream_sink();
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = s2
+                .stream()
+                .or_else(&s1.stream())
+                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(*a));
+        }
+        s1.send(7);
+        s2.send(9);
+        s1.send(8);
+        {
+            let lock = out.lock();
+            let out: &Vec<i32> = lock.as_ref().unwrap();
+            assert_eq!(vec![7, 9, 8], *out);
+        }
+        l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+#[test]
+fn filter() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s = sodium_ctx.new_stream_sink();
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = s
+                .stream()
+                .filter(|a: &u32| *a < 10)
+                .listen(move |a: &u32| out.lock().as_mut().unwrap().push(*a));
+        }
+        s.send(2);
+        s.send(16);
+        s.send(9);
+        {
+            let lock = out.lock();
+            let out: &Vec<u32> = lock.as_ref().unwrap();
+            assert_eq!(vec![2, 9], *out);
+        }
+        l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+#[test]
+fn filter_option() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s: StreamSink<Option<&'static str>> = sodium_ctx.new_stream_sink();
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = s
+                .stream()
+                .filter_option()
+                .listen(move |a: &&'static str| out.lock().as_mut().unwrap().push(*a));
+        }
+        s.send(Some("tomato"));
+        s.send(None);
+        s.send(Some("peach"));
+        {
+            let lock = out.lock();
+            let out: &Vec<&'static str> = lock.as_ref().unwrap();
+            assert_eq!(vec!["tomato", "peach"], *out);
+        }
+        l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+// TODO: missing loop_stream1
+
+// TODO: missing loop_stream2
+
+#[test]
+fn gate() {
+    init();
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s = sodium_ctx.new_stream_sink();
+        let pred = sodium_ctx.new_cell_sink(true);
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = s
+                .stream()
+                .gate(&pred.cell())
+                .listen(move |a: &&'static str| out.lock().as_mut().unwrap().push(*a));
+        }
+        s.send("H");
+        pred.send(false);
+        s.send("O");
+        pred.send(true);
+        s.send("I");
+        l.unlisten();
+        {
+            let lock = out.lock();
+            let out: &Vec<&'static str> = lock.as_ref().unwrap();
+            assert_eq!(vec!["H", "I"], *out);
+        }
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+#[test]
+fn once() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s = sodium_ctx.new_stream_sink();
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = s
+                .stream()
+                .once()
+                .listen(move |a: &&'static str| out.lock().as_mut().unwrap().push(*a));
+        }
+        s.send("A");
+        s.send("B");
+        s.send("C");
+        l.unlisten();
+        {
+            let lock = out.lock();
+            let out: &Vec<&'static str> = lock.as_ref().unwrap();
+            assert_eq!(vec!["A"], *out);
+        }
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+#[test]
+fn hold() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let s = sodium_ctx.new_stream_sink();
+        let c = s.stream().hold(0);
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = Operational::updates(&c)
+                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(*a));
+        }
+        s.send(2);
+        s.send(9);
+        l.unlisten();
+        {
+            let lock = out.lock();
+            let out: &Vec<i32> = lock.as_ref().unwrap();
+            assert_eq!(vec![2, 9], *out);
+        }
     }
     assert_memory_freed(sodium_ctx);
 }
@@ -71,6 +254,28 @@ fn snapshot() {
                 vec!["100 0", "200 2", "300 1"],
                 out.iter().map(|s| s.as_str()).collect::<Vec<&str>>()
             );
+        }
+        l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+#[test]
+fn constant_cell() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let c = sodium_ctx.new_cell(12);
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = c.listen(move |a: &i32| out.lock().as_mut().unwrap().push(a.clone()));
+        }
+        {
+            let l = out.lock();
+            let out: &Vec<i32> = l.as_ref().unwrap();
+            assert_eq!(vec![12], *out);
         }
         l.unlisten();
     }
@@ -400,32 +605,6 @@ fn lift_loop() {
 }
 
 #[test]
-fn map() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
-    {
-        let s: StreamSink<i32> = sodium_ctx.new_stream_sink();
-        let out = Arc::new(Mutex::new(Vec::new()));
-        let l;
-        {
-            let out = out.clone();
-            l = s
-                .stream()
-                .map(|a: &i32| *a + 1)
-                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(a.clone()));
-        }
-        s.send(7);
-        {
-            let lock = out.lock();
-            let out: &Vec<i32> = lock.as_ref().unwrap();
-            assert_eq!(vec![8], *out);
-        }
-        l.unlisten();
-    }
-    assert_memory_freed(sodium_ctx);
-}
-
-#[test]
 fn map_to() {
     init();
     let mut sodium_ctx = SodiumCtx::new();
@@ -450,35 +629,6 @@ fn map_to() {
         }
     }
     l.unlisten();
-    assert_memory_freed(sodium_ctx);
-}
-
-#[test]
-fn merge_non_simultaneous() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
-    {
-        let s1 = sodium_ctx.new_stream_sink();
-        let s2 = sodium_ctx.new_stream_sink();
-        let out = Arc::new(Mutex::new(Vec::new()));
-        let l;
-        {
-            let out = out.clone();
-            l = s2
-                .stream()
-                .or_else(&s1.stream())
-                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(*a));
-        }
-        s1.send(7);
-        s2.send(9);
-        s1.send(8);
-        {
-            let lock = out.lock();
-            let out: &Vec<i32> = lock.as_ref().unwrap();
-            assert_eq!(vec![7, 9, 8], *out);
-        }
-        l.unlisten();
-    }
     assert_memory_freed(sodium_ctx);
 }
 
@@ -565,62 +715,6 @@ fn coalesce() {
 }
 
 #[test]
-fn filter() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
-    {
-        let s = sodium_ctx.new_stream_sink();
-        let out = Arc::new(Mutex::new(Vec::new()));
-        let l;
-        {
-            let out = out.clone();
-            l = s
-                .stream()
-                .filter(|a: &u32| *a < 10)
-                .listen(move |a: &u32| out.lock().as_mut().unwrap().push(*a));
-        }
-        s.send(2);
-        s.send(16);
-        s.send(9);
-        {
-            let lock = out.lock();
-            let out: &Vec<u32> = lock.as_ref().unwrap();
-            assert_eq!(vec![2, 9], *out);
-        }
-        l.unlisten();
-    }
-    assert_memory_freed(sodium_ctx);
-}
-
-#[test]
-fn filter_option() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
-    {
-        let s: StreamSink<Option<&'static str>> = sodium_ctx.new_stream_sink();
-        let out = Arc::new(Mutex::new(Vec::new()));
-        let l;
-        {
-            let out = out.clone();
-            l = s
-                .stream()
-                .filter_option()
-                .listen(move |a: &&'static str| out.lock().as_mut().unwrap().push(*a));
-        }
-        s.send(Some("tomato"));
-        s.send(None);
-        s.send(Some("peach"));
-        {
-            let lock = out.lock();
-            let out: &Vec<&'static str> = lock.as_ref().unwrap();
-            assert_eq!(vec!["tomato", "peach"], *out);
-        }
-        l.unlisten();
-    }
-    assert_memory_freed(sodium_ctx);
-}
-
-#[test]
 fn merge() {
     init();
     let mut sodium_ctx = SodiumCtx::new();
@@ -679,38 +773,6 @@ fn loop_() {
             let lock = out.lock();
             let out: &Vec<i32> = lock.as_ref().unwrap();
             assert_eq!(vec![2, 7], *out);
-        }
-    }
-    assert_memory_freed(sodium_ctx);
-}
-
-#[test]
-fn gate() {
-    init();
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
-    {
-        let s = sodium_ctx.new_stream_sink();
-        let pred = sodium_ctx.new_cell_sink(true);
-        let out = Arc::new(Mutex::new(Vec::new()));
-        let l;
-        {
-            let out = out.clone();
-            l = s
-                .stream()
-                .gate(&pred.cell())
-                .listen(move |a: &&'static str| out.lock().as_mut().unwrap().push(*a));
-        }
-        s.send("H");
-        pred.send(false);
-        s.send("O");
-        pred.send(true);
-        s.send("I");
-        l.unlisten();
-        {
-            let lock = out.lock();
-            let out: &Vec<&'static str> = lock.as_ref().unwrap();
-            assert_eq!(vec!["H", "I"], *out);
         }
     }
     assert_memory_freed(sodium_ctx);
@@ -776,34 +838,6 @@ fn accum() {
 }
 
 #[test]
-fn once() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
-    {
-        let s = sodium_ctx.new_stream_sink();
-        let out = Arc::new(Mutex::new(Vec::new()));
-        let l;
-        {
-            let out = out.clone();
-            l = s
-                .stream()
-                .once()
-                .listen(move |a: &&'static str| out.lock().as_mut().unwrap().push(*a));
-        }
-        s.send("A");
-        s.send("B");
-        s.send("C");
-        l.unlisten();
-        {
-            let lock = out.lock();
-            let out: &Vec<&'static str> = lock.as_ref().unwrap();
-            assert_eq!(vec!["A"], *out);
-        }
-    }
-    assert_memory_freed(sodium_ctx);
-}
-
-#[test]
 fn defer() {
     init();
     let mut sodium_ctx = SodiumCtx::new();
@@ -827,32 +861,6 @@ fn defer() {
             let lock = out.lock();
             let out: &Vec<&'static str> = lock.as_ref().unwrap();
             assert_eq!(vec!["C", "B", "A"], *out);
-        }
-    }
-    assert_memory_freed(sodium_ctx);
-}
-
-#[test]
-fn hold() {
-    let mut sodium_ctx = SodiumCtx::new();
-    let sodium_ctx = &mut sodium_ctx;
-    {
-        let s = sodium_ctx.new_stream_sink();
-        let c = s.stream().hold(0);
-        let out = Arc::new(Mutex::new(Vec::new()));
-        let l;
-        {
-            let out = out.clone();
-            l = Operational::updates(&c)
-                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(*a));
-        }
-        s.send(2);
-        s.send(9);
-        l.unlisten();
-        {
-            let lock = out.lock();
-            let out: &Vec<i32> = lock.as_ref().unwrap();
-            assert_eq!(vec![2, 9], *out);
         }
     }
     assert_memory_freed(sodium_ctx);
