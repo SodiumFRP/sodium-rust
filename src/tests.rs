@@ -261,6 +261,47 @@ fn snapshot() {
 }
 
 #[test]
+fn snapshot3() {
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
+    {
+        let s = sodium_ctx.new_stream_sink::<usize>();
+        let b = sodium_ctx.new_cell_sink(0);
+        let c = sodium_ctx.new_cell_sink(5);
+
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = s
+                .stream()
+                .snapshot3(&b.cell(), &c.cell(), |x: &usize, y: &usize, z: &usize| format!("{} {} {}", x, y, z))
+                .listen(move |a: &String| out.lock().as_mut().unwrap().push(a.clone()));
+        }
+        s.send(100);
+        b.send(2);
+        s.send(200);
+        b.send(9);
+        b.send(1);
+        s.send(300);
+        c.send(3);
+        s.send(400);
+        {
+            let l = out.lock();
+            let out: &Vec<String> = l.as_ref().unwrap();
+            assert_eq!(
+                vec!["100 0 5", "200 2 5", "300 1 5", "400 1 3"],
+                out.iter().map(|s| s.as_str()).collect::<Vec<&str>>()
+            );
+        }
+        l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+// TARGET
+
+#[test]
 fn constant_cell() {
     let mut sodium_ctx = SodiumCtx::new();
     let sodium_ctx = &mut sodium_ctx;
