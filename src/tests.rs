@@ -299,6 +299,58 @@ fn snapshot3() {
     assert_memory_freed(sodium_ctx);
 }
 
+#[test]
+fn value() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let (b, l) = sodium_ctx.transaction(|| {
+            let b = sodium_ctx.new_cell_sink(9);
+            let l;
+            {
+                let out = out.clone();
+                l = b.cell().value().listen(move |a: &i8| out.lock().as_mut().unwrap().push(a.clone()));
+            }
+            (b, l)
+        });
+        b.send(2);
+        b.send(7);
+        {
+            let l = out.lock();
+            let out: &Vec<_> = l.as_ref().unwrap();
+            assert_eq!(vec![9, 2, 7], *out);
+        }
+        l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+#[test]
+fn value_const() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let l = sodium_ctx.transaction(|| {
+            let b = sodium_ctx.new_cell_sink(9);
+            let l;
+            {
+                let out = out.clone();
+                l = b.cell().value().listen(move |a: &i8| out.lock().as_mut().unwrap().push(a.clone()));
+            }
+            l
+        });
+        {
+            let l = out.lock();
+            let out: &Vec<_> = l.as_ref().unwrap();
+            assert_eq!(vec![9], *out);
+        }
+        l.unlisten();
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
 // TARGET
 
 #[test]
