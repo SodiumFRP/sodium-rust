@@ -19,7 +19,38 @@ pub fn assert_memory_freed(sodium_ctx: &SodiumCtx) {
     assert_eq!(node_count, 0);
 }
 
-// TODO: missing stream1
+#[test]
+fn stream() {
+    let mut sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &mut sodium_ctx;
+    {
+        let ev = sodium_ctx.new_stream_sink();
+        let out = Arc::new(Mutex::new(String::new()));
+        let l;
+        {
+            let out = out.clone();
+            l = sodium_ctx.transaction(|| {
+                ev.send("h");
+                let l = ev.stream().listen(move |ch: &&'static str| out.lock().as_mut().unwrap().push_str(ch));
+                ev.send("e");
+                l
+            });
+        }
+        sodium_ctx.transaction(|| {
+            ev.send("l");
+            ev.send("l");
+            ev.send("o");
+        });
+        l.unlisten();
+        ev.send("!");
+        {
+            let l = out.lock();
+            let out: &String = l.as_ref().unwrap();
+            assert_eq!(String::from("eo"), *out);
+        }
+    }
+    assert_memory_freed(sodium_ctx);
+}
 
 #[test]
 fn map() {
