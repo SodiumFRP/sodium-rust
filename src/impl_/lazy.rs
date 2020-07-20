@@ -38,11 +38,11 @@ impl<A:Send+Clone+'static> Lazy<A> {
         let next_op: Option<LazyData<A>>;
         let result: A;
         match data {
-            &mut LazyData::Thunk(ref mut k) => {
+            LazyData::Thunk(ref mut k) => {
                 result = k();
                 next_op = Some(LazyData::Value(result.clone()));
             },
-            &mut LazyData::Value(ref x) => {
+            LazyData::Value(ref x) => {
                 result = x.clone();
                 next_op = None;
             }

@@ -49,6 +49,12 @@ struct GcCtxData {
     to_be_freed: Vec<GcNode>
 }
 
+impl Default for GcCtx {
+    fn default() -> GcCtx {
+        GcCtx::new()
+    }
+}
+
 impl GcCtx {
     pub fn new() -> GcCtx {
         GcCtx {
@@ -69,7 +75,7 @@ impl GcCtx {
     pub fn make_id(&self) -> u32 {
         self.with_data(|data: &mut GcCtxData| {
             let id = data.next_id;
-            data.next_id = data.next_id + 1;
+            data.next_id += 1;
             id
         })
     }
@@ -126,7 +132,7 @@ impl GcCtx {
         trace!("end: mark_roots");
     }
 
-    fn display_graph(&self, roots: &Vec<GcNode>) {
+    fn display_graph(&self, roots: &[GcNode]) {
         let mut stack = Vec::new();
         let mut visited: HashSet<*const GcNodeData> = HashSet::new();
         let mut show_names_for = Vec::new();

@@ -25,7 +25,7 @@ impl Clone for Listener {
 impl Drop for Listener {
     fn drop(&mut self) {
         self.gc_node.dec_ref();
-    } 
+    }
 }
 
 pub struct ListenerData {
@@ -105,7 +105,7 @@ impl fmt::Debug for Listener {
         write!(f, "(Listener")?;
         match node_op {
             Some(node) => {
-                writeln!(f, "")?;
+                writeln!(f)?;
                 writeln!(f, "{:?})", &node as &(dyn IsNode+Sync+Sync))?;
             }
             None => {

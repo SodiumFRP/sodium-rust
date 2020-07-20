@@ -1,3 +1,5 @@
+#![allow(clippy::borrowed_box)]
+
 pub mod cell;
 pub mod cell_loop;
 pub mod cell_sink;

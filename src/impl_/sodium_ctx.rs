@@ -5,14 +5,16 @@ use crate::impl_::node::{Node, IsNode, IsWeakNode, box_clone_vec_is_node, box_cl
 use std::mem;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::thread;
 
 #[derive(Clone)]
 pub struct SodiumCtx {
     gc_ctx: GcCtx,
     data: Arc<Mutex<SodiumCtxData>>,
-    node_count: Arc<Mutex<usize>>,
-    node_ref_count: Arc<Mutex<usize>>,
+    node_count: Arc<AtomicUsize>,
+    node_ref_count: Arc<AtomicUsize>,
     threaded_mode: Arc<ThreadedMode>
 }
 
@@ -32,8 +34,10 @@ pub struct ThreadedMode {
     pub spawner: ThreadSpawner
 }
 
+type SpawnFn = Box<dyn FnOnce()+Send>;
+
 pub struct ThreadSpawner {
-    pub spawn_fn: Box<dyn Fn(Box<dyn FnOnce()+Send>)->ThreadJoiner<()>+Send+Sync>
+    pub spawn_fn: Box<dyn Fn(SpawnFn)->ThreadJoiner<()>+Send+Sync>
 }
 
 pub struct ThreadJoiner<R> {
@@ -53,7 +57,7 @@ impl ThreadedMode {
                 *r = Some(r2);
             }));
         }
-        return ThreadJoiner {
+        ThreadJoiner {
             join_fn: Box::new(move || {
                 (thread_joiner.join_fn)();
                 let mut l = r.lock();
@@ -62,7 +66,7 @@ impl ThreadedMode {
                 mem::swap(r, &mut r2);
                 r2.unwrap()
             })
-        };
+        }
     }
 }
 
@@ -102,6 +106,12 @@ pub fn simple_threaded_mode() -> ThreadedMode {
 // TODO:
 //pub fn thread_pool_threaded_mode(num_threads: usize) -> ThreadedMode
 
+impl Default for SodiumCtx {
+    fn default() -> SodiumCtx {
+        SodiumCtx::new()
+    }
+}
+
 impl SodiumCtx {
     pub fn new() -> SodiumCtx {
         SodiumCtx {
@@ -120,8 +130,8 @@ impl SodiumCtx {
                         allow_collect_cycles_counter: 0
                     }
                 )),
-            node_count: Arc::new(Mutex::new(0)),
-            node_ref_count: Arc::new(Mutex::new(0)),
+            node_count: Arc::new(AtomicUsize::new(0)),
+            node_ref_count: Arc::new(AtomicUsize::new(0)),
             threaded_mode: Arc::new(single_threaded_mode())
         }
     }
@@ -136,18 +146,18 @@ impl SodiumCtx {
 
     pub fn transaction<R,K:FnOnce()->R>(&self, k:K) -> R {
         self.with_data(|data: &mut SodiumCtxData| {
-            data.transaction_depth = data.transaction_depth + 1;
+            data.transaction_depth += 1;
         });
         let result = k();
         let is_end_of_transaction =
             self.with_data(|data: &mut SodiumCtxData| {
-                data.transaction_depth = data.transaction_depth - 1;
-                return data.transaction_depth == 0;
+                data.transaction_depth -= 1;
+                data.transaction_depth == 0
             });
         if is_end_of_transaction {
             self.end_of_transaction();
         }
-        return result;
+        result
     }
 
     pub fn add_dependents_to_changed_nodes(&self, node: &dyn IsNode) {
@@ -167,7 +177,7 @@ impl SodiumCtx {
             data.pre_post.push(Box::new(k));
         });
     }
-    
+
     pub fn post<K:FnMut()+Send+'static>(&self, k:K) {
         self.with_data(|data: &mut SodiumCtxData| {
             data.post.push(Box::new(k));
@@ -181,52 +191,40 @@ impl SodiumCtx {
     }
 
     pub fn node_count(&self) -> usize {
-        self.with_node_count(|node_count: &mut usize| *node_count)
+        self.node_count.load(Ordering::Relaxed)
     }
 
     pub fn inc_node_count(&self) {
-        self.with_node_count(|node_count: &mut usize| *node_count = *node_count + 1);
+        self.node_count.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn dec_node_count(&self) {
-        self.with_node_count(|node_count: &mut usize| *node_count = *node_count - 1);
-    }
-
-    pub fn with_node_count<R,K:FnOnce(&mut usize)->R>(&self, k: K) -> R {
-        let mut l = self.node_count.lock();
-        let node_count: &mut usize = l.as_mut().unwrap();
-        k(node_count)
+        self.node_count.fetch_sub(1, Ordering::Relaxed);
     }
 
     pub fn node_ref_count(&self) -> usize {
-        self.with_node_ref_count(|node_ref_count: &mut usize| *node_ref_count)
+        self.node_ref_count.load(Ordering::Relaxed)
     }
 
     pub fn inc_node_ref_count(&self) {
-        self.with_node_ref_count(|node_ref_count: &mut usize| *node_ref_count = *node_ref_count + 1);
+        self.node_ref_count.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn dec_node_ref_count(&self) {
-        self.with_node_ref_count(|node_ref_count: &mut usize| *node_ref_count = *node_ref_count - 1);
-    }
-
-    pub fn with_node_ref_count<R,K:FnOnce(&mut usize)->R>(&self, k: K) -> R {
-        let mut l = self.node_ref_count.lock();
-        let node_ref_count: &mut usize = l.as_mut().unwrap();
-        k(node_ref_count)
+        self.node_ref_count.fetch_sub(1, Ordering::Relaxed);
     }
 
     pub fn end_of_transaction(&self) {
         self.with_data(|data: &mut SodiumCtxData| {
-            data.transaction_depth = data.transaction_depth + 1;
-            data.allow_collect_cycles_counter = data.allow_collect_cycles_counter + 1;
+            data.transaction_depth += 1;
+            data.allow_collect_cycles_counter += 1;
         });
         loop {
             let changed_nodes: Vec<Box<dyn IsNode>> =
                 self.with_data(|data: &mut SodiumCtxData| {
                     let mut changed_nodes: Vec<Box<dyn IsNode>> = Vec::new();
                     mem::swap(&mut changed_nodes, &mut data.changed_nodes);
-                    return changed_nodes;
+                    changed_nodes
                 });
             if changed_nodes.is_empty() {
                 break;
@@ -236,14 +234,14 @@ impl SodiumCtx {
             }
         }
         self.with_data(|data: &mut SodiumCtxData| {
-            data.transaction_depth = data.transaction_depth - 1;
+            data.transaction_depth -= 1;
         });
         // pre_post
         let pre_post =
             self.with_data(|data: &mut SodiumCtxData| {
                 let mut pre_post: Vec<Box<dyn FnMut()+Send>> = Vec::new();
                 mem::swap(&mut pre_post, &mut data.pre_post);
-                return pre_post;
+                pre_post
             });
         for mut k in pre_post {
             k();
@@ -253,14 +251,14 @@ impl SodiumCtx {
             self.with_data(|data: &mut SodiumCtxData| {
                 let mut post: Vec<Box<dyn FnMut()+Send>> = Vec::new();
                 mem::swap(&mut post, &mut data.post);
-                return post;
+                post
             });
         for mut k in post {
             k();
         }
         let allow_collect_cycles =
             self.with_data(|data: &mut SodiumCtxData| {
-                data.allow_collect_cycles_counter = data.allow_collect_cycles_counter - 1;
+                data.allow_collect_cycles_counter -= 1;
                 data.allow_collect_cycles_counter == 0
             });
         if allow_collect_cycles {
