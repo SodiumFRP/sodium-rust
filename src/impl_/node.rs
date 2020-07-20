@@ -86,7 +86,7 @@ pub trait IsWeakNode: Send + Sync {
     }
 }
 
-pub fn box_clone_vec_is_node(xs: &Vec<Box<dyn IsNode + Send + Sync>>) -> Vec<Box<dyn IsNode + Send + Sync>> {
+pub fn box_clone_vec_is_node(xs: &[Box<dyn IsNode + Send + Sync>]) -> Vec<Box<dyn IsNode + Send + Sync>> {
     let mut result = Vec::with_capacity(xs.len());
     for x in xs {
         result.push(x.box_clone());
@@ -94,7 +94,7 @@ pub fn box_clone_vec_is_node(xs: &Vec<Box<dyn IsNode + Send + Sync>>) -> Vec<Box
     result
 }
 
-pub fn box_clone_vec_is_weak_node(xs: &Vec<Box<dyn IsWeakNode + Send + Sync>>) -> Vec<Box<dyn IsWeakNode + Send + Sync>> {
+pub fn box_clone_vec_is_weak_node(xs: &[Box<dyn IsWeakNode + Send + Sync>]) -> Vec<Box<dyn IsWeakNode + Send + Sync>> {
     let mut result = Vec::with_capacity(xs.len());
     for x in xs {
         result.push(x.box_clone());
@@ -310,7 +310,7 @@ impl Node {
         }
         sodium_ctx.inc_node_ref_count();
         sodium_ctx.inc_node_count();
-        return result;
+        result
     }
 
     pub fn downgrade2(this: &Self) -> WeakNode {
@@ -347,13 +347,13 @@ impl fmt::Debug for dyn IsNode+Sync+Sync {
             node_to_id = move |node: &Box<dyn IsNode+Send+Sync>| {
                 let node_data: &NodeData = &node.data();
                 let node_data: *const NodeData = node_data;
-                let existing_op = node_id_map.get(&node_data).map(|x| x.clone());
+                let existing_op = node_id_map.get(&node_data).copied();
                 let node_id;
                 if let Some(existing) = existing_op {
                     node_id = existing;
                 } else {
                     node_id = next_id;
-                    next_id = next_id + 1;
+                    next_id += 1;
                     node_id_map.insert(node_data, node_id);
                 }
                 return format!("N{}", node_id);
@@ -371,7 +371,7 @@ impl fmt::Debug for dyn IsNode+Sync+Sync {
             pub fn is_visited(&self, node: &Box<dyn IsNode+Send+Sync>) -> bool {
                 let node_data: &NodeData = &node.data();
                 let node_data: *const NodeData = node_data;
-                return self.visited.contains(&node_data);
+                self.visited.contains(&node_data)
             }
             pub fn mark_visitied(&mut self, node: &Box<dyn IsNode+Send+Sync>) {
                 let node_data: &NodeData = &node.data();
@@ -424,6 +424,6 @@ impl fmt::Debug for dyn IsNode+Sync+Sync {
             }
             writeln!(f, "])")?;
         }
-        return fmt::Result::Ok(());
+        fmt::Result::Ok(())
     }
 }

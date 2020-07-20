@@ -160,7 +160,6 @@ impl<A:Send+'static> Cell<A> {
                                 is_first
                             });
                         if is_first {
-                            let c = c.clone();
                             sodium_ctx.post(move || {
                                 c.with_data(|data: &mut CellData<A>| {
                                     let mut next_value_op: Option<A> = None;
@@ -180,7 +179,7 @@ impl<A:Send+'static> Cell<A> {
         }
         let c = Cell {
             data: cell_data,
-            node: node
+            node
         };
         c_forward_ref.assign(&c);
         c
@@ -370,7 +369,7 @@ impl<A:Send+'static> Cell<A> {
             &sodium_ctx,
             |sa: StreamWeakForwardRef<A>| {
                 let inner_s: Arc<Mutex<WeakStream<A>>> = Arc::new(Mutex::new(Stream::downgrade(&csa.sample())));
-                let sa = sa.clone();
+                let sa = sa;
                 let node1: Node;
                 {
                     let inner_s = inner_s.clone();
@@ -422,8 +421,8 @@ impl<A:Send+'static> Cell<A> {
                     );
                 }
                 IsNode::add_update_dependencies(&node2, vec![csa_updates_dep, Dep::new(node1.gc_node().clone())]);
-                IsNode::add_dependency(&node1, node2.clone());
-                return node1;
+                IsNode::add_dependency(&node1, node2);
+                node1
             }
         )
     }
@@ -498,7 +497,7 @@ impl<A:Send+'static> Cell<A> {
                     *update = Box::new(node1_update);
                 }
                 {
-                    let last_inner_s = last_inner_s.clone();
+                    let last_inner_s = last_inner_s;
                     let node2_update = move || {
                         let l = last_inner_s.lock();
                         let last_inner_s: &WeakStream<A> = l.as_ref().unwrap();
