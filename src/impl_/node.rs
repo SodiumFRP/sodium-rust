@@ -1,9 +1,9 @@
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fmt;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::Weak;
-use std::fmt;
-use std::collections::HashMap;
-use std::collections::HashSet;
 
 use crate::impl_::dep::Dep;
 use crate::impl_::gc_node::{GcNode, Tracer};
@@ -26,7 +26,6 @@ pub trait IsNode: Send + Sync {
 }
 
 impl dyn IsNode {
-
     pub fn add_update_dependencies(&self, update_dependencies: Vec<Dep>) {
         let mut update_dependencies2 = self.data().update_dependencies.write().unwrap();
         for dep in update_dependencies {
@@ -34,7 +33,7 @@ impl dyn IsNode {
         }
     }
 
-    pub fn add_dependency<NODE: IsNode+Sync+Sync>(&self, dependency: NODE) {
+    pub fn add_dependency<NODE: IsNode + Sync + Sync>(&self, dependency: NODE) {
         {
             let mut dependencies = self.data().dependencies.write().unwrap();
             dependencies.push(dependency.box_clone());
@@ -45,21 +44,22 @@ impl dyn IsNode {
         }
     }
 
-    pub fn remove_dependency<NODE: IsNode+Sync+Sync>(&self, dependency: &NODE) {
+    pub fn remove_dependency<NODE: IsNode + Sync + Sync>(&self, dependency: &NODE) {
         {
             let mut dependencies = self.data().dependencies.write().unwrap();
-            dependencies.retain(|n: &Box<dyn IsNode+Send+Sync>| !Arc::ptr_eq(&n.data(), &dependency.data()));
+            dependencies.retain(|n: &Box<dyn IsNode + Send + Sync>| {
+                !Arc::ptr_eq(&n.data(), &dependency.data())
+            });
         }
         {
             let mut dependency_dependents = dependency.data().dependents.write().unwrap();
-            dependency_dependents.retain(
-                |n: &Box<dyn IsWeakNode+Send+Sync>|
-                    if let Some(n_data) = n.data().upgrade() {
-                        !Arc::ptr_eq(&n_data, &self.data())
-                    } else {
-                        false
-                    }
-            );
+            dependency_dependents.retain(|n: &Box<dyn IsWeakNode + Send + Sync>| {
+                if let Some(n_data) = n.data().upgrade() {
+                    !Arc::ptr_eq(&n_data, &self.data())
+                } else {
+                    false
+                }
+            });
         }
     }
 
@@ -86,7 +86,9 @@ pub trait IsWeakNode: Send + Sync {
     }
 }
 
-pub fn box_clone_vec_is_node(xs: &[Box<dyn IsNode + Send + Sync>]) -> Vec<Box<dyn IsNode + Send + Sync>> {
+pub fn box_clone_vec_is_node(
+    xs: &[Box<dyn IsNode + Send + Sync>],
+) -> Vec<Box<dyn IsNode + Send + Sync>> {
     let mut result = Vec::with_capacity(xs.len());
     for x in xs {
         result.push(x.box_clone());
@@ -94,7 +96,9 @@ pub fn box_clone_vec_is_node(xs: &[Box<dyn IsNode + Send + Sync>]) -> Vec<Box<dy
     result
 }
 
-pub fn box_clone_vec_is_weak_node(xs: &[Box<dyn IsWeakNode + Send + Sync>]) -> Vec<Box<dyn IsWeakNode + Send + Sync>> {
+pub fn box_clone_vec_is_weak_node(
+    xs: &[Box<dyn IsWeakNode + Send + Sync>],
+) -> Vec<Box<dyn IsWeakNode + Send + Sync>> {
     let mut result = Vec::with_capacity(xs.len());
     for x in xs {
         result.push(x.box_clone());
@@ -126,32 +130,33 @@ impl IsWeakNode for WeakNode {
     }
 
     fn upgrade(&self) -> Option<Box<dyn IsNode + Send + Sync>> {
-        self.upgrade2().map(|x| Box::new(x) as Box<dyn IsNode + Send + Sync>)
+        self.upgrade2()
+            .map(|x| Box::new(x) as Box<dyn IsNode + Send + Sync>)
     }
 }
 
 pub struct Node {
     pub data: Arc<NodeData>,
     pub gc_node: GcNode,
-    pub sodium_ctx: SodiumCtx
+    pub sodium_ctx: SodiumCtx,
 }
 
 pub struct NodeData {
     pub visited: RwLock<bool>,
     pub changed: RwLock<bool>,
-    pub update: RwLock<Box<dyn FnMut()+Send+Sync>>,
+    pub update: RwLock<Box<dyn FnMut() + Send + Sync>>,
     pub update_dependencies: RwLock<Vec<Dep>>,
-    pub dependencies: RwLock<Vec<Box<dyn IsNode+Send+Sync>>>,
-    pub dependents: RwLock<Vec<Box<dyn IsWeakNode+Send+Sync>>>,
+    pub dependencies: RwLock<Vec<Box<dyn IsNode + Send + Sync>>>,
+    pub dependents: RwLock<Vec<Box<dyn IsWeakNode + Send + Sync>>>,
     pub keep_alive: RwLock<Vec<GcNode>>,
-    pub sodium_ctx: SodiumCtx
+    pub sodium_ctx: SodiumCtx,
 }
 
 #[derive(Clone)]
 pub struct WeakNode {
     pub data: Weak<NodeData>,
     pub gc_node: GcNode,
-    pub sodium_ctx: SodiumCtx
+    pub sodium_ctx: SodiumCtx,
 }
 
 impl Clone for Node {
@@ -161,7 +166,7 @@ impl Clone for Node {
         Node {
             data: self.data.clone(),
             gc_node: self.gc_node.clone(),
-            sodium_ctx: self.sodium_ctx.clone()
+            sodium_ctx: self.sodium_ctx.clone(),
         }
     }
 }
@@ -180,11 +185,17 @@ impl Drop for NodeData {
 }
 
 impl Node {
-    pub fn new<NAME:ToString,UPDATE:FnMut()+Send+Sync+'static>(sodium_ctx: &SodiumCtx, name:NAME, update: UPDATE, dependencies: Vec<Box<dyn IsNode+Send+Sync>>) -> Self {
+    pub fn new<NAME: ToString, UPDATE: FnMut() + Send + Sync + 'static>(
+        sodium_ctx: &SodiumCtx,
+        name: NAME,
+        update: UPDATE,
+        dependencies: Vec<Box<dyn IsNode + Send + Sync>>,
+    ) -> Self {
         let result_forward_ref: Arc<RwLock<Option<Weak<NodeData>>>> = Arc::new(RwLock::new(None));
         let deconstructor;
         let trace;
-        { // deconstructor
+        {
+            // deconstructor
             let result_forward_ref = result_forward_ref.clone();
             deconstructor = move || {
                 let node_data;
@@ -223,19 +234,20 @@ impl Node {
                 }
                 for dependency in dependencies {
                     let mut dependency_dependents = dependency.data().dependents.write().unwrap();
-                    dependency_dependents.retain(
-                        |dependent|
-                            if let Some(dependent_data) = dependent.data().upgrade() {
-                                !Arc::ptr_eq(&dependent_data, &node_data)
-                            } else {
-                                false
-                            }
-                    );
+                    dependency_dependents.retain(|dependent| {
+                        if let Some(dependent_data) = dependent.data().upgrade() {
+                            !Arc::ptr_eq(&dependent_data, &node_data)
+                        } else {
+                            false
+                        }
+                    });
                 }
                 for dependent in dependents {
                     if let Some(dependent_data) = dependent.data().upgrade() {
-                        let mut dependent_dependencies = dependent_data.dependencies.write().unwrap();
-                        dependent_dependencies.retain(|dependency| !Arc::ptr_eq(dependency.data(), &node_data));
+                        let mut dependent_dependencies =
+                            dependent_data.dependencies.write().unwrap();
+                        dependent_dependencies
+                            .retain(|dependency| !Arc::ptr_eq(dependency.data(), &node_data));
                     }
                 }
                 for gc_node in keep_alive {
@@ -247,7 +259,8 @@ impl Node {
                 }
             };
         }
-        { // trace
+        {
+            // trace
             let result_forward_ref = result_forward_ref.clone();
             trace = move |tracer: &mut Tracer| {
                 let node_data_op;
@@ -279,27 +292,20 @@ impl Node {
                 }
             };
         }
-        let result =
-            Node {
-                data:
-                    Arc::new(NodeData {
-                        visited: RwLock::new(false),
-                        changed: RwLock::new(false),
-                        update: RwLock::new(Box::new(update)),
-                        update_dependencies: RwLock::new(Vec::new()),
-                        dependencies: RwLock::new(box_clone_vec_is_node(&dependencies)),
-                        dependents: RwLock::new(Vec::new()),
-                        keep_alive: RwLock::new(Vec::new()),
-                        sodium_ctx: sodium_ctx.clone()
-                    }),
-                gc_node: GcNode::new(
-                    &sodium_ctx.gc_ctx(),
-                    name.to_string(),
-                    deconstructor,
-                    trace
-                ),
-                sodium_ctx: sodium_ctx.clone()
-            };
+        let result = Node {
+            data: Arc::new(NodeData {
+                visited: RwLock::new(false),
+                changed: RwLock::new(false),
+                update: RwLock::new(Box::new(update)),
+                update_dependencies: RwLock::new(Vec::new()),
+                dependencies: RwLock::new(box_clone_vec_is_node(&dependencies)),
+                dependents: RwLock::new(Vec::new()),
+                keep_alive: RwLock::new(Vec::new()),
+                sodium_ctx: sodium_ctx.clone(),
+            }),
+            gc_node: GcNode::new(&sodium_ctx.gc_ctx(), name.to_string(), deconstructor, trace),
+            sodium_ctx: sodium_ctx.clone(),
+        };
         {
             let mut result_forward_ref = result_forward_ref.write().unwrap();
             *result_forward_ref = Some(Arc::downgrade(&result.data));
@@ -317,7 +323,7 @@ impl Node {
         WeakNode {
             data: Arc::downgrade(&this.data),
             gc_node: this.gc_node.clone(),
-            sodium_ctx: this.sodium_ctx.clone()
+            sodium_ctx: this.sodium_ctx.clone(),
         }
     }
 }
@@ -330,7 +336,7 @@ impl WeakNode {
             Some(Node {
                 data,
                 gc_node: self.gc_node.clone(),
-                sodium_ctx: self.sodium_ctx.clone()
+                sodium_ctx: self.sodium_ctx.clone(),
             })
         } else {
             None
@@ -338,13 +344,13 @@ impl WeakNode {
     }
 }
 
-impl fmt::Debug for dyn IsNode+Sync+Sync {
+impl fmt::Debug for dyn IsNode + Sync + Sync {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut node_to_id;
         {
             let mut next_id: usize = 1;
-            let mut node_id_map: HashMap<*const NodeData,usize> = HashMap::new();
-            node_to_id = move |node: &Box<dyn IsNode+Send+Sync>| {
+            let mut node_id_map: HashMap<*const NodeData, usize> = HashMap::new();
+            node_to_id = move |node: &Box<dyn IsNode + Send + Sync>| {
                 let node_data: &NodeData = &node.data();
                 let node_data: *const NodeData = node_data;
                 let existing_op = node_id_map.get(&node_data).copied();
@@ -360,20 +366,20 @@ impl fmt::Debug for dyn IsNode+Sync+Sync {
             };
         }
         struct Util {
-            visited: HashSet<*const NodeData>
+            visited: HashSet<*const NodeData>,
         }
         impl Util {
             pub fn new() -> Util {
                 Util {
-                    visited: HashSet::new()
+                    visited: HashSet::new(),
                 }
             }
-            pub fn is_visited(&self, node: &Box<dyn IsNode+Send+Sync>) -> bool {
+            pub fn is_visited(&self, node: &Box<dyn IsNode + Send + Sync>) -> bool {
                 let node_data: &NodeData = &node.data();
                 let node_data: *const NodeData = node_data;
                 self.visited.contains(&node_data)
             }
-            pub fn mark_visitied(&mut self, node: &Box<dyn IsNode+Send+Sync>) {
+            pub fn mark_visitied(&mut self, node: &Box<dyn IsNode + Send + Sync>) {
                 let node_data: &NodeData = &node.data();
                 let node_data: *const NodeData = node_data;
                 self.visited.insert(node_data);

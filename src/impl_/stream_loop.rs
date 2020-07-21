@@ -8,12 +8,12 @@ use std::sync::Mutex;
 
 pub struct StreamLoop<A> {
     pub data: Arc<Mutex<StreamLoopData<A>>>,
-    pub gc_node: GcNode
+    pub gc_node: GcNode,
 }
 
 pub struct StreamLoopData<A> {
     pub stream: Stream<A>,
-    pub looped: bool
+    pub looped: bool,
 }
 
 impl<A> Clone for StreamLoop<A> {
@@ -21,7 +21,7 @@ impl<A> Clone for StreamLoop<A> {
         self.gc_node.inc_ref();
         StreamLoop {
             data: self.data.clone(),
-            gc_node: self.gc_node.clone()
+            gc_node: self.gc_node.clone(),
         }
     }
 }
@@ -32,12 +32,11 @@ impl<A> Drop for StreamLoop<A> {
     }
 }
 
-impl<A:Clone+Send+'static> StreamLoop<A> {
-
+impl<A: Clone + Send + 'static> StreamLoop<A> {
     pub fn new(sodium_ctx: &SodiumCtx) -> StreamLoop<A> {
         let stream_loop_data = Arc::new(Mutex::new(StreamLoopData {
             stream: Stream::new(sodium_ctx),
-            looped: false
+            looped: false,
         }));
         let gc_node_destructor;
         {
@@ -70,7 +69,12 @@ impl<A:Clone+Send+'static> StreamLoop<A> {
         }
         StreamLoop {
             data: stream_loop_data,
-            gc_node: GcNode::new(&sodium_ctx.gc_ctx(), "StreamLoop::new", gc_node_destructor, gc_node_trace)
+            gc_node: GcNode::new(
+                &sodium_ctx.gc_ctx(),
+                "StreamLoop::new",
+                gc_node_destructor,
+                gc_node_trace,
+            ),
         }
     }
 
@@ -101,7 +105,7 @@ impl<A:Clone+Send+'static> StreamLoop<A> {
         })
     }
 
-    pub fn with_data<R,K:FnOnce(&mut StreamLoopData<A>)->R>(&self, k: K) -> R {
+    pub fn with_data<R, K: FnOnce(&mut StreamLoopData<A>) -> R>(&self, k: K) -> R {
         let mut l = self.data.lock();
         let data: &mut StreamLoopData<A> = l.as_mut().unwrap();
         k(data)

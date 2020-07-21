@@ -1,12 +1,14 @@
 use crate::impl_::gc_node::GcCtx;
 use crate::impl_::listener::Listener;
-use crate::impl_::node::{Node, IsNode, IsWeakNode, box_clone_vec_is_node, box_clone_vec_is_weak_node};
+use crate::impl_::node::{
+    box_clone_vec_is_node, box_clone_vec_is_weak_node, IsNode, IsWeakNode, Node,
+};
 
 use std::mem;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread;
 
 #[derive(Clone)]
@@ -15,37 +17,40 @@ pub struct SodiumCtx {
     data: Arc<Mutex<SodiumCtxData>>,
     node_count: Arc<AtomicUsize>,
     node_ref_count: Arc<AtomicUsize>,
-    threaded_mode: Arc<ThreadedMode>
+    threaded_mode: Arc<ThreadedMode>,
 }
 
 pub struct SodiumCtxData {
     pub changed_nodes: Vec<Box<dyn IsNode>>,
     pub visited_nodes: Vec<Box<dyn IsNode>>,
     pub transaction_depth: u32,
-    pub pre_post: Vec<Box<dyn FnMut()+Send>>,
-    pub post: Vec<Box<dyn FnMut()+Send>>,
+    pub pre_post: Vec<Box<dyn FnMut() + Send>>,
+    pub post: Vec<Box<dyn FnMut() + Send>>,
     pub keep_alive: Vec<Listener>,
     pub collecting_cycles: bool,
     pub allow_add_roots: bool,
-    pub allow_collect_cycles_counter: u32
+    pub allow_collect_cycles_counter: u32,
 }
 
 pub struct ThreadedMode {
-    pub spawner: ThreadSpawner
+    pub spawner: ThreadSpawner,
 }
 
-type SpawnFn = Box<dyn FnOnce()+Send>;
+type SpawnFn = Box<dyn FnOnce() + Send>;
 
 pub struct ThreadSpawner {
-    pub spawn_fn: Box<dyn Fn(SpawnFn)->ThreadJoiner<()>+Send+Sync>
+    pub spawn_fn: Box<dyn Fn(SpawnFn) -> ThreadJoiner<()> + Send + Sync>,
 }
 
 pub struct ThreadJoiner<R> {
-    pub join_fn: Box<dyn FnOnce()->R+Send>
+    pub join_fn: Box<dyn FnOnce() -> R + Send>,
 }
 
 impl ThreadedMode {
-    pub fn spawn<R:Send+'static,F:FnOnce()->R+Send+'static>(&self, f: F) -> ThreadJoiner<R> {
+    pub fn spawn<R: Send + 'static, F: FnOnce() -> R + Send + 'static>(
+        &self,
+        f: F,
+    ) -> ThreadJoiner<R> {
         let r: Arc<Mutex<Option<R>>> = Arc::new(Mutex::new(None));
         let thread_joiner;
         {
@@ -65,7 +70,7 @@ impl ThreadedMode {
                 let mut r2: Option<R> = None;
                 mem::swap(r, &mut r2);
                 r2.unwrap()
-            })
+            }),
         }
     }
 }
@@ -82,10 +87,10 @@ pub fn single_threaded_mode() -> ThreadedMode {
             spawn_fn: Box::new(|callback| {
                 callback();
                 ThreadJoiner {
-                    join_fn: Box::new(|| {})
+                    join_fn: Box::new(|| {}),
                 }
-            })
-        }
+            }),
+        },
     }
 }
 
@@ -96,10 +101,12 @@ pub fn simple_threaded_mode() -> ThreadedMode {
             spawn_fn: Box::new(|callback| {
                 let h = thread::spawn(callback);
                 ThreadJoiner {
-                    join_fn: Box::new(move || { h.join().unwrap(); })
+                    join_fn: Box::new(move || {
+                        h.join().unwrap();
+                    }),
                 }
-            })
-        }
+            }),
+        },
     }
 }
 
@@ -116,23 +123,20 @@ impl SodiumCtx {
     pub fn new() -> SodiumCtx {
         SodiumCtx {
             gc_ctx: GcCtx::new(),
-            data:
-                Arc::new(Mutex::new(
-                    SodiumCtxData {
-                        changed_nodes: Vec::new(),
-                        visited_nodes: Vec::new(),
-                        transaction_depth: 0,
-                        pre_post: Vec::new(),
-                        post: Vec::new(),
-                        keep_alive: Vec::new(),
-                        collecting_cycles: false,
-                        allow_add_roots: true,
-                        allow_collect_cycles_counter: 0
-                    }
-                )),
+            data: Arc::new(Mutex::new(SodiumCtxData {
+                changed_nodes: Vec::new(),
+                visited_nodes: Vec::new(),
+                transaction_depth: 0,
+                pre_post: Vec::new(),
+                post: Vec::new(),
+                keep_alive: Vec::new(),
+                collecting_cycles: false,
+                allow_add_roots: true,
+                allow_collect_cycles_counter: 0,
+            })),
             node_count: Arc::new(AtomicUsize::new(0)),
             node_ref_count: Arc::new(AtomicUsize::new(0)),
-            threaded_mode: Arc::new(single_threaded_mode())
+            threaded_mode: Arc::new(single_threaded_mode()),
         }
     }
 
@@ -144,16 +148,15 @@ impl SodiumCtx {
         Node::new(self, "null_node", || {}, Vec::new())
     }
 
-    pub fn transaction<R,K:FnOnce()->R>(&self, k:K) -> R {
+    pub fn transaction<R, K: FnOnce() -> R>(&self, k: K) -> R {
         self.with_data(|data: &mut SodiumCtxData| {
             data.transaction_depth += 1;
         });
         let result = k();
-        let is_end_of_transaction =
-            self.with_data(|data: &mut SodiumCtxData| {
-                data.transaction_depth -= 1;
-                data.transaction_depth == 0
-            });
+        let is_end_of_transaction = self.with_data(|data: &mut SodiumCtxData| {
+            data.transaction_depth -= 1;
+            data.transaction_depth == 0
+        });
         if is_end_of_transaction {
             self.end_of_transaction();
         }
@@ -165,26 +168,26 @@ impl SodiumCtx {
             let node_dependents = node.data().dependents.read().unwrap();
             node_dependents
                 .iter()
-                .flat_map(|node: &Box<dyn IsWeakNode+Send+Sync+'static>| node.upgrade())
-                .for_each(|node: Box<dyn IsNode+Send+Sync>| {
+                .flat_map(|node: &Box<dyn IsWeakNode + Send + Sync + 'static>| node.upgrade())
+                .for_each(|node: Box<dyn IsNode + Send + Sync>| {
                     data.changed_nodes.push(node);
                 });
         });
     }
 
-    pub fn pre_post<K:FnMut()+Send+'static>(&self, k: K) {
+    pub fn pre_post<K: FnMut() + Send + 'static>(&self, k: K) {
         self.with_data(|data: &mut SodiumCtxData| {
             data.pre_post.push(Box::new(k));
         });
     }
 
-    pub fn post<K:FnMut()+Send+'static>(&self, k:K) {
+    pub fn post<K: FnMut() + Send + 'static>(&self, k: K) {
         self.with_data(|data: &mut SodiumCtxData| {
             data.post.push(Box::new(k));
         });
     }
 
-    pub fn with_data<R,K:FnOnce(&mut SodiumCtxData)->R>(&self, k: K) -> R {
+    pub fn with_data<R, K: FnOnce(&mut SodiumCtxData) -> R>(&self, k: K) -> R {
         let mut l = self.data.lock();
         let data: &mut SodiumCtxData = l.as_mut().unwrap();
         k(data)
@@ -220,12 +223,11 @@ impl SodiumCtx {
             data.allow_collect_cycles_counter += 1;
         });
         loop {
-            let changed_nodes: Vec<Box<dyn IsNode>> =
-                self.with_data(|data: &mut SodiumCtxData| {
-                    let mut changed_nodes: Vec<Box<dyn IsNode>> = Vec::new();
-                    mem::swap(&mut changed_nodes, &mut data.changed_nodes);
-                    changed_nodes
-                });
+            let changed_nodes: Vec<Box<dyn IsNode>> = self.with_data(|data: &mut SodiumCtxData| {
+                let mut changed_nodes: Vec<Box<dyn IsNode>> = Vec::new();
+                mem::swap(&mut changed_nodes, &mut data.changed_nodes);
+                changed_nodes
+            });
             if changed_nodes.is_empty() {
                 break;
             }
@@ -237,30 +239,27 @@ impl SodiumCtx {
             data.transaction_depth -= 1;
         });
         // pre_post
-        let pre_post =
-            self.with_data(|data: &mut SodiumCtxData| {
-                let mut pre_post: Vec<Box<dyn FnMut()+Send>> = Vec::new();
-                mem::swap(&mut pre_post, &mut data.pre_post);
-                pre_post
-            });
+        let pre_post = self.with_data(|data: &mut SodiumCtxData| {
+            let mut pre_post: Vec<Box<dyn FnMut() + Send>> = Vec::new();
+            mem::swap(&mut pre_post, &mut data.pre_post);
+            pre_post
+        });
         for mut k in pre_post {
             k();
         }
         // post
-        let post =
-            self.with_data(|data: &mut SodiumCtxData| {
-                let mut post: Vec<Box<dyn FnMut()+Send>> = Vec::new();
-                mem::swap(&mut post, &mut data.post);
-                post
-            });
+        let post = self.with_data(|data: &mut SodiumCtxData| {
+            let mut post: Vec<Box<dyn FnMut() + Send>> = Vec::new();
+            mem::swap(&mut post, &mut data.post);
+            post
+        });
         for mut k in post {
             k();
         }
-        let allow_collect_cycles =
-            self.with_data(|data: &mut SodiumCtxData| {
-                data.allow_collect_cycles_counter -= 1;
-                data.allow_collect_cycles_counter == 0
-            });
+        let allow_collect_cycles = self.with_data(|data: &mut SodiumCtxData| {
+            data.allow_collect_cycles_counter -= 1;
+            data.allow_collect_cycles_counter == 0
+        });
         if allow_collect_cycles {
             // gc
             self.collect_cycles()
@@ -277,7 +276,7 @@ impl SodiumCtx {
         if bail {
             return;
         }
-        let dependencies: Vec<Box<dyn IsNode+Send+Sync+'static>>;
+        let dependencies: Vec<Box<dyn IsNode + Send + Sync + 'static>>;
         {
             let dependencies2 = node.data.dependencies.read().unwrap();
             dependencies = box_clone_vec_is_node(&*dependencies2);
@@ -308,7 +307,9 @@ impl SodiumCtx {
         let any_changed =
             dependencies
                 .iter()
-                .any(|node: &Box<dyn IsNode+Send+Sync+'static>| { *node.node().data().changed.read().unwrap() });
+                .any(|node: &Box<dyn IsNode + Send + Sync + 'static>| {
+                    *node.node().data().changed.read().unwrap()
+                });
         // if dependencies changed, then execute update on current node
         if any_changed {
             let mut update = node.data.update.write().unwrap();

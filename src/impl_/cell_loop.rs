@@ -18,13 +18,12 @@ impl<A> Clone for CellLoop<A> {
         CellLoop {
             init_value_op: self.init_value_op.clone(),
             stream_loop: self.stream_loop.clone(),
-            cell: self.cell.clone()
+            cell: self.cell.clone(),
         }
     }
 }
 
-impl<A:Send+Clone+'static> CellLoop<A> {
-
+impl<A: Send + Clone + 'static> CellLoop<A> {
     pub fn new(sodium_ctx: &SodiumCtx) -> CellLoop<A> {
         let init_value_op: Arc<Mutex<Option<A>>> = Arc::new(Mutex::new(None));
         let init_value: Lazy<A>;

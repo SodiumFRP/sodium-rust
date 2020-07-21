@@ -3,17 +3,20 @@ use crate::SodiumCtx;
 use crate::Stream;
 
 pub struct StreamLoop<A> {
-    pub impl_: StreamLoopImpl<A>
+    pub impl_: StreamLoopImpl<A>,
 }
 
-impl<A:Send+Clone+'static> StreamLoop<A> {
-
+impl<A: Send + Clone + 'static> StreamLoop<A> {
     pub fn new(sodium_ctx: &SodiumCtx) -> StreamLoop<A> {
-        StreamLoop { impl_: StreamLoopImpl::new(&sodium_ctx.impl_) }
+        StreamLoop {
+            impl_: StreamLoopImpl::new(&sodium_ctx.impl_),
+        }
     }
 
     pub fn stream(&self) -> Stream<A> {
-        Stream { impl_: self.impl_.stream() }
+        Stream {
+            impl_: self.impl_.stream(),
+        }
     }
 
     pub fn loop_(&self, sa: &Stream<A>) {
