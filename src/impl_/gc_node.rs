@@ -8,12 +8,12 @@ pub type Tracer<'a> = dyn FnMut(&GcNode) + 'a;
 
 pub type Trace = dyn Fn(&mut Tracer) + Send + Sync;
 
-#[derive(PartialEq,Eq,Clone,Copy)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 enum Color {
     Black,
     Gray,
     Purple,
-    White
+    White,
 }
 
 #[derive(Clone)]
@@ -21,7 +21,7 @@ pub struct GcNode {
     id: u32,
     name: String,
     gc_ctx: GcCtx,
-    data: Arc<GcNodeData>
+    data: Arc<GcNodeData>,
 }
 
 struct GcNodeData {
@@ -31,8 +31,8 @@ struct GcNodeData {
     visited: Cell<bool>,
     color: Cell<Color>,
     buffered: Cell<bool>,
-    deconstructor: RwLock<Box<dyn Fn()+Send+Sync>>,
-    trace: RwLock<Box<Trace>>
+    deconstructor: RwLock<Box<dyn Fn() + Send + Sync>>,
+    trace: RwLock<Box<Trace>>,
 }
 
 unsafe impl Send for GcNodeData {}
@@ -40,13 +40,13 @@ unsafe impl Sync for GcNodeData {}
 
 #[derive(Clone)]
 pub struct GcCtx {
-    data: Arc<Mutex<GcCtxData>>
+    data: Arc<Mutex<GcCtxData>>,
 }
 
 struct GcCtxData {
     next_id: u32,
     roots: Vec<GcNode>,
-    to_be_freed: Vec<GcNode>
+    to_be_freed: Vec<GcNode>,
 }
 
 impl Default for GcCtx {
@@ -61,12 +61,12 @@ impl GcCtx {
             data: Arc::new(Mutex::new(GcCtxData {
                 next_id: 0,
                 roots: Vec::new(),
-                to_be_freed: Vec::new()
-            }))
+                to_be_freed: Vec::new(),
+            })),
         }
     }
 
-    fn with_data<R,K:FnOnce(&mut GcCtxData)->R>(&self, k: K) -> R {
+    fn with_data<R, K: FnOnce(&mut GcCtxData) -> R>(&self, k: K) -> R {
         let mut l = self.data.lock();
         let data = l.as_mut().unwrap();
         k(data)
@@ -91,7 +91,9 @@ impl GcCtx {
             self.scan_roots();
             self.collect_roots();
             trace!("end: collect_cycles");
-            let bail = self.with_data(|data: &mut GcCtxData| data.roots.is_empty() && data.to_be_freed.is_empty());
+            let bail = self.with_data(|data: &mut GcCtxData| {
+                data.roots.is_empty() && data.to_be_freed.is_empty()
+            });
             if bail {
                 break;
             }
@@ -101,10 +103,7 @@ impl GcCtx {
     fn mark_roots(&self) {
         trace!("start: mark_roots");
         let mut old_roots: Vec<GcNode> = Vec::new();
-        self.with_data(
-            |data: &mut GcCtxData|
-                std::mem::swap(&mut old_roots, &mut data.roots)
-        );
+        self.with_data(|data: &mut GcCtxData| std::mem::swap(&mut old_roots, &mut data.roots));
         self.display_graph(&old_roots);
         let mut new_roots: Vec<GcNode> = Vec::new();
         for root in &old_roots {
@@ -117,18 +116,15 @@ impl GcCtx {
                 new_roots.push(root);
             } else {
                 root.data.buffered.set(false);
-                if root.data.color.get() == Color::Black && root.data.ref_count.get() == 0 && !root.data.freed.get() {
-                    self.with_data(
-                        |data: &mut GcCtxData|
-                            data.to_be_freed.push(root)
-                    );
+                if root.data.color.get() == Color::Black
+                    && root.data.ref_count.get() == 0
+                    && !root.data.freed.get()
+                {
+                    self.with_data(|data: &mut GcCtxData| data.to_be_freed.push(root));
                 }
             }
         }
-        self.with_data(
-            |data: &mut GcCtxData|
-                std::mem::swap(&mut new_roots, &mut data.roots)
-        );
+        self.with_data(|data: &mut GcCtxData| std::mem::swap(&mut new_roots, &mut data.roots));
         trace!("end: mark_roots");
     }
 
@@ -155,7 +151,8 @@ impl GcCtx {
                 visited.insert(next_ptr);
             }
             show_names_for.push(next.clone());
-            let mut line: String = format!("id {}, ref_count {}: ", next.id, next.data.ref_count.get());
+            let mut line: String =
+                format!("id {}, ref_count {}: ", next.id, next.data.ref_count.get());
             let mut first: bool = true;
             next.trace(|t| {
                 if first {
@@ -194,20 +191,14 @@ impl GcCtx {
     fn scan_roots(&self) {
         trace!("start: scan_roots");
         let mut roots = Vec::new();
-        self.with_data(
-            |data: &mut GcCtxData|
-                std::mem::swap(&mut roots, &mut data.roots)
-        );
+        self.with_data(|data: &mut GcCtxData| std::mem::swap(&mut roots, &mut data.roots));
         for root in &roots {
             self.scan(root);
         }
         for root in &roots {
             self.reset_ref_count_adj(root);
         }
-        self.with_data(
-            |data: &mut GcCtxData|
-                std::mem::swap(&mut roots, &mut data.roots)
-        );
+        self.with_data(|data: &mut GcCtxData| std::mem::swap(&mut roots, &mut data.roots));
         trace!("end: scan_roots");
     }
 
@@ -261,32 +252,48 @@ impl GcCtx {
             if !i.data.freed.get() {
                 trace!("collect_roots: freeing white node {} ({})", i.id, i.name);
                 i.free();
-                self.with_data(|data: &mut GcCtxData| data.roots.retain(|root: &GcNode| root.id != i.id));
+                self.with_data(|data: &mut GcCtxData| {
+                    data.roots.retain(|root: &GcNode| root.id != i.id)
+                });
             }
         }
         let mut to_be_freed = Vec::new();
         self.with_data(|data: &mut GcCtxData| to_be_freed.append(&mut data.to_be_freed));
         for i in &to_be_freed {
             if !i.data.freed.get() {
-                trace!("collect_roots: freeing to_be_freed node {} ({})", i.id, i.name);
+                trace!(
+                    "collect_roots: freeing to_be_freed node {} ({})",
+                    i.id,
+                    i.name
+                );
                 i.free();
-                self.with_data(|data: &mut GcCtxData| data.roots.retain(|root: &GcNode| root.id != i.id));
+                self.with_data(|data: &mut GcCtxData| {
+                    data.roots.retain(|root: &GcNode| root.id != i.id)
+                });
             }
         }
         for i in white {
             if i.ref_count() != 0 {
-                panic!("freed node ref count did not drop to zero for node {} ({})", i.id, i.name);
+                panic!(
+                    "freed node ref count did not drop to zero for node {} ({})",
+                    i.id, i.name
+                );
             }
         }
         for i in to_be_freed {
             if i.ref_count() != 0 {
-                panic!("freed node ref count did not drop to zero for node {} ({})", i.id, i.name);
+                panic!(
+                    "freed node ref count did not drop to zero for node {} ({})",
+                    i.id, i.name
+                );
             }
         }
     }
 
     fn collect_white(&self, s: &GcNode, white: &mut Vec<GcNode>) {
-        if s.data.color.get() == Color::White /*&& !s.data.buffered.get()*/ {
+        if s.data.color.get() == Color::White
+        /*&& !s.data.buffered.get()*/
+        {
             s.data.color.set(Color::Black);
             s.trace(|t| {
                 self.collect_white(t, white);
@@ -301,12 +308,12 @@ impl GcNode {
     pub fn new<
         NAME: ToString,
         DECONSTRUCTOR: 'static + Fn() + Send + Sync,
-        TRACE: 'static + Fn(&mut Tracer) + Send + Sync
+        TRACE: 'static + Fn(&mut Tracer) + Send + Sync,
     >(
         gc_ctx: &GcCtx,
         name: NAME,
         deconstructor: DECONSTRUCTOR,
-        trace: TRACE
+        trace: TRACE,
     ) -> GcNode {
         GcNode {
             id: gc_ctx.make_id(),
@@ -320,8 +327,8 @@ impl GcNode {
                 color: Cell::new(Color::Black),
                 buffered: Cell::new(false),
                 deconstructor: RwLock::new(Box::new(deconstructor)),
-                trace: RwLock::new(Box::new(trace))
-            })
+                trace: RwLock::new(Box::new(trace)),
+            }),
         }
     }
 

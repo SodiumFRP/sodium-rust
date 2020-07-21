@@ -1,40 +1,43 @@
 use crate::impl_::node::IsNode;
-use crate::impl_::stream::Stream;
-use crate::impl_::stream::WeakStream;
 use crate::impl_::sodium_ctx::SodiumCtx;
 use crate::impl_::sodium_ctx::SodiumCtxData;
+use crate::impl_::stream::Stream;
+use crate::impl_::stream::WeakStream;
 
 pub struct StreamSink<A> {
     stream: Stream<A>,
-    sodium_ctx: SodiumCtx
+    sodium_ctx: SodiumCtx,
 }
 
 pub struct WeakStreamSink<A> {
     stream: WeakStream<A>,
-    sodium_ctx: SodiumCtx
+    sodium_ctx: SodiumCtx,
 }
 
 impl<A> Clone for StreamSink<A> {
     fn clone(&self) -> Self {
         StreamSink {
             stream: self.stream.clone(),
-            sodium_ctx: self.sodium_ctx.clone()
+            sodium_ctx: self.sodium_ctx.clone(),
         }
     }
 }
 
-impl<A:Send+'static> StreamSink<A> {
+impl<A: Send + 'static> StreamSink<A> {
     pub fn new(sodium_ctx: &SodiumCtx) -> StreamSink<A> {
         StreamSink {
             stream: Stream::new(sodium_ctx),
-            sodium_ctx: sodium_ctx.clone()
+            sodium_ctx: sodium_ctx.clone(),
         }
     }
 
-    pub fn new_with_coalescer<COALESCER:FnMut(&A,&A)->A+Send+'static>(sodium_ctx: &SodiumCtx, coalescer: COALESCER) -> StreamSink<A> {
+    pub fn new_with_coalescer<COALESCER: FnMut(&A, &A) -> A + Send + 'static>(
+        sodium_ctx: &SodiumCtx,
+        coalescer: COALESCER,
+    ) -> StreamSink<A> {
         StreamSink {
             stream: Stream::_new_with_coalescer(sodium_ctx, coalescer),
-            sodium_ctx: sodium_ctx.clone()
+            sodium_ctx: sodium_ctx.clone(),
         }
     }
 
@@ -59,7 +62,7 @@ impl<A:Send+'static> StreamSink<A> {
     pub fn downgrade(this: &Self) -> WeakStreamSink<A> {
         WeakStreamSink {
             stream: Stream::downgrade(&this.stream),
-            sodium_ctx: this.sodium_ctx.clone()
+            sodium_ctx: this.sodium_ctx.clone(),
         }
     }
 }
@@ -67,6 +70,8 @@ impl<A:Send+'static> StreamSink<A> {
 impl<A> WeakStreamSink<A> {
     pub fn upgrade(&self) -> Option<StreamSink<A>> {
         let sodium_ctx = self.sodium_ctx.clone();
-        self.stream.upgrade().map(|stream: Stream<A>| StreamSink { stream, sodium_ctx })
+        self.stream
+            .upgrade()
+            .map(|stream: Stream<A>| StreamSink { stream, sodium_ctx })
     }
 }

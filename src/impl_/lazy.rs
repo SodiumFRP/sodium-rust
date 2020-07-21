@@ -2,33 +2,32 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub struct Lazy<A> {
-    data: Arc<Mutex<LazyData<A>>>
+    data: Arc<Mutex<LazyData<A>>>,
 }
 
 impl<A> Clone for Lazy<A> {
     fn clone(&self) -> Self {
         Lazy {
-            data: self.data.clone()
+            data: self.data.clone(),
         }
     }
 }
 
 pub enum LazyData<A> {
-    Thunk(Box<dyn FnMut()->A+Send>),
-    Value(A)
+    Thunk(Box<dyn FnMut() -> A + Send>),
+    Value(A),
 }
 
-impl<A:Send+Clone+'static> Lazy<A> {
-
-    pub fn new<THUNK:FnMut()->A+Send+'static>(thunk: THUNK) -> Lazy<A> {
+impl<A: Send + Clone + 'static> Lazy<A> {
+    pub fn new<THUNK: FnMut() -> A + Send + 'static>(thunk: THUNK) -> Lazy<A> {
         Lazy {
-            data: Arc::new(Mutex::new(LazyData::Thunk(Box::new(thunk))))
+            data: Arc::new(Mutex::new(LazyData::Thunk(Box::new(thunk)))),
         }
     }
 
     pub fn of_value(value: A) -> Lazy<A> {
         Lazy {
-            data: Arc::new(Mutex::new(LazyData::Value(value)))
+            data: Arc::new(Mutex::new(LazyData::Value(value))),
         }
     }
 
@@ -41,7 +40,7 @@ impl<A:Send+Clone+'static> Lazy<A> {
             LazyData::Thunk(ref mut k) => {
                 result = k();
                 next_op = Some(LazyData::Value(result.clone()));
-            },
+            }
             LazyData::Value(ref x) => {
                 result = x.clone();
                 next_op = None;

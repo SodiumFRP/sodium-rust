@@ -1,15 +1,15 @@
 use crate::impl_::gc_node::{GcNode, Tracer};
-use crate::impl_::node::{Node, IsNode};
+use crate::impl_::node::{IsNode, Node};
 use crate::impl_::sodium_ctx::SodiumCtx;
 use crate::impl_::sodium_ctx::SodiumCtxData;
 
+use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::fmt;
 
 pub struct Listener {
     pub data: Arc<Mutex<ListenerData>>,
-    pub gc_node: GcNode
+    pub gc_node: GcNode,
 }
 
 impl Clone for Listener {
@@ -17,7 +17,7 @@ impl Clone for Listener {
         self.gc_node.inc_ref();
         Listener {
             data: self.data.clone(),
-            gc_node: self.gc_node.clone()
+            gc_node: self.gc_node.clone(),
         }
     }
 }
@@ -31,7 +31,7 @@ impl Drop for Listener {
 pub struct ListenerData {
     pub sodium_ctx: SodiumCtx,
     pub is_weak: bool,
-    pub node_op: Option<Node>
+    pub node_op: Option<Node>,
 }
 
 impl Listener {
@@ -39,7 +39,7 @@ impl Listener {
         let listener_data = Arc::new(Mutex::new(ListenerData {
             sodium_ctx: sodium_ctx.clone(),
             node_op: Some(node),
-            is_weak
+            is_weak,
         }));
         let gc_node_desconstructor;
         {
@@ -56,12 +56,20 @@ impl Listener {
             gc_node_trace = move |tracer: &mut Tracer| {
                 let mut l = listener_data.lock();
                 let listener_data = l.as_mut().unwrap();
-                listener_data.node_op.iter().for_each(|node: &Node| tracer(&node.gc_node));
+                listener_data
+                    .node_op
+                    .iter()
+                    .for_each(|node: &Node| tracer(&node.gc_node));
             };
         }
         let listener = Listener {
             data: listener_data,
-            gc_node: GcNode::new(&sodium_ctx.gc_ctx(), "Listener::new", gc_node_desconstructor, gc_node_trace)
+            gc_node: GcNode::new(
+                &sodium_ctx.gc_ctx(),
+                "Listener::new",
+                gc_node_desconstructor,
+                gc_node_trace,
+            ),
         };
         if !is_weak {
             sodium_ctx.with_data(|data: &mut SodiumCtxData| {
@@ -83,7 +91,8 @@ impl Listener {
         }
         if !is_weak {
             sodium_ctx.with_data(|data: &mut SodiumCtxData| {
-                data.keep_alive.retain(|l:&Listener| !Arc::ptr_eq(&l.data,&self.data))
+                data.keep_alive
+                    .retain(|l: &Listener| !Arc::ptr_eq(&l.data, &self.data))
             });
         }
     }
@@ -92,7 +101,7 @@ impl Listener {
         self.with_data(|data: &mut ListenerData| data.node_op.clone())
     }
 
-    pub fn with_data<R,K:FnOnce(&mut ListenerData)->R>(&self, k: K) -> R {
+    pub fn with_data<R, K: FnOnce(&mut ListenerData) -> R>(&self, k: K) -> R {
         let mut l = self.data.lock();
         let data: &mut ListenerData = l.as_mut().unwrap();
         k(data)
@@ -106,7 +115,7 @@ impl fmt::Debug for Listener {
         match node_op {
             Some(node) => {
                 writeln!(f)?;
-                writeln!(f, "{:?})", &node as &(dyn IsNode+Sync+Sync))?;
+                writeln!(f, "{:?})", &node as &(dyn IsNode + Sync + Sync))?;
             }
             None => {
                 writeln!(f, ")")?;
