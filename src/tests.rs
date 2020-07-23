@@ -171,7 +171,7 @@ fn loop_stream1() {
     let sodium_ctx = &mut sodium_ctx;
     {
         let sa = sodium_ctx.new_stream_sink();
-        let sb = sodium_ctx.transaction(|| {
+        let _sb = sodium_ctx.transaction(|| {
             let sb = sodium_ctx.new_stream_loop();
             sb.loop_(&sa.stream());
             sb

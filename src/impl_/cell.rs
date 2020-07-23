@@ -127,68 +127,70 @@ impl<A: Send + 'static> Cell<A> {
     where
         A: Clone,
     {
-        let cell_data = Arc::new(Mutex::new(CellData {
-            stream: stream.clone(),
-            value,
-            next_value_op: None,
-        }));
-        let sodium_ctx = sodium_ctx.clone();
-        let node: Node;
-        let c_forward_ref = CellWeakForwardRef::new();
-        {
-            let c = c_forward_ref.clone();
-            let stream_node = stream.box_clone();
-            let stream_dep = stream.to_dep();
+        sodium_ctx.transaction(|| {
+            let cell_data = Arc::new(Mutex::new(CellData {
+                stream: stream.clone(),
+                value,
+                next_value_op: None,
+            }));
             let sodium_ctx = sodium_ctx.clone();
-            let sodium_ctx2 = sodium_ctx.clone();
-            node = Node::new(
-                &sodium_ctx2,
-                "Cell::hold",
-                move || {
-                    let c = c.unwrap();
-                    let firing_op = stream.with_firing_op(|firing_op| firing_op.clone());
-                    if let Some(firing) = firing_op {
-                        let is_first = c.with_data(|data: &mut CellData<A>| {
-                            let is_first = data.next_value_op.is_none();
-                            data.next_value_op = Some(firing);
-                            is_first
-                        });
-                        if is_first {
-                            sodium_ctx.post(move || {
-                                c.with_data(|data: &mut CellData<A>| {
-                                    let mut next_value_op: Option<A> = None;
-                                    mem::swap(&mut next_value_op, &mut data.next_value_op);
-                                    if let Some(next_value) = next_value_op {
-                                        data.value = Lazy::of_value(next_value);
-                                    }
-                                })
+            let node: Node;
+            let c_forward_ref = CellWeakForwardRef::new();
+            {
+                let c = c_forward_ref.clone();
+                let stream_node = stream.box_clone();
+                let stream_dep = stream.to_dep();
+                let sodium_ctx = sodium_ctx.clone();
+                let sodium_ctx2 = sodium_ctx.clone();
+                node = Node::new(
+                    &sodium_ctx2,
+                    "Cell::hold",
+                    move || {
+                        let c = c.unwrap();
+                        let firing_op = stream.with_firing_op(|firing_op| firing_op.clone());
+                        if let Some(firing) = firing_op {
+                            let is_first = c.with_data(|data: &mut CellData<A>| {
+                                let is_first = data.next_value_op.is_none();
+                                data.next_value_op = Some(firing);
+                                is_first
                             });
+                            if is_first {
+                                sodium_ctx.post(move || {
+                                    c.with_data(|data: &mut CellData<A>| {
+                                        let mut next_value_op: Option<A> = None;
+                                        mem::swap(&mut next_value_op, &mut data.next_value_op);
+                                        if let Some(next_value) = next_value_op {
+                                            data.value = Lazy::of_value(next_value);
+                                        }
+                                    })
+                                });
+                            }
                         }
-                    }
-                },
-                vec![stream_node],
-            );
-            // Hack: Add stream gc node twice, because one is kepted in the cell_data for Cell::update() to return.
-            IsNode::add_update_dependencies(&node, vec![stream_dep.clone(), stream_dep]);
-        }
-        let c = Cell {
-            data: cell_data,
-            node: node.clone(),
-        };
-        c_forward_ref.assign(&c);
-        // initial update of Cell incase of stream (in Cell::hold) firing during same transaction cell is created.
-        {
-            let c = c.clone();
-            sodium_ctx.pre_eot(move || {
-                let mut update = node.data.update.write().unwrap();
-                let update: &mut Box<_> = &mut *update;
-                update();
-                // c captured, but not used so that update() will not crash here
-                c.nop();
-            });
-        }
-        //
-        c
+                    },
+                    vec![stream_node],
+                );
+                // Hack: Add stream gc node twice, because one is kepted in the cell_data for Cell::update() to return.
+                IsNode::add_update_dependencies(&node, vec![stream_dep.clone(), stream_dep]);
+            }
+            let c = Cell {
+                data: cell_data,
+                node: node.clone(),
+            };
+            c_forward_ref.assign(&c);
+            // initial update of Cell incase of stream (in Cell::hold) firing during same transaction cell is created.
+            {
+                let c = c.clone();
+                sodium_ctx.pre_eot(move || {
+                    let mut update = node.data.update.write().unwrap();
+                    let update: &mut Box<_> = &mut *update;
+                    update();
+                    // c captured, but not used so that update() will not crash here
+                    c.nop();
+                });
+            }
+            //
+            c
+        })
     }
 
     pub fn nop(&self) {
