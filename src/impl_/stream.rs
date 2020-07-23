@@ -447,23 +447,25 @@ impl<A: Send + 'static> Stream<A> {
         mut k: K,
         weak: bool,
     ) -> Listener {
-        let self_ = self.clone();
-        let f_deps = lambda1_deps(&k);
-        let node = Node::new(
-            &self.sodium_ctx(),
-            "Stream::listen",
-            move || {
-                self_.with_data(|data: &mut StreamData<A>| {
-                    for firing in &data.firing_op {
-                        k.call(firing)
-                    }
-                });
-            },
-            vec![self.box_clone()],
-        );
-        IsNode::add_update_dependencies(&node, vec![self.to_dep()]);
-        IsNode::add_update_dependencies(&node, f_deps);
-        Listener::new(&self.sodium_ctx(), weak, node)
+        self.sodium_ctx().transaction(|| {
+            let self_ = self.clone();
+            let f_deps = lambda1_deps(&k);
+            let node = Node::new(
+                &self.sodium_ctx(),
+                "Stream::listen",
+                move || {
+                    self_.with_data(|data: &mut StreamData<A>| {
+                        for firing in &data.firing_op {
+                            k.call(firing)
+                        }
+                    });
+                },
+                vec![self.box_clone()],
+            );
+            IsNode::add_update_dependencies(&node, vec![self.to_dep()]);
+            IsNode::add_update_dependencies(&node, f_deps);
+            Listener::new(&self.sodium_ctx(), weak, node)
+        })
     }
 
     pub fn listen_weak<K: IsLambda1<A, ()> + Send + Sync + 'static>(&self, k: K) -> Listener {
