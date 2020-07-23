@@ -165,43 +165,52 @@ impl<A: Send + 'static> Stream<A> {
         sodium_ctx: &SodiumCtx,
         mk_node: MkNode,
     ) -> Stream<A> {
-        let result_forward_ref: StreamWeakForwardRef<A> = StreamWeakForwardRef::new();
-        let s;
-        let node = mk_node(result_forward_ref.clone());
-        {
-            s = Stream {
-                data: Arc::new(Mutex::new(StreamData {
-                    firing_op: None,
-                    sodium_ctx: sodium_ctx.clone(),
-                    coalescer_op: None,
-                })),
-                node: node.clone(),
-            };
-        }
-        result_forward_ref.assign(&s);
-        {
-            let mut update = node.data.update.write().unwrap();
-            let update: &mut Box<_> = &mut update;
-            update();
-        }
-        let is_firing = s.with_data(|data: &mut StreamData<A>| data.firing_op.is_some());
-        if is_firing {
+        sodium_ctx.transaction(|| {
+            let result_forward_ref: StreamWeakForwardRef<A> = StreamWeakForwardRef::new();
+            let s;
+            let node = mk_node(result_forward_ref.clone());
             {
-                let s_node = s.node();
-                let mut changed = s_node.data.changed.write().unwrap();
-                *changed = true;
+                s = Stream {
+                    data: Arc::new(Mutex::new(StreamData {
+                        firing_op: None,
+                        sodium_ctx: sodium_ctx.clone(),
+                        coalescer_op: None,
+                    })),
+                    node: node.clone(),
+                };
             }
-            let s = s.clone();
-            sodium_ctx.pre_post(move || {
-                s.with_data(|data: &mut StreamData<A>| {
-                    data.firing_op = None;
-                    let s_node = s.node();
-                    let mut changed = s_node.data.changed.write().unwrap();
-                    *changed = true;
+            result_forward_ref.assign(&s);
+            {
+                let s = s.clone();
+                let sodium_ctx2 = sodium_ctx.clone();
+                sodium_ctx.pre_eot(move || {
+                    {
+                        let mut update = node.data.update.write().unwrap();
+                        let update: &mut Box<_> = &mut update;
+                        update();
+                    }
+                    let is_firing =
+                        s.with_data(|data: &mut StreamData<A>| data.firing_op.is_some());
+                    if is_firing {
+                        {
+                            let s_node = s.node();
+                            let mut changed = s_node.data.changed.write().unwrap();
+                            *changed = true;
+                        }
+                        let s = s.clone();
+                        sodium_ctx2.pre_post(move || {
+                            s.with_data(|data: &mut StreamData<A>| {
+                                data.firing_op = None;
+                                let s_node = s.node();
+                                let mut changed = s_node.data.changed.write().unwrap();
+                                *changed = true;
+                            });
+                        });
+                    }
                 });
-            });
-        }
-        s
+            }
+            s
+        })
     }
 
     pub fn snapshot<
@@ -441,23 +450,25 @@ impl<A: Send + 'static> Stream<A> {
         mut k: K,
         weak: bool,
     ) -> Listener {
-        let self_ = self.clone();
-        let f_deps = lambda1_deps(&k);
-        let node = Node::new(
-            &self.sodium_ctx(),
-            "Stream::listen",
-            move || {
-                self_.with_data(|data: &mut StreamData<A>| {
-                    for firing in &data.firing_op {
-                        k.call(firing)
-                    }
-                });
-            },
-            vec![self.box_clone()],
-        );
-        IsNode::add_update_dependencies(&node, vec![self.to_dep()]);
-        IsNode::add_update_dependencies(&node, f_deps);
-        Listener::new(&self.sodium_ctx(), weak, node)
+        self.sodium_ctx().transaction(|| {
+            let self_ = self.clone();
+            let f_deps = lambda1_deps(&k);
+            let node = Node::new(
+                &self.sodium_ctx(),
+                "Stream::listen",
+                move || {
+                    self_.with_data(|data: &mut StreamData<A>| {
+                        for firing in &data.firing_op {
+                            k.call(firing)
+                        }
+                    });
+                },
+                vec![self.box_clone()],
+            );
+            IsNode::add_update_dependencies(&node, vec![self.to_dep()]);
+            IsNode::add_update_dependencies(&node, f_deps);
+            Listener::new(&self.sodium_ctx(), weak, node)
+        })
     }
 
     pub fn listen_weak<K: IsLambda1<A, ()> + Send + Sync + 'static>(&self, k: K) -> Listener {

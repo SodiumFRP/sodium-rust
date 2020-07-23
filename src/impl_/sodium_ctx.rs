@@ -24,6 +24,7 @@ pub struct SodiumCtxData {
     pub changed_nodes: Vec<Box<dyn IsNode>>,
     pub visited_nodes: Vec<Box<dyn IsNode>>,
     pub transaction_depth: u32,
+    pub pre_eot: Vec<Box<dyn FnMut() + Send>>,
     pub pre_post: Vec<Box<dyn FnMut() + Send>>,
     pub post: Vec<Box<dyn FnMut() + Send>>,
     pub keep_alive: Vec<Listener>,
@@ -127,6 +128,7 @@ impl SodiumCtx {
                 changed_nodes: Vec::new(),
                 visited_nodes: Vec::new(),
                 transaction_depth: 0,
+                pre_eot: Vec::new(),
                 pre_post: Vec::new(),
                 post: Vec::new(),
                 keep_alive: Vec::new(),
@@ -173,6 +175,10 @@ impl SodiumCtx {
                     data.changed_nodes.push(node);
                 });
         });
+    }
+
+    pub fn pre_eot<K: FnMut() + Send + 'static>(&self, k: K) {
+        self.with_data(|data: &mut SodiumCtxData| data.pre_eot.push(Box::new(k)));
     }
 
     pub fn pre_post<K: FnMut() + Send + 'static>(&self, k: K) {
@@ -222,6 +228,18 @@ impl SodiumCtx {
             data.transaction_depth += 1;
             data.allow_collect_cycles_counter += 1;
         });
+        // pre eot
+        {
+            let pre_eot = self.with_data(|data: &mut SodiumCtxData| {
+                let mut pre_eot: Vec<Box<dyn FnMut() + Send>> = Vec::new();
+                mem::swap(&mut pre_eot, &mut data.pre_eot);
+                pre_eot
+            });
+            for mut k in pre_eot {
+                k();
+            }
+        }
+        //
         loop {
             let changed_nodes: Vec<Box<dyn IsNode>> = self.with_data(|data: &mut SodiumCtxData| {
                 let mut changed_nodes: Vec<Box<dyn IsNode>> = Vec::new();
@@ -239,22 +257,26 @@ impl SodiumCtx {
             data.transaction_depth -= 1;
         });
         // pre_post
-        let pre_post = self.with_data(|data: &mut SodiumCtxData| {
-            let mut pre_post: Vec<Box<dyn FnMut() + Send>> = Vec::new();
-            mem::swap(&mut pre_post, &mut data.pre_post);
-            pre_post
-        });
-        for mut k in pre_post {
-            k();
+        {
+            let pre_post = self.with_data(|data: &mut SodiumCtxData| {
+                let mut pre_post: Vec<Box<dyn FnMut() + Send>> = Vec::new();
+                mem::swap(&mut pre_post, &mut data.pre_post);
+                pre_post
+            });
+            for mut k in pre_post {
+                k();
+            }
         }
         // post
-        let post = self.with_data(|data: &mut SodiumCtxData| {
-            let mut post: Vec<Box<dyn FnMut() + Send>> = Vec::new();
-            mem::swap(&mut post, &mut data.post);
-            post
-        });
-        for mut k in post {
-            k();
+        {
+            let post = self.with_data(|data: &mut SodiumCtxData| {
+                let mut post: Vec<Box<dyn FnMut() + Send>> = Vec::new();
+                mem::swap(&mut post, &mut data.post);
+                post
+            });
+            for mut k in post {
+                k();
+            }
         }
         let allow_collect_cycles = self.with_data(|data: &mut SodiumCtxData| {
             data.allow_collect_cycles_counter -= 1;
