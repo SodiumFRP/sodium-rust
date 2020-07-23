@@ -127,17 +127,9 @@ impl<A: Send + 'static> Cell<A> {
     where
         A: Clone,
     {
-        let init_value = stream.with_firing_op(|firing_op: &mut Option<A>| {
-            if let Some(ref firing) = firing_op {
-                let firing = firing.clone();
-                Lazy::new(move || firing.clone())
-            } else {
-                value
-            }
-        });
         let cell_data = Arc::new(Mutex::new(CellData {
             stream: stream.clone(),
-            value: init_value,
+            value,
             next_value_op: None,
         }));
         let sodium_ctx = sodium_ctx.clone();
@@ -147,6 +139,7 @@ impl<A: Send + 'static> Cell<A> {
             let c = c_forward_ref.clone();
             let stream_node = stream.box_clone();
             let stream_dep = stream.to_dep();
+            let sodium_ctx = sodium_ctx.clone();
             let sodium_ctx2 = sodium_ctx.clone();
             node = Node::new(
                 &sodium_ctx2,
@@ -180,10 +173,28 @@ impl<A: Send + 'static> Cell<A> {
         }
         let c = Cell {
             data: cell_data,
-            node,
+            node: node.clone(),
         };
         c_forward_ref.assign(&c);
+        // initial update of Cell incase of stream (in Cell::hold) firing during same transaction cell is created.
+        {
+            let c = c.clone();
+            sodium_ctx.pre_eot(move || {
+                let mut update = node.data.update.write().unwrap();
+                let update: &mut Box<_> = &mut *update;
+                update();
+                // c captured, but not used so that update() will not crash here
+                c.nop();
+            });
+        }
+        //
         c
+    }
+
+    pub fn nop(&self) {
+        // no operation. (NOP)
+        // Purpose is for capturing inside closure to extend lifetime to atleast the lifetime of the closure,
+        // but do not use it in that closure
     }
 
     pub fn sample(&self) -> A
