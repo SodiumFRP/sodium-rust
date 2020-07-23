@@ -231,13 +231,15 @@ impl SodiumCtx {
             data.allow_collect_cycles_counter += 1;
         });
         // pre eot
-        let pre_eot = self.with_data(|data: &mut SodiumCtxData| {
-            let mut pre_eot: Vec<Box<dyn FnMut() + Send>> = Vec::new();
-            mem::swap(&mut pre_eot, &mut data.pre_eot);
-            pre_eot
-        });
-        for mut k in pre_eot {
-            k();
+        {
+            let pre_eot = self.with_data(|data: &mut SodiumCtxData| {
+                let mut pre_eot: Vec<Box<dyn FnMut() + Send>> = Vec::new();
+                mem::swap(&mut pre_eot, &mut data.pre_eot);
+                pre_eot
+            });
+            for mut k in pre_eot {
+                k();
+            }
         }
         //
         loop {
@@ -257,22 +259,26 @@ impl SodiumCtx {
             data.transaction_depth -= 1;
         });
         // pre_post
-        let pre_post = self.with_data(|data: &mut SodiumCtxData| {
-            let mut pre_post: Vec<Box<dyn FnMut() + Send>> = Vec::new();
-            mem::swap(&mut pre_post, &mut data.pre_post);
-            pre_post
-        });
-        for mut k in pre_post {
-            k();
+        {
+            let pre_post = self.with_data(|data: &mut SodiumCtxData| {
+                let mut pre_post: Vec<Box<dyn FnMut() + Send>> = Vec::new();
+                mem::swap(&mut pre_post, &mut data.pre_post);
+                pre_post
+            });
+            for mut k in pre_post {
+                k();
+            }
         }
         // post
-        let post = self.with_data(|data: &mut SodiumCtxData| {
-            let mut post: Vec<Box<dyn FnMut() + Send>> = Vec::new();
-            mem::swap(&mut post, &mut data.post);
-            post
-        });
-        for mut k in post {
-            k();
+        {
+            let post = self.with_data(|data: &mut SodiumCtxData| {
+                let mut post: Vec<Box<dyn FnMut() + Send>> = Vec::new();
+                mem::swap(&mut post, &mut data.post);
+                post
+            });
+            for mut k in post {
+                k();
+            }
         }
         let allow_collect_cycles = self.with_data(|data: &mut SodiumCtxData| {
             data.allow_collect_cycles_counter -= 1;

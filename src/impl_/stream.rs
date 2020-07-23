@@ -180,25 +180,31 @@ impl<A: Send + 'static> Stream<A> {
         }
         result_forward_ref.assign(&s);
         {
-            let mut update = node.data.update.write().unwrap();
-            let update: &mut Box<_> = &mut update;
-            update();
-        }
-        let is_firing = s.with_data(|data: &mut StreamData<A>| data.firing_op.is_some());
-        if is_firing {
-            {
-                let s_node = s.node();
-                let mut changed = s_node.data.changed.write().unwrap();
-                *changed = true;
-            }
             let s = s.clone();
-            sodium_ctx.pre_post(move || {
-                s.with_data(|data: &mut StreamData<A>| {
-                    data.firing_op = None;
-                    let s_node = s.node();
-                    let mut changed = s_node.data.changed.write().unwrap();
-                    *changed = true;
-                });
+            let sodium_ctx2 = sodium_ctx.clone();
+            sodium_ctx.pre_eot(move || {
+                {
+                    let mut update = node.data.update.write().unwrap();
+                    let update: &mut Box<_> = &mut update;
+                    update();
+                }
+                let is_firing = s.with_data(|data: &mut StreamData<A>| data.firing_op.is_some());
+                if is_firing {
+                    {
+                        let s_node = s.node();
+                        let mut changed = s_node.data.changed.write().unwrap();
+                        *changed = true;
+                    }
+                    let s = s.clone();
+                    sodium_ctx2.pre_post(move || {
+                        s.with_data(|data: &mut StreamData<A>| {
+                            data.firing_op = None;
+                            let s_node = s.node();
+                            let mut changed = s_node.data.changed.write().unwrap();
+                            *changed = true;
+                        });
+                    });
+                }
             });
         }
         s
