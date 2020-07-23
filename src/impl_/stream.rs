@@ -189,7 +189,8 @@ impl<A: Send + 'static> Stream<A> {
                         let update: &mut Box<_> = &mut update;
                         update();
                     }
-                    let is_firing = s.with_data(|data: &mut StreamData<A>| data.firing_op.is_some());
+                    let is_firing =
+                        s.with_data(|data: &mut StreamData<A>| data.firing_op.is_some());
                     if is_firing {
                         {
                             let s_node = s.node();

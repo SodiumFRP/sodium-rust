@@ -31,7 +31,9 @@ fn stream() {
             let out = out.clone();
             l = sodium_ctx.transaction(|| {
                 ev.send("h");
-                let l = ev.stream().listen(move |ch: &&'static str| out.lock().as_mut().unwrap().push_str(ch));
+                let l = ev
+                    .stream()
+                    .listen(move |ch: &&'static str| out.lock().as_mut().unwrap().push_str(ch));
                 ev.send("e");
                 l
             });
@@ -180,7 +182,9 @@ fn loop_stream1() {
         let l;
         {
             let out = out.clone();
-            l = sa.stream().listen(move |a: &u8| out.lock().as_mut().unwrap().push(*a));
+            l = sa
+                .stream()
+                .listen(move |a: &u8| out.lock().as_mut().unwrap().push(*a));
         }
         sa.send(2);
         sa.send(52);
@@ -365,7 +369,9 @@ fn snapshot3() {
             let out = out.clone();
             l = s
                 .stream()
-                .snapshot3(&b.cell(), &c.cell(), |x: &usize, y: &usize, z: &usize| format!("{} {} {}", x, y, z))
+                .snapshot3(&b.cell(), &c.cell(), |x: &usize, y: &usize, z: &usize| {
+                    format!("{} {} {}", x, y, z)
+                })
                 .listen(move |a: &String| out.lock().as_mut().unwrap().push(a.clone()));
         }
         s.send(100);
@@ -393,7 +399,7 @@ fn deltas_with_initial<A, F, R>(sodium_ctx: &SodiumCtx, ca: &Cell<A>, a: A, f: F
 where
     A: 'static + Clone + Send,
     R: 'static + Clone + Send,
-    F: 'static + Send + Sync + Fn(&A, &A) -> R
+    F: 'static + Send + Sync + Fn(&A, &A) -> R,
 {
     sodium_ctx.transaction(|| {
         let s = ca.value();
@@ -415,8 +421,11 @@ fn snapshot_initial_value() {
             let l;
             {
                 let out = out.clone();
-                l = deltas_with_initial(sodium_ctx, &a, 0, |new: &i8, old: &i8| {println!("new {} old {}", new, old); new - old})
-                    .listen(move |a: &i8| out.lock().as_mut().unwrap().push(a.clone()));
+                l = deltas_with_initial(sodium_ctx, &a, 0, |new: &i8, old: &i8| {
+                    println!("new {} old {}", new, old);
+                    new - old
+                })
+                .listen(move |a: &i8| out.lock().as_mut().unwrap().push(a.clone()));
             }
             (sa, l)
         });
@@ -443,7 +452,10 @@ fn value() {
             let l;
             {
                 let out = out.clone();
-                l = b.cell().value().listen(move |a: &i8| out.lock().as_mut().unwrap().push(a.clone()));
+                l = b
+                    .cell()
+                    .value()
+                    .listen(move |a: &i8| out.lock().as_mut().unwrap().push(a.clone()));
             }
             (b, l)
         });
@@ -470,7 +482,10 @@ fn value_const() {
             let l;
             {
                 let out = out.clone();
-                l = b.cell().value().listen(move |a: &i8| out.lock().as_mut().unwrap().push(a.clone()));
+                l = b
+                    .cell()
+                    .value()
+                    .listen(move |a: &i8| out.lock().as_mut().unwrap().push(a.clone()));
             }
             l
         });

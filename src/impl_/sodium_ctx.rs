@@ -178,9 +178,7 @@ impl SodiumCtx {
     }
 
     pub fn pre_eot<K: FnMut() + Send + 'static>(&self, k: K) {
-        self.with_data(|data: &mut SodiumCtxData| {
-            data.pre_eot.push(Box::new(k))
-        });
+        self.with_data(|data: &mut SodiumCtxData| data.pre_eot.push(Box::new(k)));
     }
 
     pub fn pre_post<K: FnMut() + Send + 'static>(&self, k: K) {
