@@ -208,27 +208,21 @@ impl<A: Send + 'static> Cell<A> {
         let sodium_ctx = self.sodium_ctx();
         sodium_ctx.transaction(|| {
             let s1 = self.updates();
-            let spark: Stream<A> = Stream::new(&sodium_ctx);
-            let sodium_ctx2 = sodium_ctx.clone();
+            let spark: Stream<Lazy<A>> = Stream::new(&sodium_ctx);
             {
                 let spark = spark.clone();
                 let self_ = self.clone();
-                sodium_ctx.post(move || {
-                    let a = self_.with_data(|data: &mut CellData<A>| data.value.run());
-                    sodium_ctx2.transaction(|| {
-                        let node = spark.node();
-                        {
-                            let mut changed = node.data.changed.write().unwrap();
-                            *changed = true;
-                        }
-                        sodium_ctx2.with_data(|data: &mut SodiumCtxData| {
-                            data.changed_nodes.push(node.box_clone())
-                        });
-                        spark._send(a.clone());
-                    });
+                spark._send(self_.with_data(|data: &mut CellData<A>| data.value.clone()));
+                let node = spark.node();
+                {
+                    let mut changed = node.data.changed.write().unwrap();
+                    *changed = true;
+                }
+                sodium_ctx.with_data(|data: &mut SodiumCtxData| {
+                    data.changed_nodes.push(node.box_clone())
                 });
             }
-            s1.or_else(&spark)
+            s1.or_else(&spark.map(|x: &Lazy<A>| x.run()))
         })
     }
 
