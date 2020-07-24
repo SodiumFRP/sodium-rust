@@ -6,7 +6,7 @@ use crate::impl_::lambda::IsLambda4;
 use crate::impl_::lambda::IsLambda5;
 use crate::impl_::lambda::IsLambda6;
 use crate::impl_::lambda::{
-    lambda1, lambda2, lambda2_deps, lambda3, lambda3_deps, lambda4_deps, lambda5_deps, lambda6_deps,
+    lambda1, lambda1_deps, lambda2, lambda2_deps, lambda3, lambda3_deps, lambda4_deps, lambda5_deps, lambda6_deps,
 };
 use crate::impl_::lazy::Lazy;
 use crate::impl_::listener::Listener;
@@ -241,14 +241,29 @@ impl<A: Send + 'static> Cell<A> {
 
     pub fn map<B: Send + 'static, FN: IsLambda1<A, B> + Send + Sync + 'static>(
         &self,
-        mut f: FN,
+        f: FN,
     ) -> Cell<B>
     where
         A: Clone,
         B: Clone,
     {
-        let init = f.call(&self.sample());
-        self.updates().map(f).hold(init)
+        let self_ = self.clone();
+        let f_deps = lambda1_deps(&f);
+        let f = Arc::new(Mutex::new(f));
+        let init;
+        {
+            let f = f.clone();
+            init = Lazy::new(move || {
+                let mut l = f.lock();
+                let f = l.as_mut().unwrap();
+                f.call(&self_.sample())
+            });
+        }
+        self.updates().map(lambda1(move |a: &A| {
+            let mut l = f.lock();
+            let f = l.as_mut().unwrap();
+            f.call(a)
+        }, f_deps)).hold_lazy(init)
     }
 
     pub fn lift2<
@@ -440,7 +455,7 @@ impl<A: Send + 'static> Cell<A> {
         let sodium_ctx = csa.sodium_ctx();
         Stream::_new(&sodium_ctx, |sa: StreamWeakForwardRef<A>| {
             let inner_s: Arc<Mutex<WeakStream<A>>> =
-                Arc::new(Mutex::new(Stream::downgrade(&csa.sample())));
+                Arc::new(Mutex::new(Stream::downgrade(&Stream::new(&sodium_ctx))));
             let sa = sa;
             let node1: Node;
             {
@@ -459,8 +474,20 @@ impl<A: Send + 'static> Cell<A> {
                             }
                         });
                     },
-                    vec![csa.sample().box_clone()],
+                    vec![],
                 );
+            }
+            {
+                let inner_s = inner_s.clone();
+                let csa = csa.clone();
+                let node1 = node1.clone();
+                sodium_ctx.pre_eot(move || {
+                    let mut l = inner_s.lock();
+                    let inner_s: &mut WeakStream<A> = l.as_mut().unwrap();
+                    let s = csa.sample();
+                    *inner_s = Stream::downgrade(&s);
+                    IsNode::add_dependency(&node1, s);
+                });
             }
             let node2: Node;
             let csa_updates = csa.updates();

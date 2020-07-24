@@ -1,4 +1,4 @@
-use crate::{lambda1, Cell, Operational, SodiumCtx, Stream, StreamSink};
+use crate::{lambda1, Cell, CellLoop, Operational, SodiumCtx, Stream, StreamSink};
 
 use std::sync::{Arc, Mutex};
 
@@ -840,6 +840,37 @@ fn lift_loop() {
             let l = out.lock();
             let out: &Vec<String> = l.as_ref().unwrap();
             assert_eq!(vec!["tea kettle", "tea caddy"], *out);
+        }
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+#[test]
+fn loop_switch_s() {
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
+    {
+        let out = Arc::new(Mutex::new(Vec::<&str>::new()));
+        let b = sodium_ctx.transaction(|| {
+            let e1: StreamSink<&str> = sodium_ctx.new_stream_sink();
+            let b_lp: CellLoop<Stream<&str>> = sodium_ctx.new_cell_loop();
+            let e: Stream<&str> = Cell::switch_s(&b_lp.cell());
+            e1.send("banana");
+            let out = out.clone();
+            let l = e.listen(move |x: &_| out.lock().as_mut().unwrap().push(*x));
+            let b = sodium_ctx.new_cell_sink(e1.stream());
+            b_lp.loop_(&b.cell());
+            l.unlisten();
+            b
+        });
+        let e2 = sodium_ctx.new_stream_sink();
+        e2.send("peer");
+        b.send(e2.stream());
+        e2.send("apple");
+        {
+            let l = out.lock();
+            let out: &Vec<&str> = l.as_ref().unwrap();
+            assert_eq!(vec!["banana", "apple"], *out);
         }
     }
     assert_memory_freed(sodium_ctx);
