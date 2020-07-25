@@ -6,7 +6,8 @@ use crate::impl_::lambda::IsLambda4;
 use crate::impl_::lambda::IsLambda5;
 use crate::impl_::lambda::IsLambda6;
 use crate::impl_::lambda::{
-    lambda1, lambda1_deps, lambda2, lambda2_deps, lambda3, lambda3_deps, lambda4_deps, lambda5_deps, lambda6_deps,
+    lambda1, lambda1_deps, lambda2, lambda2_deps, lambda3, lambda3_deps, lambda4_deps,
+    lambda5_deps, lambda6_deps,
 };
 use crate::impl_::lazy::Lazy;
 use crate::impl_::listener::Listener;
@@ -259,11 +260,16 @@ impl<A: Send + 'static> Cell<A> {
                 f.call(&self_.sample())
             });
         }
-        self.updates().map(lambda1(move |a: &A| {
-            let mut l = f.lock();
-            let f = l.as_mut().unwrap();
-            f.call(a)
-        }, f_deps)).hold_lazy(init)
+        self.updates()
+            .map(lambda1(
+                move |a: &A| {
+                    let mut l = f.lock();
+                    let f = l.as_mut().unwrap();
+                    f.call(a)
+                },
+                f_deps,
+            ))
+            .hold_lazy(init)
     }
 
     pub fn lift2<
