@@ -851,22 +851,22 @@ fn loop_switch_s() {
     let sodium_ctx = &sodium_ctx;
     {
         let out = Arc::new(Mutex::new(Vec::<&str>::new()));
-        let b = sodium_ctx.transaction(|| {
+        let (b,listener) = sodium_ctx.transaction(|| {
             let e1: StreamSink<&str> = sodium_ctx.new_stream_sink();
             let b_lp: CellLoop<Stream<&str>> = sodium_ctx.new_cell_loop();
             let e: Stream<&str> = Cell::switch_s(&b_lp.cell());
             e1.send("banana");
             let out = out.clone();
-            let l = e.listen(move |x: &_| out.lock().as_mut().unwrap().push(*x));
+            let listener = e.listen(move |x: &_| out.lock().as_mut().unwrap().push(*x));
             let b = sodium_ctx.new_cell_sink(e1.stream());
             b_lp.loop_(&b.cell());
-            l.unlisten();
-            b
+            (b,listener)
         });
         let e2 = sodium_ctx.new_stream_sink();
         e2.send("peer");
         b.send(e2.stream());
         e2.send("apple");
+        listener.unlisten();
         {
             let l = out.lock();
             let out: &Vec<&str> = l.as_ref().unwrap();
