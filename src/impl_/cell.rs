@@ -542,14 +542,25 @@ impl<A: Send + 'static> Cell<A> {
                 || {},
                 vec![cca.updates().box_clone()],
             );
-            let init_inner_s = cca.sample().updates();
-            let last_inner_s = Arc::new(Mutex::new(Stream::downgrade(&init_inner_s)));
+            let last_inner_s = Arc::new(Mutex::new(Stream::downgrade(&Stream::new(&sodium_ctx))));
             let node2 = Node::new(
                 &sodium_ctx,
                 "switch_c inner node",
                 || {},
-                vec![node1.box_clone(), init_inner_s.box_clone()],
+                vec![node1.box_clone()],
             );
+            {
+                let last_inner_s = last_inner_s.clone();
+                let cca = cca.clone();
+                let node2 = node2.clone();
+                sodium_ctx.pre_eot(move || {
+                    let mut l = last_inner_s.lock();
+                    let last_inner_s: &mut WeakStream<A> = l.as_mut().unwrap();
+                    let s = cca.sample().updates();
+                    *last_inner_s = Stream::downgrade(&s);
+                    IsNode::add_dependency(&node2, s);
+                });
+            }
             let node1_update;
             {
                 let sodium_ctx = sodium_ctx.clone();
