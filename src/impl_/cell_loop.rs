@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub struct CellLoop<A> {
-    pub init_value_op: Arc<Mutex<Option<A>>>,
+    pub init_value_op: Arc<Mutex<Option<Lazy<A>>>>,
     pub stream_loop: StreamLoop<A>,
     pub cell: Cell<A>,
 }
@@ -25,17 +25,17 @@ impl<A> Clone for CellLoop<A> {
 
 impl<A: Send + Clone + 'static> CellLoop<A> {
     pub fn new(sodium_ctx: &SodiumCtx) -> CellLoop<A> {
-        let init_value_op: Arc<Mutex<Option<A>>> = Arc::new(Mutex::new(None));
+        let init_value_op: Arc<Mutex<Option<Lazy<A>>>> = Arc::new(Mutex::new(None));
         let init_value: Lazy<A>;
         {
             let init_value_op = init_value_op.clone();
             init_value = Lazy::new(move || {
                 let mut l = init_value_op.lock();
-                let init_value_op: &mut Option<A> = l.as_mut().unwrap();
-                let mut result_op: Option<A> = None;
+                let init_value_op: &mut Option<Lazy<A>> = l.as_mut().unwrap();
+                let mut result_op: Option<Lazy<A>> = None;
                 mem::swap(&mut result_op, init_value_op);
                 if let Some(init_value) = result_op {
-                    return init_value;
+                    return init_value.run();
                 }
                 panic!("CellLoop sampled before looped.");
             });
@@ -56,7 +56,7 @@ impl<A: Send + Clone + 'static> CellLoop<A> {
     pub fn loop_(&self, ca: &Cell<A>) {
         self.stream_loop.loop_(&ca.updates());
         let mut l = self.init_value_op.lock();
-        let init_value_op: &mut Option<A> = l.as_mut().unwrap();
-        *init_value_op = Some(ca.sample());
+        let init_value_op: &mut Option<Lazy<A>> = l.as_mut().unwrap();
+        *init_value_op = Some(ca.sample_lazy());
     }
 }
