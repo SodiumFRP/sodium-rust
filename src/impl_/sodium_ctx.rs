@@ -151,10 +151,19 @@ impl SodiumCtx {
     }
 
     pub fn transaction<R, K: FnOnce() -> R>(&self, k: K) -> R {
+        self.enter_transaction();
+        let result = k();
+        self.leave_transaction();
+        result
+    }
+
+    pub fn enter_transaction(&self) {
         self.with_data(|data: &mut SodiumCtxData| {
             data.transaction_depth += 1;
         });
-        let result = k();
+    }
+
+    pub fn leave_transaction(&self) {
         let is_end_of_transaction = self.with_data(|data: &mut SodiumCtxData| {
             data.transaction_depth -= 1;
             data.transaction_depth == 0
@@ -162,7 +171,6 @@ impl SodiumCtx {
         if is_end_of_transaction {
             self.end_of_transaction();
         }
-        result
     }
 
     pub fn add_dependents_to_changed_nodes(&self, node: &dyn IsNode) {

@@ -13,3 +13,4 @@ pub mod sodium_ctx;
 pub mod stream;
 pub mod stream_loop;
 pub mod stream_sink;
+pub mod transaction;

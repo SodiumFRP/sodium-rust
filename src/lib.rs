@@ -12,6 +12,7 @@ mod sodium_ctx;
 mod stream;
 mod stream_loop;
 mod stream_sink;
+mod transaction;
 
 pub use self::cell::Cell;
 pub use self::cell_loop::CellLoop;
@@ -38,6 +39,7 @@ pub use self::sodium_ctx::SodiumCtx;
 pub use self::stream::Stream;
 pub use self::stream_loop::StreamLoop;
 pub use self::stream_sink::StreamSink;
+pub use self::transaction::Transaction;
 
 #[cfg(test)]
 mod tests;

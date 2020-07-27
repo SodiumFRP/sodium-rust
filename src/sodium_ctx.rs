@@ -5,6 +5,7 @@ use crate::CellSink;
 use crate::Stream;
 use crate::StreamLoop;
 use crate::StreamSink;
+use crate::Transaction;
 
 #[derive(Clone)]
 pub struct SodiumCtx {
@@ -60,5 +61,9 @@ impl SodiumCtx {
 
     pub fn transaction<R, K: FnOnce() -> R>(&self, k: K) -> R {
         self.impl_.transaction(k)
+    }
+
+    pub fn new_transaction(&self) -> Transaction {
+        Transaction::new(self)
     }
 }
