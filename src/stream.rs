@@ -1,9 +1,7 @@
 use crate::cell::Cell;
 use crate::impl_::dep::Dep;
-use crate::impl_::lambda::IsLambda1;
-use crate::impl_::lambda::IsLambda2;
-use crate::impl_::lambda::IsLambda3;
 use crate::impl_::lambda::{lambda1, lambda2};
+use crate::impl_::lambda::{IsLambda1, IsLambda2, IsLambda3, IsLambda4, IsLambda5, IsLambda6};
 use crate::impl_::stream::Stream as StreamImpl;
 use crate::listener::Listener;
 use crate::sodium_ctx::SodiumCtx;
@@ -69,16 +67,127 @@ impl<A: Clone + Send + 'static> Stream<A> {
         cc: &Cell<C>,
         mut f: FN,
     ) -> Stream<D> {
-        let deps: Vec<Dep>;
+        let mut deps: Vec<Dep>;
         if let Some(deps2) = f.deps_op() {
             deps = deps2.clone();
         } else {
             deps = Vec::new();
         }
         let cc = cc.clone();
+        deps.push(cc.to_dep());
         self.snapshot(
             cb,
             lambda2(move |a: &A, b: &B| f.call(a, b, &cc.sample()), deps),
+        )
+    }
+
+    pub fn snapshot4<
+        B: Send + Clone + 'static,
+        C: Send + Clone + 'static,
+        D: Send + Clone + 'static,
+        E: Send + Clone + 'static,
+        FN: IsLambda4<A, B, C, D, E> + Send + Sync + 'static,
+    >(
+        &self,
+        cb: &Cell<B>,
+        cc: &Cell<C>,
+        cd: &Cell<D>,
+        mut f: FN,
+    ) -> Stream<E> {
+        let mut deps: Vec<Dep>;
+        if let Some(deps2) = f.deps_op() {
+            deps = deps2.clone();
+        } else {
+            deps = Vec::new();
+        }
+        let cc = cc.clone();
+        let cd = cd.clone();
+        deps.push(cc.to_dep());
+        deps.push(cd.to_dep());
+        self.snapshot(
+            cb,
+            lambda2(
+                move |a: &A, b: &B| f.call(a, b, &cc.sample(), &cd.sample()),
+                deps,
+            ),
+        )
+    }
+
+    pub fn snapshot5<
+        B: Send + Clone + 'static,
+        C: Send + Clone + 'static,
+        D: Send + Clone + 'static,
+        E: Send + Clone + 'static,
+        F: Send + Clone + 'static,
+        FN: IsLambda5<A, B, C, D, E, F> + Send + Sync + 'static,
+    >(
+        &self,
+        cb: &Cell<B>,
+        cc: &Cell<C>,
+        cd: &Cell<D>,
+        ce: &Cell<E>,
+        mut f: FN,
+    ) -> Stream<F> {
+        let mut deps: Vec<Dep>;
+        if let Some(deps2) = f.deps_op() {
+            deps = deps2.clone();
+        } else {
+            deps = Vec::new();
+        }
+        let cc = cc.clone();
+        let cd = cd.clone();
+        let ce = ce.clone();
+        deps.push(cc.to_dep());
+        deps.push(cd.to_dep());
+        deps.push(ce.to_dep());
+        self.snapshot(
+            cb,
+            lambda2(
+                move |a: &A, b: &B| f.call(a, b, &cc.sample(), &cd.sample(), &ce.sample()),
+                deps,
+            ),
+        )
+    }
+
+    pub fn snapshot6<
+        B: Send + Clone + 'static,
+        C: Send + Clone + 'static,
+        D: Send + Clone + 'static,
+        E: Send + Clone + 'static,
+        F: Send + Clone + 'static,
+        G: Send + Clone + 'static,
+        FN: IsLambda6<A, B, C, D, E, F, G> + Send + Sync + 'static,
+    >(
+        &self,
+        cb: &Cell<B>,
+        cc: &Cell<C>,
+        cd: &Cell<D>,
+        ce: &Cell<E>,
+        cf: &Cell<F>,
+        mut f: FN,
+    ) -> Stream<G> {
+        let mut deps: Vec<Dep>;
+        if let Some(deps2) = f.deps_op() {
+            deps = deps2.clone();
+        } else {
+            deps = Vec::new();
+        }
+        let cc = cc.clone();
+        let cd = cd.clone();
+        let ce = ce.clone();
+        let cf = cf.clone();
+        deps.push(cc.to_dep());
+        deps.push(cd.to_dep());
+        deps.push(ce.to_dep());
+        deps.push(cf.to_dep());
+        self.snapshot(
+            cb,
+            lambda2(
+                move |a: &A, b: &B| {
+                    f.call(a, b, &cc.sample(), &cd.sample(), &ce.sample(), &cf.sample())
+                },
+                deps,
+            ),
         )
     }
 
