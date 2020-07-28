@@ -113,6 +113,32 @@ pub struct StreamData<A> {
     pub coalescer_op: Option<Box<dyn FnMut(&A, &A) -> A + Send>>,
 }
 
+impl<
+        A: Clone + Send + Sync + 'static,
+        COLLECTION: IntoIterator<Item = A> + Clone + Send + 'static,
+    > Stream<COLLECTION>
+{
+    pub fn split(&self) -> Stream<A> {
+        let sodium_ctx = self.sodium_ctx();
+        sodium_ctx.transaction(|| {
+            let ss = StreamSink::new(&sodium_ctx);
+            let s = ss.stream();
+            let sodium_ctx = sodium_ctx.clone();
+            let ss = StreamSink::downgrade(&ss);
+            let listener = self.listen_weak(move |collection: &COLLECTION| {
+                let ss = ss.upgrade().unwrap();
+                let iter = collection.clone().into_iter();
+                for a in iter {
+                    let ss = ss.clone();
+                    sodium_ctx.post(move || ss.send(a.clone()))
+                }
+            });
+            IsNode::add_keep_alive(&s, &listener.gc_node);
+            s
+        })
+    }
+}
+
 impl<A> Stream<A> {
     pub fn with_data<R, K: FnOnce(&mut StreamData<A>) -> R>(&self, k: K) -> R {
         let mut l = self.data.lock();

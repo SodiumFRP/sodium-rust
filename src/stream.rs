@@ -26,6 +26,19 @@ impl<A: Clone + Send + 'static> Stream<Option<A>> {
     }
 }
 
+impl<
+        'a,
+        A: Clone + Send + Sync + 'static,
+        COLLECTION: IntoIterator<Item = A> + Clone + Send + 'static,
+    > Stream<COLLECTION>
+{
+    pub fn split(&self) -> Stream<A> {
+        Stream {
+            impl_: self.impl_.split(),
+        }
+    }
+}
+
 impl<A: Clone + Send + 'static> Stream<A> {
     pub fn new(sodium_ctx: &SodiumCtx) -> Stream<A> {
         Stream {

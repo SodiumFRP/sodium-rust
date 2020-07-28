@@ -1076,6 +1076,36 @@ fn accum() {
 }
 
 #[test]
+fn split1() {
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
+    {
+        let out = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+        let ea = sodium_ctx.new_stream_sink::<&'static str>();
+        let eo = ea
+            .stream()
+            .map(|text0: &&'static str| text0.split(" "))
+            .split();
+        let listener;
+        {
+            let out = out.clone();
+            listener = eo.listen(move |x: &&'static str| {
+                out.lock().as_mut().unwrap().push(*x);
+            });
+        }
+        ea.send("the common cormorant");
+        ea.send("or shag");
+        listener.unlisten();
+        {
+            let l = out.lock();
+            let out: &Vec<&'static str> = l.as_ref().unwrap();
+            assert_eq!(vec!["the", "common", "cormorant", "or", "shag"], *out)
+        }
+    }
+    assert_memory_freed(sodium_ctx);
+}
+
+#[test]
 fn defer() {
     init();
     let mut sodium_ctx = SodiumCtx::new();
