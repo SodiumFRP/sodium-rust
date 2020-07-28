@@ -66,4 +66,8 @@ impl SodiumCtx {
     pub fn new_transaction(&self) -> Transaction {
         Transaction::new(self)
     }
+
+    pub fn post<K: FnMut() + Send + 'static>(&self, k: K) {
+        self.impl_.post(k);
+    }
 }
