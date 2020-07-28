@@ -13,7 +13,7 @@ impl Transaction {
     }
 
     // optional earily close
-    pub fn close(&mut self) {
+    pub fn close(&self) {
         self.impl_.close();
     }
 }

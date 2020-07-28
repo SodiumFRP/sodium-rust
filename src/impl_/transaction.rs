@@ -2,7 +2,7 @@ use crate::impl_::sodium_ctx::SodiumCtx;
 
 pub struct Transaction {
     sodium_ctx: SodiumCtx,
-    done: bool,
+    done: std::cell::Cell<bool>,
 }
 
 impl Transaction {
@@ -10,15 +10,15 @@ impl Transaction {
         sodium_ctx.enter_transaction();
         Transaction {
             sodium_ctx: sodium_ctx.clone(),
-            done: false,
+            done: std::cell::Cell::new(false),
         }
     }
 
     // optional earily close
-    pub fn close(&mut self) {
-        if !self.done {
+    pub fn close(&self) {
+        if !self.done.get() {
             self.sodium_ctx.leave_transaction();
-            self.done = true;
+            self.done.set(true);
         }
     }
 }
