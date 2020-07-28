@@ -2,10 +2,12 @@ use crate::impl_::sodium_ctx::SodiumCtx as SodiumCtxImpl;
 use crate::Cell;
 use crate::CellLoop;
 use crate::CellSink;
+use crate::Router;
 use crate::Stream;
 use crate::StreamLoop;
 use crate::StreamSink;
 use crate::Transaction;
+use std::hash::Hash;
 
 #[derive(Clone)]
 pub struct SodiumCtx {
@@ -69,5 +71,17 @@ impl SodiumCtx {
 
     pub fn post<K: FnMut() + Send + 'static>(&self, k: K) {
         self.impl_.post(k);
+    }
+
+    pub fn new_router<A, K>(
+        &self,
+        in_stream: &Stream<A>,
+        selector: impl Fn(&A) -> Vec<K> + Send + Sync + 'static,
+    ) -> Router<A, K>
+    where
+        A: Clone + Send + 'static,
+        K: Send + Sync + Eq + Hash + 'static,
+    {
+        Router::new(self, in_stream, selector)
     }
 }

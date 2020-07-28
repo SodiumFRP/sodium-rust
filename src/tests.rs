@@ -724,6 +724,74 @@ fn lift_from_simultaneous() {
     assert_memory_freed(sodium_ctx);
 }
 
+#[test]
+fn router1() {
+    #[derive(Clone)]
+    pub struct Packet {
+        pub address: i32,
+        pub payload: &'static str,
+    }
+    impl Packet {
+        fn new(address: i32, payload: &'static str) -> Packet {
+            Packet { address, payload }
+        }
+    }
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
+    {
+        let s = sodium_ctx.new_stream_sink::<Packet>();
+        let r = sodium_ctx.new_router(&s.stream(), |pkt: &Packet| vec![pkt.address]);
+        let one = r.filter_matches(&1);
+        let out_one = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+        let kill_one;
+        {
+            let out_one = out_one.clone();
+            kill_one =
+                one.listen(move |p: &Packet| out_one.lock().as_mut().unwrap().push(p.payload));
+        }
+        let two = r.filter_matches(&2);
+        let out_two = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+        let kill_two;
+        {
+            let out_two = out_two.clone();
+            kill_two =
+                two.listen(move |p: &Packet| out_two.lock().as_mut().unwrap().push(p.payload));
+        }
+        let three = r.filter_matches(&3);
+        let out_three = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+        let kill_three;
+        {
+            let out_three = out_three.clone();
+            kill_three =
+                three.listen(move |p: &Packet| out_three.lock().as_mut().unwrap().push(p.payload));
+        }
+        s.send(Packet::new(1, "dog"));
+        s.send(Packet::new(3, "manuka"));
+        s.send(Packet::new(2, "square"));
+        s.send(Packet::new(3, "tawa"));
+        s.send(Packet::new(2, "circle"));
+        s.send(Packet::new(1, "otter"));
+        s.send(Packet::new(1, "lion"));
+        s.send(Packet::new(2, "rectangle"));
+        s.send(Packet::new(3, "rata"));
+        s.send(Packet::new(4, "kauri"));
+        kill_one.unlisten();
+        kill_two.unlisten();
+        kill_three.unlisten();
+        {
+            let l1 = out_one.lock();
+            let out_one: &Vec<&'static str> = l1.as_ref().unwrap();
+            let l2 = out_two.lock();
+            let out_two: &Vec<&'static str> = l2.as_ref().unwrap();
+            let l3 = out_three.lock();
+            let out_three: &Vec<&'static str> = l3.as_ref().unwrap();
+            assert_eq!(vec!["dog", "otter", "lion"], *out_one);
+            assert_eq!(vec!["square", "circle", "rectangle"], *out_two);
+            assert_eq!(vec!["manuka", "tawa", "rata"], *out_three);
+        }
+    }
+}
+
 // TODO(RadicalZephyr 2020-07-17): port apply and then uncomment this test
 // #[test]
 // fn apply() {

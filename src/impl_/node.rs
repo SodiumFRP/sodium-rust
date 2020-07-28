@@ -149,6 +149,7 @@ pub struct NodeData {
     pub dependencies: RwLock<Vec<Box<dyn IsNode + Send + Sync>>>,
     pub dependents: RwLock<Vec<Box<dyn IsWeakNode + Send + Sync>>>,
     pub keep_alive: RwLock<Vec<GcNode>>,
+    pub cleanups: RwLock<Vec<Box<dyn FnMut() + Send + Sync>>>,
     pub sodium_ctx: SodiumCtx,
 }
 
@@ -232,6 +233,11 @@ impl Node {
                     let mut update = node_data.update.write().unwrap();
                     *update = Box::new(|| {});
                 }
+                let mut cleanups = Vec::new();
+                {
+                    let mut cleanups2 = node_data.cleanups.write().unwrap();
+                    std::mem::swap(&mut *cleanups2, &mut cleanups);
+                }
                 for dependency in dependencies {
                     let mut dependency_dependents = dependency.data().dependents.write().unwrap();
                     dependency_dependents.retain(|dependent| {
@@ -252,6 +258,9 @@ impl Node {
                 }
                 for gc_node in keep_alive {
                     gc_node.dec_ref();
+                }
+                for mut cleanup in cleanups {
+                    cleanup();
                 }
                 {
                     let mut node = result_forward_ref.write().unwrap();
@@ -301,6 +310,7 @@ impl Node {
                 dependencies: RwLock::new(box_clone_vec_is_node(&dependencies)),
                 dependents: RwLock::new(Vec::new()),
                 keep_alive: RwLock::new(Vec::new()),
+                cleanups: RwLock::new(Vec::new()),
                 sodium_ctx: sodium_ctx.clone(),
             }),
             gc_node: GcNode::new(&sodium_ctx.gc_ctx(), name.to_string(), deconstructor, trace),
