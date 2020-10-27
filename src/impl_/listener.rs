@@ -54,12 +54,19 @@ impl Listener {
         {
             let listener_data = listener_data.clone();
             gc_node_trace = move |tracer: &mut Tracer| {
-                let mut l = listener_data.lock();
-                let listener_data = l.as_mut().unwrap();
-                listener_data
-                    .node_op
+                let mut gc_node_vec;
+                {
+                    let mut l = listener_data.lock();
+                    let listener_data = l.as_mut().unwrap();
+                    gc_node_vec = Vec::new();
+                    listener_data
+                        .node_op
+                        .iter()
+                        .for_each(|node: &Node| gc_node_vec.push(node.gc_node.clone()));
+                }
+                gc_node_vec
                     .iter()
-                    .for_each(|node: &Node| tracer(&node.gc_node));
+                    .for_each(|gc_node: &GcNode| tracer(gc_node));
             };
         }
         let listener = Listener {

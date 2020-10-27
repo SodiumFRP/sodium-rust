@@ -1499,3 +1499,48 @@ fn primes() {
     }
     assert_memory_freed(sodium_ctx);
 }
+
+#[test]
+fn primes2() {
+    let sodium_ctx = SodiumCtx::new();
+    let sodium_ctx = &sodium_ctx;
+    {
+        let out = Arc::new(Mutex::new(Vec::<i64>::new()));
+
+        let ss_input: StreamSink<i64>;
+        let s_output;
+        {
+            let _t = sodium_ctx.new_transaction();
+
+            ss_input = sodium_ctx.new_stream_sink();
+            let sl_s_output: StreamLoop<Stream<i64>> = sodium_ctx.new_stream_loop();
+            let c_s_output = sl_s_output.stream().hold(ss_input.stream());
+            s_output = Cell::switch_s(&c_s_output);
+            let s_output_next =
+                s_output.snapshot(&c_s_output, |prime: &i64, old_s_output: &Stream<i64>| {
+                    let prime = *prime;
+                    old_s_output.filter(move |x: &i64| (*x % prime) != 0)
+                });
+            sl_s_output.loop_(&Operational::defer(&s_output_next));
+        }
+
+        let l;
+        {
+            let out = out.clone();
+            l = s_output.listen(move |prime: &i64| out.lock().as_mut().unwrap().push(*prime));
+        }
+
+        for x in 2..20 {
+            ss_input.send(x);
+        }
+
+        l.unlisten();
+
+        {
+            let lock = out.lock();
+            let out: &Vec<i64> = lock.as_ref().unwrap();
+            assert_eq!(vec![2, 3, 5, 7, 11, 13, 17, 19], *out);
+        }
+    }
+    assert_memory_freed(sodium_ctx);
+}
