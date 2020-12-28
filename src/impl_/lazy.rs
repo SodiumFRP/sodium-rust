@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
+/// A representation for a value that may not be available until the
+/// current transaction is closed.
 pub struct Lazy<A> {
     data: Arc<Mutex<LazyData<A>>>,
 }

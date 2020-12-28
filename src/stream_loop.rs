@@ -2,6 +2,7 @@ use crate::impl_::stream_loop::StreamLoop as StreamLoopImpl;
 use crate::SodiumCtx;
 use crate::Stream;
 
+/// A forward reference of a [`Stream`] for creating dependency loops.
 pub struct StreamLoop<A> {
     pub impl_: StreamLoopImpl<A>,
 }

@@ -1,6 +1,8 @@
 use crate::Cell;
 use crate::Stream;
 
+/// Operational primitives that must be used with care because they
+/// break non-detectability of `Cell` steps/updates.
 pub struct Operational {}
 
 impl Operational {

@@ -2,6 +2,13 @@ use crate::impl_::cell_loop::CellLoop as CellLoopImpl;
 use crate::Cell;
 use crate::SodiumCtx;
 
+/// A forward reference for a [`Cell`] for creating dependency loops.
+///
+/// Both the creation of a `CellLoop` and filling it with the
+/// referenced [`Cell`] by calling [`loop_`][CellLoop::loop_] _must_
+/// occur within the same transaction, whether that is created by
+/// calling [`SodiumCtx::transaction`] or
+/// [`Transaction::new`][crate::Transaction::new].
 pub struct CellLoop<A> {
     impl_: CellLoopImpl<A>,
 }

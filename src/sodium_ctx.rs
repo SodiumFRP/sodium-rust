@@ -9,6 +9,8 @@ use crate::StreamSink;
 use crate::Transaction;
 use std::hash::Hash;
 
+/// A context object representing a specific instance of a Sodium
+/// system.
 #[derive(Clone)]
 pub struct SodiumCtx {
     pub impl_: SodiumCtxImpl,

@@ -1,6 +1,11 @@
 use crate::impl_::transaction::Transaction as TransactionImpl;
 use crate::SodiumCtx;
 
+/// A scoped transaction marker.
+///
+/// An alternative to [`SodiumCtx::transaction`] that creates a struct
+/// that will create a new transaction in the given [`SodiumCtx`] and
+/// hold it open until the `Transaction` is dropped.
 pub struct Transaction {
     impl_: TransactionImpl,
 }
