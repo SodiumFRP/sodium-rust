@@ -22,18 +22,33 @@ impl<A> Clone for CellLoop<A> {
 }
 
 impl<A: Send + Clone + 'static> CellLoop<A> {
+    /// Create a new `CellLoop` in the given context.
     pub fn new(sodium_ctx: &SodiumCtx) -> CellLoop<A> {
         CellLoop {
             impl_: CellLoopImpl::new(&sodium_ctx.impl_),
         }
     }
 
+    /// Return a [`Cell`] that is equivalent to this `CellLoop` once it
+    /// has been resolved by calling [`loop_`][CellLoop::loop_].
+    ///
+    /// If a [`Cell`] created by `CellLoop` may be passed to an
+    /// abstraction that uses [`Cell::sample`], then
+    /// [`Cell::sample_lazy`] should be used instead.
     pub fn cell(&self) -> Cell<A> {
         Cell {
             impl_: self.impl_.cell(),
         }
     }
 
+    /// Resolve the loop to specify what this `CellLoop` was a forward
+    /// reference to.
+    ///
+    /// This function must be invoked in the same transaction as the
+    /// place where the `CellLoop` was created. This requires creating
+    /// an explicit transaction, either with
+    /// [`SodiumCtx::transaction`] or
+    /// [`Transaction::new`][crate::Transaction::new].
     pub fn loop_(&self, ca: &Cell<A>) {
         self.impl_.loop_(&ca.impl_);
     }
