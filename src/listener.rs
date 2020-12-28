@@ -7,6 +7,9 @@ pub struct Listener {
 }
 
 impl Listener {
+    /// Deregister the listener that was registered so it will no
+    /// longer be called back, allowing associated resources to be
+    /// garbage-collected.
     pub fn unlisten(&self) {
         self.impl_.unlisten();
     }
