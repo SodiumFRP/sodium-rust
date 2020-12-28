@@ -11,13 +11,18 @@ pub struct Transaction {
 }
 
 impl Transaction {
+    /// Create a new scoped transaction on the given context.
     pub fn new(sodium_ctx: &SodiumCtx) -> Transaction {
         Transaction {
             impl_: TransactionImpl::new(&sodium_ctx.impl_),
         }
     }
 
-    // optional earily close
+    /// Explicitly close this transaction.
+    ///
+    /// This transaction will close automatically when it goes out of
+    /// scope and is dropped. This `close` method is an optional way
+    /// to explicitly close the transaction before that.
     pub fn close(&self) {
         self.impl_.close();
     }
