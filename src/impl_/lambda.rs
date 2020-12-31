@@ -31,31 +31,37 @@ pub fn lambda6_deps<A, B, C, D, E, F, G, FN: IsLambda6<A, B, C, D, E, F, G>>(f: 
     f.deps_op().cloned().unwrap_or_else(Vec::new)
 }
 
+/// Interface for a lambda function of one argument.
 pub trait IsLambda1<A, B> {
     fn call(&mut self, a: &A) -> B;
     fn deps_op(&self) -> Option<&Vec<Dep>>;
 }
 
+/// Interface for a lambda function of two arguments.
 pub trait IsLambda2<A, B, C> {
     fn call(&mut self, a: &A, b: &B) -> C;
     fn deps_op(&self) -> Option<&Vec<Dep>>;
 }
 
+/// Interface for a lambda function of three arguments.
 pub trait IsLambda3<A, B, C, D> {
     fn call(&mut self, a: &A, b: &B, c: &C) -> D;
     fn deps_op(&self) -> Option<&Vec<Dep>>;
 }
 
+/// Interface for a lambda function of four arguments.
 pub trait IsLambda4<A, B, C, D, E> {
     fn call(&mut self, a: &A, b: &B, c: &C, d: &D) -> E;
     fn deps_op(&self) -> Option<&Vec<Dep>>;
 }
 
+/// Interface for a lambda function of five arguments.
 pub trait IsLambda5<A, B, C, D, E, F> {
     fn call(&mut self, a: &A, b: &B, c: &C, d: &D, e: &E) -> F;
     fn deps_op(&self) -> Option<&Vec<Dep>>;
 }
 
+/// Interface for a lambda function of six arguments.
 pub trait IsLambda6<A, B, C, D, E, F, G> {
     fn call(&mut self, a: &A, b: &B, c: &C, d: &D, e: &E, f: &F) -> G;
     fn deps_op(&self) -> Option<&Vec<Dep>>;
