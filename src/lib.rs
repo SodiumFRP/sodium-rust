@@ -1,7 +1,5 @@
 //! Sodium is a library for doing Functional Reactive Programming
 //! (FRP) in Rust.
-#[macro_use]
-extern crate log;
 
 mod cell;
 mod cell_loop;

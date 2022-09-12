@@ -4,6 +4,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
 
+use log::trace;
+
 pub type Tracer<'a> = dyn FnMut(&GcNode) + 'a;
 
 pub type Trace = dyn Fn(&mut Tracer) + Send + Sync;
