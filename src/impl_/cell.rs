@@ -580,7 +580,7 @@ impl<A: Send + 'static> Cell<A> {
                         .with_firing_op(|firing_op: &mut Option<Cell<A>>| {
                             if let Some(ref firing) = firing_op {
                                 // will be overwriten by node2 firing if there is one
-                                sodium_ctx.update_node(&firing.updates().node());
+                                sodium_ctx.update_node(firing.updates().node());
                                 let sa = sa.unwrap();
                                 sa._send(firing.sample());
                                 //

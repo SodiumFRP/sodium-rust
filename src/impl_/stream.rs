@@ -183,7 +183,7 @@ impl<A: Send + 'static> Stream<A> {
                 sodium_ctx: sodium_ctx.clone(),
                 coalescer_op: Some(Box::new(coalescer)),
             })),
-            node: Node::new(&sodium_ctx, "Stream::_new_with_coalescer", || {}, vec![]),
+            node: Node::new(sodium_ctx, "Stream::_new_with_coalescer", || {}, vec![]),
         }
     }
 

@@ -48,14 +48,14 @@ impl dyn IsNode {
         {
             let mut dependencies = self.data().dependencies.write().unwrap();
             dependencies.retain(|n: &Box<dyn IsNode + Send + Sync>| {
-                !Arc::ptr_eq(&n.data(), &dependency.data())
+                !Arc::ptr_eq(n.data(), dependency.data())
             });
         }
         {
             let mut dependency_dependents = dependency.data().dependents.write().unwrap();
             dependency_dependents.retain(|n: &Box<dyn IsWeakNode + Send + Sync>| {
                 if let Some(n_data) = n.data().upgrade() {
-                    !Arc::ptr_eq(&n_data, &self.data())
+                    !Arc::ptr_eq(&n_data, self.data())
                 } else {
                     false
                 }
@@ -361,7 +361,7 @@ impl fmt::Debug for dyn IsNode + Sync + Sync {
             let mut next_id: usize = 1;
             let mut node_id_map: HashMap<*const NodeData, usize> = HashMap::new();
             node_to_id = move |node: &Box<dyn IsNode + Send + Sync>| {
-                let node_data: &NodeData = &node.data();
+                let node_data: &NodeData = node.data();
                 let node_data: *const NodeData = node_data;
                 let existing_op = node_id_map.get(&node_data).copied();
                 let node_id;
@@ -385,12 +385,12 @@ impl fmt::Debug for dyn IsNode + Sync + Sync {
                 }
             }
             pub fn is_visited(&self, node: &Box<dyn IsNode + Send + Sync>) -> bool {
-                let node_data: &NodeData = &node.data();
+                let node_data: &NodeData = node.data();
                 let node_data: *const NodeData = node_data;
                 self.visited.contains(&node_data)
             }
             pub fn mark_visitied(&mut self, node: &Box<dyn IsNode + Send + Sync>) {
-                let node_data: &NodeData = &node.data();
+                let node_data: &NodeData = node.data();
                 let node_data: *const NodeData = node_data;
                 self.visited.insert(node_data);
             }
@@ -418,7 +418,7 @@ impl fmt::Debug for dyn IsNode + Sync + Sync {
                     } else {
                         first = false;
                     }
-                    write!(f, "{}", node_to_id(&dependency))?;
+                    write!(f, "{}", node_to_id(dependency))?;
                     stack.push(dependency.box_clone());
                 }
             }

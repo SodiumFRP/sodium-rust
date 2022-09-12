@@ -8,27 +8,27 @@ pub struct Lambda<FN> {
 }
 
 pub fn lambda1_deps<A, B, FN: IsLambda1<A, B>>(f: &FN) -> Vec<Dep> {
-    f.deps_op().cloned().unwrap_or_else(Vec::new)
+    f.deps_op().cloned().unwrap_or_default()
 }
 
 pub fn lambda2_deps<A, B, C, FN: IsLambda2<A, B, C>>(f: &FN) -> Vec<Dep> {
-    f.deps_op().cloned().unwrap_or_else(Vec::new)
+    f.deps_op().cloned().unwrap_or_default()
 }
 
 pub fn lambda3_deps<A, B, C, D, FN: IsLambda3<A, B, C, D>>(f: &FN) -> Vec<Dep> {
-    f.deps_op().cloned().unwrap_or_else(Vec::new)
+    f.deps_op().cloned().unwrap_or_default()
 }
 
 pub fn lambda4_deps<A, B, C, D, E, FN: IsLambda4<A, B, C, D, E>>(f: &FN) -> Vec<Dep> {
-    f.deps_op().cloned().unwrap_or_else(Vec::new)
+    f.deps_op().cloned().unwrap_or_default()
 }
 
 pub fn lambda5_deps<A, B, C, D, E, F, FN: IsLambda5<A, B, C, D, E, F>>(f: &FN) -> Vec<Dep> {
-    f.deps_op().cloned().unwrap_or_else(Vec::new)
+    f.deps_op().cloned().unwrap_or_default()
 }
 
 pub fn lambda6_deps<A, B, C, D, E, F, G, FN: IsLambda6<A, B, C, D, E, F, G>>(f: &FN) -> Vec<Dep> {
-    f.deps_op().cloned().unwrap_or_else(Vec::new)
+    f.deps_op().cloned().unwrap_or_default()
 }
 
 /// Interface for a lambda function of one argument.
