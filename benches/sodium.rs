@@ -190,5 +190,5 @@ fn cell(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, stream, cell);
+criterion_group!(benches, cell, stream);
 criterion_main!(benches);
