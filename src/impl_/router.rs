@@ -127,7 +127,7 @@ impl<A, K> Router<A, K> {
                 },
                 vec![in_stream.box_clone()],
             );
-            IsNode::add_update_dependencies(&node, vec![in_stream.to_dep()]);
+            <dyn IsNode>::add_update_dependencies(&node, vec![in_stream.to_dep()]);
         }
         Router {
             sodium_ctx: sodium_ctx.clone(),
@@ -173,6 +173,7 @@ impl<A, K> Router<A, K> {
                     .write()
                     .unwrap()
                     .push(Box::new(move || {
+                        let _ = &weak_s;
                         let mut table = table.write().unwrap();
                         let mut remove_it = false;
                         if let Some(weak_stream) = table.get(&k) {

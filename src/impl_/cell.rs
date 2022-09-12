@@ -171,7 +171,7 @@ impl<A: Send + 'static> Cell<A> {
                     vec![stream_node],
                 );
                 // Hack: Add stream gc node twice, because one is kepted in the cell_data for Cell::update() to return.
-                IsNode::add_update_dependencies(&node, vec![stream_dep.clone(), stream_dep]);
+                <dyn IsNode>::add_update_dependencies(&node, vec![stream_dep.clone(), stream_dep]);
             }
             let c = Cell {
                 data: cell_data,
@@ -492,7 +492,7 @@ impl<A: Send + 'static> Cell<A> {
                     let inner_s: &mut WeakStream<A> = l.as_mut().unwrap();
                     let s = csa.sample();
                     *inner_s = Stream::downgrade(&s);
-                    IsNode::add_dependency(&node1, s);
+                    <dyn IsNode>::add_dependency(&node1, s);
                 });
             }
             let node2: Node;
@@ -515,8 +515,8 @@ impl<A: Send + 'static> Cell<A> {
                                 sodium_ctx.pre_post(move || {
                                     let mut l = inner_s.lock();
                                     let inner_s: &mut WeakStream<A> = l.as_mut().unwrap();
-                                    IsNode::remove_dependency(&node1, &inner_s.upgrade().unwrap());
-                                    IsNode::add_dependency(&node1, firing.clone());
+                                    <dyn IsNode>::remove_dependency(&node1, &inner_s.upgrade().unwrap());
+                                    <dyn IsNode>::add_dependency(&node1, firing.clone());
                                     *inner_s = Stream::downgrade(&firing);
                                 });
                             }
@@ -525,11 +525,11 @@ impl<A: Send + 'static> Cell<A> {
                     vec![csa_updates_node.box_clone()],
                 );
             }
-            IsNode::add_update_dependencies(
+            <dyn IsNode>::add_update_dependencies(
                 &node2,
                 vec![csa_updates_dep, Dep::new(node1.gc_node().clone())],
             );
-            IsNode::add_dependency(&node1, node2);
+            <dyn IsNode>::add_dependency(&node1, node2);
             node1
         })
     }
@@ -564,7 +564,7 @@ impl<A: Send + 'static> Cell<A> {
                     let last_inner_s: &mut WeakStream<A> = l.as_mut().unwrap();
                     let s = cca.sample().updates();
                     *last_inner_s = Stream::downgrade(&s);
-                    IsNode::add_dependency(&node2, s);
+                    <dyn IsNode>::add_dependency(&node2, s);
                 });
             }
             let node1_update;
@@ -600,11 +600,11 @@ impl<A: Send + 'static> Cell<A> {
                                 });
                                 let mut l = last_inner_s.lock();
                                 let last_inner_s: &mut WeakStream<A> = l.as_mut().unwrap();
-                                IsNode::remove_dependency(
+                                <dyn IsNode>::remove_dependency(
                                     &node2,
                                     last_inner_s.upgrade().unwrap().node(),
                                 );
-                                IsNode::add_dependency(&node2, new_inner_s.clone());
+                                <dyn IsNode>::add_dependency(&node2, new_inner_s.clone());
                                 {
                                     let mut changed = node2.data.changed.write().unwrap();
                                     *changed = true;
@@ -614,7 +614,7 @@ impl<A: Send + 'static> Cell<A> {
                         });
                 };
             }
-            IsNode::add_update_dependencies(
+            <dyn IsNode>::add_update_dependencies(
                 &node1,
                 vec![
                     Dep::new(node1.gc_node.clone()),
