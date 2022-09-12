@@ -515,7 +515,10 @@ impl<A: Send + 'static> Cell<A> {
                                 sodium_ctx.pre_post(move || {
                                     let mut l = inner_s.lock();
                                     let inner_s: &mut WeakStream<A> = l.as_mut().unwrap();
-                                    <dyn IsNode>::remove_dependency(&node1, &inner_s.upgrade().unwrap());
+                                    <dyn IsNode>::remove_dependency(
+                                        &node1,
+                                        &inner_s.upgrade().unwrap(),
+                                    );
                                     <dyn IsNode>::add_dependency(&node1, firing.clone());
                                     *inner_s = Stream::downgrade(&firing);
                                 });

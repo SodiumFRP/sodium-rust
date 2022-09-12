@@ -99,7 +99,9 @@ impl<A, K> Router<A, K> {
                 move || {
                     let sodium_ctx = &sodium_ctx2;
                     let keys_firing_op = in_stream2.with_firing_op(|firing_op: &mut Option<A>| {
-                        firing_op.as_ref().map(|firing| (selector(firing), firing.clone()))
+                        firing_op
+                            .as_ref()
+                            .map(|firing| (selector(firing), firing.clone()))
                     });
                     if let Some((keys, firing)) = keys_firing_op {
                         for key in keys {
