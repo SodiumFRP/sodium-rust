@@ -7,10 +7,10 @@ fn stream(c: &mut Criterion) {
         let ctx = SodiumCtx::new();
         let sink = ctx.new_stream_sink();
 
-        let mut values: Vec<u8> = Vec::new();
-        let listener = sink.stream().listen(move |v: &u8| values.push(*v));
+        let mut values: Vec<u16> = Vec::new();
+        let listener = sink.stream().listen(move |v: &u16| values.push(black_box(*v)));
 
-        for v in 0_u8..100 {
+        for v in 0_u16..1000 {
             sink.send(black_box(v));
         }
         (ctx, sink, listener)
@@ -21,10 +21,10 @@ fn cell(c: &mut Criterion) {
     c.bench_function("cell.send", |b| b.iter_with_large_drop(|| {
         let ctx = SodiumCtx::new();
 
-        let sink = ctx.new_cell_sink(0_u8);
+        let sink = ctx.new_cell_sink(0_u16);
         let cell = sink.cell();
 
-        for v in 0_u8..100 {
+        for v in 0_u16..1000 {
             sink.send(black_box(v));
             let s = black_box(cell.sample());
             assert_eq!(v, s);
