@@ -17,5 +17,20 @@ fn stream(c: &mut Criterion) {
     }));
 }
 
-criterion_group!(benches, sodium);
+fn cell(c: &mut Criterion) {
+    c.bench_function("cell.send", |b| b.iter_with_large_drop(|| {
+        let ctx = SodiumCtx::new();
+
+        let sink = ctx.new_cell_sink(0_u8);
+        let cell = sink.cell();
+
+        for v in 0_u8..100 {
+            sink.send(black_box(v));
+            let s = black_box(cell.sample());
+            assert_eq!(v, s);
+        }
+    }));
+}
+
+criterion_group!(benches, stream, cell);
 criterion_main!(benches);
