@@ -107,10 +107,12 @@ impl<A> Clone for WeakStream<A> {
     }
 }
 
+type CoalescerBoxFn<A> = Box<dyn FnMut(&A, &A) -> A + Send>;
+
 pub struct StreamData<A> {
     pub firing_op: Option<A>,
     pub sodium_ctx: SodiumCtx,
-    pub coalescer_op: Option<Box<dyn FnMut(&A, &A) -> A + Send>>,
+    pub coalescer_op: Option<CoalescerBoxFn<A>>,
 }
 
 impl<

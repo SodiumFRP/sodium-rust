@@ -372,7 +372,7 @@ impl fmt::Debug for dyn IsNode + Sync + Sync {
                     next_id += 1;
                     node_id_map.insert(node_data, node_id);
                 }
-                return format!("N{}", node_id);
+                format!("N{}", node_id)
             };
         }
         struct Util {

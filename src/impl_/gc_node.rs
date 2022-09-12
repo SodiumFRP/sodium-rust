@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
@@ -162,7 +163,7 @@ impl GcCtx {
                 } else {
                     line.push(',');
                 }
-                line.push_str(&format!("{}", t.id));
+                write!(line, "{}", t.id).ok();
                 stack.push(t.clone());
             });
             trace!("{}", line);

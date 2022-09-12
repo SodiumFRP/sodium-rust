@@ -36,7 +36,6 @@ impl<A: Clone + Send + 'static> Stream<Option<A>> {
 }
 
 impl<
-        'a,
         A: Clone + Send + Sync + 'static,
         COLLECTION: IntoIterator<Item = A> + Clone + Send + 'static,
     > Stream<COLLECTION>
