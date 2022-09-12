@@ -39,6 +39,45 @@ fn stream(c: &mut Criterion) {
         })
     });
 
+    stream_send.bench_function("+mapx2", |b| {
+        b.iter_with_large_drop(|| {
+            let ctx = SodiumCtx::new();
+            let sink = ctx.new_stream_sink();
+
+            let mut values: Vec<u16> = Vec::new();
+            let listener = sink
+                .stream()
+                .map(|v: &u16| black_box(*v + 10))
+                .map(|v: &u16| black_box(*v - 5))
+                .listen(move |v: &u16| values.push(black_box(*v)));
+
+            for v in 0_u16..1000 {
+                sink.send(black_box(v));
+            }
+            (ctx, sink, listener)
+        })
+    });
+
+    stream_send.bench_function("+mapx3", |b| {
+        b.iter_with_large_drop(|| {
+            let ctx = SodiumCtx::new();
+            let sink = ctx.new_stream_sink();
+
+            let mut values: Vec<u16> = Vec::new();
+            let listener = sink
+                .stream()
+                .map(|v: &u16| black_box(*v + 10))
+                .map(|v: &u16| black_box(*v - 5))
+                .map(|v: &u16| black_box(*v * 2))
+                .listen(move |v: &u16| values.push(black_box(*v)));
+
+            for v in 0_u16..1000 {
+                sink.send(black_box(v));
+            }
+            (ctx, sink, listener)
+        })
+    });
+
     stream_send.bench_function("+filter", |b| {
         b.iter_with_large_drop(|| {
             let ctx = SodiumCtx::new();
