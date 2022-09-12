@@ -1,6 +1,5 @@
 //! Sodium is a library for doing Functional Reactive Programming
 //! (FRP) in Rust.
-#![allow(clippy::mutable_key_type)]
 #[macro_use]
 extern crate log;
 
