@@ -11,8 +11,8 @@ use crate::impl_::stream_loop::StreamLoop;
 use crate::impl_::stream_sink::StreamSink;
 
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::RwLock;
+use parking_lot::Mutex;
+use parking_lot::RwLock;
 use std::sync::Weak;
 
 use super::name::NodeName;
@@ -43,13 +43,13 @@ impl<A: Send + 'static> StreamWeakForwardRef<A> {
     }
 
     pub fn assign(&self, s: &Stream<A>) {
-        let mut x = self.data.write().unwrap();
+        let mut x = self.data.write();
         *x = Some(Stream::downgrade(s))
     }
 
     pub fn unwrap(&self) -> Stream<A> {
-        let x = self.data.read().unwrap();
-        (*x).clone().unwrap().upgrade().unwrap()
+        let x = self.data.read();
+        x.clone().unwrap().upgrade().unwrap()
     }
 }
 
@@ -145,9 +145,8 @@ impl<
 
 impl<A> Stream<A> {
     pub fn with_data<R, K: FnOnce(&mut StreamData<A>) -> R>(&self, k: K) -> R {
-        let mut l = self.data.lock();
-        let data: &mut StreamData<A> = l.as_mut().unwrap();
-        k(data)
+        let mut data = self.data.lock();
+        k(&mut data)
     }
 
     pub fn with_firing_op<R, K: FnOnce(&mut Option<A>) -> R>(&self, k: K) -> R {
@@ -215,7 +214,7 @@ impl<A: Send + 'static> Stream<A> {
                 let sodium_ctx2 = sodium_ctx.clone();
                 sodium_ctx.pre_eot(move || {
                     {
-                        let mut update = node.data.update.write().unwrap();
+                        let mut update = node.data.update.write();
                         let update: &mut Box<_> = &mut update;
                         update();
                     }
@@ -224,7 +223,7 @@ impl<A: Send + 'static> Stream<A> {
                     if is_firing {
                         {
                             let s_node = s.node();
-                            let mut changed = s_node.data.changed.write().unwrap();
+                            let mut changed = s_node.data.changed.write();
                             *changed = true;
                         }
                         let s = s.clone();
@@ -232,7 +231,7 @@ impl<A: Send + 'static> Stream<A> {
                             s.with_data(|data: &mut StreamData<A>| {
                                 data.firing_op = None;
                                 let s_node = s.node();
-                                let mut changed = s_node.data.changed.write().unwrap();
+                                let mut changed = s_node.data.changed.write();
                                 *changed = true;
                             });
                         });
@@ -458,7 +457,7 @@ impl<A: Send + 'static> Stream<A> {
                             sodium_ctx.post(move || {
                                 let deps;
                                 {
-                                    let dependencies = node.data().dependencies.read().unwrap();
+                                    let dependencies = node.data().dependencies.read();
                                     deps = box_clone_vec_is_node(&dependencies);
                                 }
                                 for dep in deps {
@@ -529,7 +528,7 @@ impl<A: Send + 'static> Stream<A> {
             });
             {
                 let self_node = self.node();
-                let mut changed = self_node.data.changed.write().unwrap();
+                let mut changed = self_node.data.changed.write();
                 *changed = true;
             }
             if is_first {
@@ -539,7 +538,7 @@ impl<A: Send + 'static> Stream<A> {
                     _self.with_data(|data: &mut StreamData<A>| {
                         data.firing_op = None;
                         {
-                            let mut changed = self_node.data().changed.write().unwrap();
+                            let mut changed = self_node.data().changed.write();
                             *changed = false;
                         }
                     });

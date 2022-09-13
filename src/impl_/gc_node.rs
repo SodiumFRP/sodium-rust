@@ -4,8 +4,8 @@ use std::cell::Cell;
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::RwLock;
+use parking_lot::Mutex;
+use parking_lot::RwLock;
 
 use log::trace;
 
@@ -84,9 +84,8 @@ impl GcCtx {
     }
 
     fn with_data<R, K: FnOnce(&mut GcCtxData) -> R>(&self, k: K) -> R {
-        let mut l = self.data.lock();
-        let data = l.as_mut().unwrap();
-        k(data)
+        let mut data = self.data.lock();
+        k(&mut data)
     }
 
     pub fn make_id(&self) -> u32 {
@@ -419,16 +418,16 @@ impl GcNode {
         self.data.freed.set(true);
         let mut tmp: Box<dyn Fn() + Send + Sync + 'static> = Box::new(|| {});
         {
-            let mut deconstructor = self.data.deconstructor.write().unwrap();
+            let mut deconstructor = self.data.deconstructor.write();
             std::mem::swap(&mut *deconstructor, &mut tmp);
         }
         tmp();
-        let mut trace = self.data.trace.write().unwrap();
+        let mut trace = self.data.trace.write();
         *trace = Box::new(|_tracer: &mut Tracer| {});
     }
 
     pub fn trace<TRACER: FnMut(&GcNode)>(&self, mut tracer: TRACER) {
-        let trace = self.data.trace.read().unwrap();
+        let trace = self.data.trace.read();
         trace(&mut tracer);
     }
 }

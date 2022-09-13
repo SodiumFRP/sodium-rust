@@ -8,7 +8,7 @@ use std::mem;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::sync::Mutex;
+use parking_lot::Mutex;
 use std::thread;
 
 use super::name::NodeName;
@@ -60,18 +60,16 @@ impl ThreadedMode {
             let r = r.clone();
             thread_joiner = (self.spawner.spawn_fn)(Box::new(move || {
                 let r2 = f();
-                let mut l = r.lock();
-                let r: &mut Option<R> = l.as_mut().unwrap();
+                let mut r = r.lock();
                 *r = Some(r2);
             }));
         }
         ThreadJoiner {
             join_fn: Box::new(move || {
                 (thread_joiner.join_fn)();
-                let mut l = r.lock();
-                let r: &mut Option<R> = l.as_mut().unwrap();
+                let mut r = r.lock();
                 let mut r2: Option<R> = None;
-                mem::swap(r, &mut r2);
+                mem::swap(&mut *r, &mut r2);
                 r2.unwrap()
             }),
         }
@@ -177,7 +175,7 @@ impl SodiumCtx {
 
     pub fn add_dependents_to_changed_nodes(&self, node: &dyn IsNode) {
         self.with_data(|data: &mut SodiumCtxData| {
-            let node_dependents = node.data().dependents.read().unwrap();
+            let node_dependents = node.data().dependents.read();
             node_dependents
                 .iter()
                 .flat_map(|node: &Box<dyn IsWeakNode + Send + Sync + 'static>| node.upgrade())
@@ -204,9 +202,8 @@ impl SodiumCtx {
     }
 
     pub fn with_data<R, K: FnOnce(&mut SodiumCtxData) -> R>(&self, k: K) -> R {
-        let mut l = self.data.lock();
-        let data: &mut SodiumCtxData = l.as_mut().unwrap();
-        k(data)
+        let mut data = self.data.lock();
+        k(&mut data)
     }
 
     pub fn node_count(&self) -> usize {
@@ -301,7 +298,7 @@ impl SodiumCtx {
     pub fn update_node(&self, node: &Node) {
         let bail;
         {
-            let mut visited = node.data.visited.write().unwrap();
+            let mut visited = node.data.visited.write();
             bail = *visited;
             *visited = true;
         }
@@ -310,13 +307,13 @@ impl SodiumCtx {
         }
         let dependencies: Vec<Box<dyn IsNode + Send + Sync + 'static>>;
         {
-            let dependencies2 = node.data.dependencies.read().unwrap();
+            let dependencies2 = node.data.dependencies.read();
             dependencies = box_clone_vec_is_node(&dependencies2);
         }
         {
             let node = node.clone();
             self.pre_post(move || {
-                let mut visited = node.data.visited.write().unwrap();
+                let mut visited = node.data.visited.write();
                 *visited = false;
             });
         }
@@ -327,7 +324,7 @@ impl SodiumCtx {
             let _self = self.clone();
             handle = self.threaded_mode.spawn(move || {
                 for dependency in &dependencies {
-                    let visit_it = !*dependency.data().visited.read().unwrap();
+                    let visit_it = !*dependency.data().visited.read();
                     if visit_it {
                         _self.update_node(dependency.node());
                     }
@@ -340,17 +337,17 @@ impl SodiumCtx {
             dependencies
                 .iter()
                 .any(|node: &Box<dyn IsNode + Send + Sync + 'static>| {
-                    *node.node().data().changed.read().unwrap()
+                    *node.node().data().changed.read()
                 });
         // if dependencies changed, then execute update on current node
         if any_changed {
-            let mut update = node.data.update.write().unwrap();
+            let mut update = node.data.update.write();
             let update: &mut Box<_> = &mut *update;
             update();
         }
         // if self changed then update dependents
-        if *node.data.changed.read().unwrap() {
-            let dependents = box_clone_vec_is_weak_node(&node.data().dependents.read().unwrap());
+        if *node.data.changed.read() {
+            let dependents = box_clone_vec_is_weak_node(&node.data().dependents.read());
             {
                 let _self = self.clone();
                 for dependent in dependents {

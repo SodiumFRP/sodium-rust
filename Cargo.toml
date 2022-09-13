@@ -12,6 +12,7 @@ description = "Sodium FRP (Functional Reactive Programming)"
 
 [dependencies]
 log = "0.4.8"
+parking_lot = "0.12.1"
 
 [dev-dependencies]
 criterion = "0.4"

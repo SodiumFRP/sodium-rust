@@ -20,8 +20,8 @@ use crate::impl_::stream::WeakStream;
 
 use std::mem;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::RwLock;
+use parking_lot::Mutex;
+use parking_lot::RwLock;
 use std::sync::Weak;
 
 use super::name::NodeName;
@@ -46,13 +46,13 @@ impl<A: Send + 'static> CellWeakForwardRef<A> {
     }
 
     pub fn assign(&self, c: &Cell<A>) {
-        let mut x = self.data.write().unwrap();
+        let mut x = self.data.write();
         *x = Some(Cell::downgrade(c))
     }
 
     fn unwrap(&self) -> Cell<A> {
-        let x = self.data.read().unwrap();
-        (*x).clone().unwrap().upgrade().unwrap()
+        let x = self.data.read();
+        x.clone().unwrap().upgrade().unwrap()
     }
 }
 
@@ -92,8 +92,7 @@ pub struct CellData<A> {
 
 impl<A> Cell<A> {
     pub fn with_data<R, K: FnOnce(&mut CellData<A>) -> R>(&self, k: K) -> R {
-        let mut l = self.data.lock();
-        let data: &mut CellData<A> = l.as_mut().unwrap();
+        let data: &mut CellData<A> = &mut self.data.lock();
         k(data)
     }
 
@@ -184,7 +183,7 @@ impl<A: Send + 'static> Cell<A> {
             {
                 let c = c.clone();
                 sodium_ctx.pre_eot(move || {
-                    let mut update = node.data.update.write().unwrap();
+                    let mut update = node.data.update.write();
                     let update: &mut Box<_> = &mut *update;
                     update();
                     // c captured, but not used so that update() will not crash here
@@ -231,7 +230,7 @@ impl<A: Send + 'static> Cell<A> {
                 spark._send(self_.with_data(|data: &mut CellData<A>| data.value.clone()));
                 let node = spark.node();
                 {
-                    let mut changed = node.data.changed.write().unwrap();
+                    let mut changed = node.data.changed.write();
                     *changed = true;
                 }
                 sodium_ctx.with_data(|data: &mut SodiumCtxData| {
@@ -257,16 +256,14 @@ impl<A: Send + 'static> Cell<A> {
         {
             let f = f.clone();
             init = Lazy::new(move || {
-                let mut l = f.lock();
-                let f = l.as_mut().unwrap();
+                let mut f = f.lock();
                 f.call(&self_.sample())
             });
         }
         self.updates()
             .map(lambda1(
                 move |a: &A| {
-                    let mut l = f.lock();
-                    let f = l.as_mut().unwrap();
+                    let mut f = f.lock();
                     f.call(a)
                 },
                 f_deps,
@@ -297,8 +294,7 @@ impl<A: Send + 'static> Cell<A> {
             let rhs = rhs.clone();
             let f = f.clone();
             init = Lazy::new(move || {
-                let mut l = f.lock();
-                let f = l.as_mut().unwrap();
+                let mut f = f.lock();
                 f.call(&lhs.run(), &rhs.run())
             });
         }
@@ -308,25 +304,21 @@ impl<A: Send + 'static> Cell<A> {
         {
             let state = state.clone();
             s1 = self.updates().map(move |a: &A| {
-                let mut l = state.lock();
-                let state2: &mut (Lazy<A>, Lazy<B>) = l.as_mut().unwrap();
+                let mut state2 = state.lock();
                 state2.0 = Lazy::of_value(a.clone());
             });
         }
         {
             let state = state.clone();
             s2 = cb.updates().map(move |b: &B| {
-                let mut l = state.lock();
-                let state2: &mut (Lazy<A>, Lazy<B>) = l.as_mut().unwrap();
+                let mut state2 = state.lock();
                 state2.1 = Lazy::of_value(b.clone());
             });
         }
         let s = s1.or_else(&s2).map(lambda1(
             move |_: &()| {
-                let l = state.lock();
-                let state2: &(Lazy<A>, Lazy<B>) = l.as_ref().unwrap();
-                let mut l = f.lock();
-                let f = l.as_mut().unwrap();
+                let state2 = state.lock();
+                let mut f = f.lock();
                 f.call(&state2.0.run(), &state2.1.run())
             },
             f_deps,
@@ -472,8 +464,7 @@ impl<A: Send + 'static> Cell<A> {
                     &sodium_ctx,
                     NodeName::CELL_SWITCH_S_INNER,
                     move || {
-                        let l = inner_s.lock();
-                        let inner_s: &WeakStream<A> = l.as_ref().unwrap();
+                        let inner_s = inner_s.lock();
                         let inner_s = inner_s.upgrade().unwrap();
                         inner_s.with_firing_op(|firing_op: &mut Option<A>| {
                             if let Some(ref firing) = firing_op {
@@ -490,8 +481,7 @@ impl<A: Send + 'static> Cell<A> {
                 let csa = csa.clone();
                 let node1 = node1.clone();
                 sodium_ctx.pre_eot(move || {
-                    let mut l = inner_s.lock();
-                    let inner_s: &mut WeakStream<A> = l.as_mut().unwrap();
+                    let mut inner_s = inner_s.lock();
                     let s = csa.sample();
                     *inner_s = Stream::downgrade(&s);
                     <dyn IsNode>::add_dependency(&node1, s);
@@ -515,8 +505,7 @@ impl<A: Send + 'static> Cell<A> {
                                 let node1 = node1.clone();
                                 let inner_s = inner_s.clone();
                                 sodium_ctx.pre_post(move || {
-                                    let mut l = inner_s.lock();
-                                    let inner_s: &mut WeakStream<A> = l.as_mut().unwrap();
+                                    let mut inner_s = inner_s.lock();
                                     <dyn IsNode>::remove_dependency(
                                         &node1,
                                         &inner_s.upgrade().unwrap(),
@@ -565,8 +554,7 @@ impl<A: Send + 'static> Cell<A> {
                 let cca = cca.clone();
                 let node2 = node2.clone();
                 sodium_ctx.pre_eot(move || {
-                    let mut l = last_inner_s.lock();
-                    let last_inner_s: &mut WeakStream<A> = l.as_mut().unwrap();
+                    let mut last_inner_s = last_inner_s.lock();
                     let s = cca.sample().updates();
                     *last_inner_s = Stream::downgrade(&s);
                     <dyn IsNode>::add_dependency(&node2, s);
@@ -590,11 +578,11 @@ impl<A: Send + 'static> Cell<A> {
                                 sa._send(firing.sample());
                                 //
                                 {
-                                    let mut changed = node1.data.changed.write().unwrap();
+                                    let mut changed = node1.data.changed.write();
                                     *changed = true;
                                 }
                                 {
-                                    let mut changed = node2.data.changed.write().unwrap();
+                                    let mut changed = node2.data.changed.write();
                                     *changed = true;
                                 }
                                 let new_inner_s = firing.updates();
@@ -603,15 +591,14 @@ impl<A: Send + 'static> Cell<A> {
                                         sa._send(firing2.clone());
                                     }
                                 });
-                                let mut l = last_inner_s.lock();
-                                let last_inner_s: &mut WeakStream<A> = l.as_mut().unwrap();
+                                let mut last_inner_s = last_inner_s.lock();
                                 <dyn IsNode>::remove_dependency(
                                     &node2,
                                     last_inner_s.upgrade().unwrap().node(),
                                 );
                                 <dyn IsNode>::add_dependency(&node2, new_inner_s.clone());
                                 {
-                                    let mut changed = node2.data.changed.write().unwrap();
+                                    let mut changed = node2.data.changed.write();
                                     *changed = true;
                                 }
                                 *last_inner_s = Stream::downgrade(&new_inner_s);
@@ -627,14 +614,13 @@ impl<A: Send + 'static> Cell<A> {
                 ],
             );
             {
-                let mut update = node1.data.update.write().unwrap();
+                let mut update = node1.data.update.write();
                 *update = Box::new(node1_update);
             }
             {
                 let last_inner_s = last_inner_s;
                 let node2_update = move || {
-                    let l = last_inner_s.lock();
-                    let last_inner_s: &WeakStream<A> = l.as_ref().unwrap();
+                    let last_inner_s = last_inner_s.lock();
                     let last_inner_s = last_inner_s.upgrade().unwrap();
                     last_inner_s.with_firing_op(|firing_op: &mut Option<A>| {
                         if let Some(ref firing) = firing_op {
@@ -644,7 +630,7 @@ impl<A: Send + 'static> Cell<A> {
                     });
                 };
                 {
-                    let mut update = node2.data.update.write().unwrap();
+                    let mut update = node2.data.update.write();
                     *update = Box::new(node2_update);
                 }
             }

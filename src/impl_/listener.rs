@@ -5,7 +5,7 @@ use crate::impl_::sodium_ctx::SodiumCtxData;
 
 use std::fmt;
 use std::sync::Arc;
-use std::sync::Mutex;
+use parking_lot::Mutex;
 
 use super::name::NodeName;
 
@@ -47,8 +47,7 @@ impl Listener {
         {
             let listener_data = listener_data.clone();
             gc_node_desconstructor = move || {
-                let mut l = listener_data.lock();
-                let listener_data = l.as_mut().unwrap();
+                let mut listener_data = listener_data.lock();
                 listener_data.node_op = None;
             };
         }
@@ -58,8 +57,7 @@ impl Listener {
             gc_node_trace = move |tracer: &mut Tracer| {
                 let mut gc_node_vec;
                 {
-                    let mut l = listener_data.lock();
-                    let listener_data = l.as_mut().unwrap();
+                    let listener_data = listener_data.lock();
                     gc_node_vec = Vec::new();
                     listener_data
                         .node_op
@@ -92,8 +90,7 @@ impl Listener {
         let is_weak;
         let sodium_ctx;
         {
-            let mut l = self.data.lock();
-            let data: &mut ListenerData = l.as_mut().unwrap();
+            let mut data = self.data.lock();
             data.node_op = None;
             is_weak = data.is_weak;
             sodium_ctx = data.sodium_ctx.clone();
@@ -111,9 +108,8 @@ impl Listener {
     }
 
     pub fn with_data<R, K: FnOnce(&mut ListenerData) -> R>(&self, k: K) -> R {
-        let mut l = self.data.lock();
-        let data: &mut ListenerData = l.as_mut().unwrap();
-        k(data)
+        let mut data = self.data.lock();
+        k(&mut data)
     }
 }
 

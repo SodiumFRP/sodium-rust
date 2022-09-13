@@ -160,7 +160,6 @@ impl<A, K> Router<A, K> {
                 .data()
                 .dependencies
                 .write()
-                .unwrap()
                 .push(self.box_clone());
             table.insert(k.clone(), Stream::downgrade(&s));
             {
@@ -171,7 +170,6 @@ impl<A, K> Router<A, K> {
                     .data()
                     .cleanups
                     .write()
-                    .unwrap()
                     .push(Box::new(move || {
                         let _ = &weak_s;
                         let mut table = table.write().unwrap();

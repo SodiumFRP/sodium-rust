@@ -4,7 +4,7 @@ use crate::impl_::sodium_ctx::SodiumCtx;
 use crate::impl_::stream::Stream;
 
 use std::sync::Arc;
-use std::sync::Mutex;
+use parking_lot::Mutex;
 
 use super::name::NodeName;
 
@@ -50,8 +50,7 @@ impl<A: Clone + Send + 'static> StreamLoop<A> {
                     return;
                 }
                 let stream_loop_data = stream_loop_data_op.unwrap();
-                let mut l = stream_loop_data.lock();
-                let stream_loop_data = l.as_mut().unwrap();
+                let mut stream_loop_data = stream_loop_data.lock();
                 stream_loop_data.stream = Stream::new(&sodium_ctx);
             };
         }
@@ -64,8 +63,7 @@ impl<A: Clone + Send + 'static> StreamLoop<A> {
                     return;
                 }
                 let stream_loop_data = stream_loop_data_op.unwrap();
-                let l = stream_loop_data.lock();
-                let stream_loop_data = l.as_ref().unwrap();
+                let stream_loop_data = stream_loop_data.lock();
                 tracer(stream_loop_data.stream.gc_node());
             };
         }
@@ -95,7 +93,7 @@ impl<A: Clone + Send + 'static> StreamLoop<A> {
             {
                 let s = s.clone();
                 let s_out = Stream::downgrade(&data.stream);
-                let mut node_update = data.stream.data().update.write().unwrap();
+                let mut node_update = data.stream.data().update.write();
                 *node_update = Box::new(move || {
                     s.with_firing_op(|firing_op: &mut Option<A>| {
                         if let Some(ref firing) = firing_op {
@@ -108,8 +106,7 @@ impl<A: Clone + Send + 'static> StreamLoop<A> {
     }
 
     pub fn with_data<R, K: FnOnce(&mut StreamLoopData<A>) -> R>(&self, k: K) -> R {
-        let mut l = self.data.lock();
-        let data: &mut StreamLoopData<A> = l.as_mut().unwrap();
-        k(data)
+        let mut data = self.data.lock();
+        k(&mut data)
     }
 }
