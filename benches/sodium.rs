@@ -20,6 +20,50 @@ fn stream(c: &mut Criterion) {
         })
     });
 
+    stream_send.bench_function("stream_loop unused", |b| {
+        b.iter(|| {
+            let ctx = SodiumCtx::new();
+
+            let sa = ctx.new_stream_sink();
+            let _sb = ctx.transaction(|| {
+                let sb = ctx.new_stream_loop();
+                sb.loop_(&sa.stream());
+                sb
+            });
+
+            let mut values: Vec<u16> = Vec::new();
+            let _listener = sa
+                .stream()
+                .listen(move |v: &u16| values.push(black_box(*v)));
+
+            for v in 0_u16..1000 {
+                sa.send(black_box(v));
+            }
+        })
+    });
+
+    stream_send.bench_function("stream_loop used", |b| {
+        b.iter(|| {
+            let ctx = SodiumCtx::new();
+
+            let sa = ctx.new_stream_sink();
+            let sb = ctx.transaction(|| {
+                let sb = ctx.new_stream_loop();
+                sb.loop_(&sa.stream());
+                sb
+            });
+
+            let mut values: Vec<u16> = Vec::new();
+            let _listener = sb
+                .stream()
+                .listen(move |v: &u16| values.push(black_box(*v)));
+
+            for v in 0_u16..1000 {
+                sa.send(black_box(v));
+            }
+        })
+    });
+
     stream_send.bench_function("+map", |b| {
         b.iter(|| {
             let ctx = SodiumCtx::new();
