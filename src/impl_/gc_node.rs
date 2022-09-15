@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use parking_lot::Mutex;
 use parking_lot::RwLock;
@@ -45,7 +46,7 @@ impl Clone for GcNode {
 
 struct GcNodeData {
     freed: AtomicBool,
-    ref_count: Cell<u32>,
+    ref_count: AtomicU32,
     ref_count_adj: Cell<u32>,
     visited: Cell<bool>,
     color: Cell<Color>,
@@ -138,7 +139,7 @@ impl GcCtx {
             } else {
                 root.data.buffered.set(false);
                 if root.data.color.get() == Color::Black
-                    && root.data.ref_count.get() == 0
+                    && root.data.ref_count.load(Ordering::SeqCst) == 0
                     && !root.data.freed.load(Ordering::SeqCst)
                 {
                     self.with_data(|data: &mut GcCtxData| data.to_be_freed.push(root));
@@ -173,7 +174,7 @@ impl GcCtx {
             }
             show_names_for.push(next.clone());
             let mut line: String =
-                format!("id {}, ref_count {}: ", next.id, next.data.ref_count.get());
+                format!("id {}, ref_count {}: ", next.id, next.data.ref_count.load(Ordering::SeqCst));
             let mut first: bool = true;
             next.trace(|t| {
                 if first {
@@ -202,8 +203,8 @@ impl GcCtx {
         s.trace(&mut |t: &GcNode| {
             trace!("mark_gray: gc node {} dec ref count", t.id);
             t.data.ref_count_adj.set(t.data.ref_count_adj.get() + 1);
-            if t.data.ref_count_adj.get() > t.data.ref_count.get() {
-                panic!("ref count adj was larger than ref count for node {} ({}) (ref adj {}) (ref cnt {})", t.id, t.name, t.data.ref_count_adj.get(), t.data.ref_count.get());
+            if t.data.ref_count_adj.get() > t.data.ref_count.load(Ordering::SeqCst) {
+                panic!("ref count adj was larger than ref count for node {} ({}) (ref adj {}) (ref cnt {})", t.id, t.name, t.data.ref_count_adj.get(), t.data.ref_count.load(Ordering::SeqCst));
             }
             self.mark_gray(t);
         });
@@ -230,7 +231,7 @@ impl GcCtx {
         if s.data.color.get() != Color::Gray {
             return;
         }
-        if s.data.ref_count_adj.get() == s.data.ref_count.get() {
+        if s.data.ref_count_adj.get() == s.data.ref_count.load(Ordering::SeqCst) {
             s.data.color.set(Color::White);
             trace!("scan: gc node {} became white", s.id);
             s.trace(|t| {
@@ -353,7 +354,7 @@ impl GcNode {
             gc_ctx: gc_ctx.clone(),
             data: Arc::new(GcNodeData {
                 freed: AtomicBool::new(false),
-                ref_count: Cell::new(1),
+                ref_count: AtomicU32::new(1),
                 ref_count_adj: Cell::new(0),
                 visited: Cell::new(false),
                 color: Cell::new(Color::Black),
@@ -365,12 +366,12 @@ impl GcNode {
     }
 
     pub fn ref_count(&self) -> u32 {
-        self.data.ref_count.get()
+        self.data.ref_count.load(Ordering::SeqCst)
     }
 
     pub fn inc_ref_if_alive(&self) -> bool {
         if self.ref_count() != 0 && !self.data.freed.load(Ordering::SeqCst) {
-            self.data.ref_count.set(self.data.ref_count.get() + 1);
+            self.data.ref_count.fetch_add(1, Ordering::SeqCst);
             self.data.color.set(Color::Black);
             true
         } else {
@@ -382,16 +383,16 @@ impl GcNode {
         if self.data.freed.load(Ordering::SeqCst) {
             panic!("gc_node {} inc_ref on freed node ({})", self.id, self.name);
         }
-        self.data.ref_count.set(self.data.ref_count.get() + 1);
+        self.data.ref_count.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x + 1)).ok();
         self.data.color.set(Color::Black);
     }
 
     pub fn dec_ref(&self) {
-        if self.data.ref_count.get() == 0 {
+        if self.data.ref_count.load(Ordering::SeqCst) == 0 {
             return;
         }
-        self.data.ref_count.set(self.data.ref_count.get() - 1);
-        if self.data.ref_count.get() == 0 {
+        let ref_count = self.data.ref_count.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x - 1)).unwrap();
+        if ref_count == 0 {
             self.release();
         } else {
             self.possible_root();
