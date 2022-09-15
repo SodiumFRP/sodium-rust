@@ -19,7 +19,6 @@ fn stream(c: &mut Criterion) {
             }
         })
     });
-
     stream_send.bench_function("stream_loop unused", |b| {
         b.iter(|| {
             let ctx = SodiumCtx::new();
@@ -41,7 +40,6 @@ fn stream(c: &mut Criterion) {
             }
         })
     });
-
     stream_send.bench_function("stream_loop used", |b| {
         b.iter(|| {
             let ctx = SodiumCtx::new();
@@ -63,7 +61,6 @@ fn stream(c: &mut Criterion) {
             }
         })
     });
-
     stream_send.bench_function("+map", |b| {
         b.iter(|| {
             let ctx = SodiumCtx::new();
@@ -80,7 +77,6 @@ fn stream(c: &mut Criterion) {
             }
         })
     });
-
     stream_send.bench_function("+mapx2", |b| {
         b.iter(|| {
             let ctx = SodiumCtx::new();
@@ -98,7 +94,6 @@ fn stream(c: &mut Criterion) {
             }
         })
     });
-
     stream_send.bench_function("+mapx3", |b| {
         b.iter(|| {
             let ctx = SodiumCtx::new();
@@ -117,7 +112,6 @@ fn stream(c: &mut Criterion) {
             }
         })
     });
-
     stream_send.bench_function("+filter", |b| {
         b.iter(|| {
             let ctx = SodiumCtx::new();
@@ -134,7 +128,6 @@ fn stream(c: &mut Criterion) {
             }
         })
     });
-
     stream_send.bench_function("+map+filter", |b| {
         b.iter(|| {
             let ctx = SodiumCtx::new();
@@ -152,7 +145,6 @@ fn stream(c: &mut Criterion) {
             }
         })
     });
-
     stream_send.bench_function("+map+filter+map", |b| {
         b.iter(|| {
             let ctx = SodiumCtx::new();
@@ -171,7 +163,6 @@ fn stream(c: &mut Criterion) {
             }
         })
     });
-
     stream_send.bench_function("+map+filter+map+filter", |b| {
         b.iter(|| {
             let ctx = SodiumCtx::new();
