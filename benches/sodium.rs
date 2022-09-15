@@ -209,7 +209,6 @@ fn cell(c: &mut Criterion) {
             }
         })
     });
-
     cell_send.bench_function("+map", |b| {
         b.iter(|| {
             let ctx = SodiumCtx::new();
@@ -221,6 +220,38 @@ fn cell(c: &mut Criterion) {
                 sink.send(black_box(v));
                 let s = black_box(cell.sample());
                 assert_eq!(v + 10, s);
+            }
+        })
+    });
+    cell_send.bench_function("+map2", |b| {
+        b.iter(|| {
+            let ctx = SodiumCtx::new();
+
+            let sink = ctx.new_cell_sink(0_u16);
+            let cell = sink.cell().map(|v: &u16| *v + 10).map(|v: &u16| *v - 5);
+
+            for v in 0_u16..1000 {
+                sink.send(black_box(v));
+                let s = black_box(cell.sample());
+                assert_eq!(v + 5, s);
+            }
+        })
+    });
+    cell_send.bench_function("+map3", |b| {
+        b.iter(|| {
+            let ctx = SodiumCtx::new();
+
+            let sink = ctx.new_cell_sink(0_u16);
+            let cell = sink
+                .cell()
+                .map(|v: &u16| *v + 10)
+                .map(|v: &u16| *v - 5)
+                .map(|v: &u16| *v + 2);
+
+            for v in 0_u16..1000 {
+                sink.send(black_box(v));
+                let s = black_box(cell.sample());
+                assert_eq!(v + 7, s);
             }
         })
     });
