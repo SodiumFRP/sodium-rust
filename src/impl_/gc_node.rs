@@ -50,7 +50,7 @@ struct GcNodeData {
     ref_count_adj: AtomicU32,
     visited: AtomicBool,
     color: Cell<Color>,
-    buffered: Cell<bool>,
+    buffered: AtomicBool,
     deconstructor: RwLock<Box<dyn Fn() + Send + Sync>>,
     trace: RwLock<Box<Trace>>,
 }
@@ -137,7 +137,7 @@ impl GcCtx {
                 self.mark_gray(&root);
                 new_roots.push(root);
             } else {
-                root.data.buffered.set(false);
+                root.data.buffered.store(false, Ordering::SeqCst);
                 if root.data.color.get() == Color::Black
                     && root.data.ref_count.load(Ordering::SeqCst) == 0
                     && !root.data.freed.load(Ordering::SeqCst)
@@ -279,7 +279,7 @@ impl GcCtx {
         let mut roots = Vec::new();
         self.with_data(|data: &mut GcCtxData| roots.append(&mut data.roots));
         for root in &roots {
-            root.data.buffered.set(false);
+            root.data.buffered.store(false, Ordering::SeqCst);
             self.collect_white(root, &mut white);
         }
         for i in &white {
@@ -358,7 +358,7 @@ impl GcNode {
                 ref_count_adj: AtomicU32::new(0),
                 visited: AtomicBool::new(false),
                 color: Cell::new(Color::Black),
-                buffered: Cell::new(false),
+                buffered: AtomicBool::new(false),
                 deconstructor: RwLock::new(Box::new(deconstructor)),
                 trace: RwLock::new(Box::new(trace)),
             }),
@@ -401,7 +401,7 @@ impl GcNode {
 
     pub fn release(&self) {
         self.data.color.set(Color::Black);
-        if !self.data.buffered.get() {
+        if !self.data.buffered.load(Ordering::SeqCst) {
             trace!("release: freeing gc_node {} ({})", self.id, self.name);
             self.free();
         }
@@ -410,8 +410,8 @@ impl GcNode {
     pub fn possible_root(&self) {
         if self.data.color.get() != Color::Purple {
             self.data.color.set(Color::Purple);
-            if !self.data.buffered.get() {
-                self.data.buffered.set(true);
+            if !self.data.buffered.load(Ordering::SeqCst) {
+                self.data.buffered.store(true, Ordering::SeqCst);
                 self.gc_ctx.add_possible_root(self.clone());
             }
         }
