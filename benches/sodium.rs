@@ -19,6 +19,76 @@ fn stream(c: &mut Criterion) {
             }
         })
     });
+    stream_send.bench_function("merge2", |b| {
+        b.iter(|| {
+            let ctx = SodiumCtx::new();
+            let sa = ctx.new_stream_sink();
+            let sb = ctx.new_stream_sink();
+
+            let mut values: Vec<u16> = Vec::new();
+            let _listener = sa
+                .stream()
+                .merge(&sb.stream(), |a: &u16, b: &u16| *a + *b)
+                .listen(move |v: &u16| values.push(black_box(*v)));
+
+            for v in 0_u16..1000 {
+                if v % 2 == 0 {
+                    sa.send(black_box(v));
+                } else {
+                    sb.send(black_box(v));
+                }
+            }
+        })
+    });
+    stream_send.bench_function("merge3", |b| {
+        b.iter(|| {
+            let ctx = SodiumCtx::new();
+            let sa = ctx.new_stream_sink();
+            let sb = ctx.new_stream_sink();
+            let sc = ctx.new_stream_sink();
+
+            let mut values: Vec<u16> = Vec::new();
+            let _listener = sa
+                .stream()
+                .merge(&sb.stream(), |a: &u16, b: &u16| *a + *b)
+                .merge(&sc.stream(), |s: &u16, c: &u16| *s + *c)
+                .listen(move |v: &u16| values.push(black_box(*v)));
+
+            for v in 0_u16..1000 {
+                match v % 3 {
+                    2 => sa.send(black_box(v)),
+                    1 => sb.send(black_box(v)),
+                    _ => sc.send(black_box(v)),
+                }
+            }
+        })
+    });
+    stream_send.bench_function("merge4", |b| {
+        b.iter(|| {
+            let ctx = SodiumCtx::new();
+            let sa = ctx.new_stream_sink();
+            let sb = ctx.new_stream_sink();
+            let sc = ctx.new_stream_sink();
+            let sd = ctx.new_stream_sink();
+
+            let mut values: Vec<u16> = Vec::new();
+            let _listener = sa
+                .stream()
+                .merge(&sb.stream(), |a: &u16, b: &u16| *a + *b)
+                .merge(&sc.stream(), |s: &u16, c: &u16| *s + *c)
+                .merge(&sd.stream(), |s: &u16, d: &u16| *s + *d)
+                .listen(move |v: &u16| values.push(black_box(*v)));
+
+            for v in 0_u16..1000 {
+                match v % 4 {
+                    3 => sa.send(black_box(v)),
+                    2 => sb.send(black_box(v)),
+                    1 => sc.send(black_box(v)),
+                    _ => sd.send(black_box(v)),
+                }
+            }
+        })
+    });
     stream_send.bench_function("stream_loop unused", |b| {
         b.iter(|| {
             let ctx = SodiumCtx::new();
