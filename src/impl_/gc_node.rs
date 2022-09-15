@@ -47,7 +47,7 @@ impl Clone for GcNode {
 struct GcNodeData {
     freed: AtomicBool,
     ref_count: AtomicU32,
-    ref_count_adj: Cell<u32>,
+    ref_count_adj: AtomicU32,
     visited: Cell<bool>,
     color: Cell<Color>,
     buffered: Cell<bool>,
@@ -202,9 +202,9 @@ impl GcCtx {
 
         s.trace(&mut |t: &GcNode| {
             trace!("mark_gray: gc node {} dec ref count", t.id);
-            t.data.ref_count_adj.set(t.data.ref_count_adj.get() + 1);
-            if t.data.ref_count_adj.get() > t.data.ref_count.load(Ordering::SeqCst) {
-                panic!("ref count adj was larger than ref count for node {} ({}) (ref adj {}) (ref cnt {})", t.id, t.name, t.data.ref_count_adj.get(), t.data.ref_count.load(Ordering::SeqCst));
+            let ref_count_adj = t.data.ref_count_adj.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x + 1)).unwrap();
+            if ref_count_adj > t.data.ref_count.load(Ordering::SeqCst) {
+                panic!("ref count adj was larger than ref count for node {} ({}) (ref adj {}) (ref cnt {})", t.id, t.name, t.data.ref_count_adj.load(Ordering::SeqCst), t.data.ref_count.load(Ordering::SeqCst));
             }
             self.mark_gray(t);
         });
@@ -231,7 +231,7 @@ impl GcCtx {
         if s.data.color.get() != Color::Gray {
             return;
         }
-        if s.data.ref_count_adj.get() == s.data.ref_count.load(Ordering::SeqCst) {
+        if s.data.ref_count_adj.load(Ordering::SeqCst) == s.data.ref_count.load(Ordering::SeqCst) {
             s.data.color.set(Color::White);
             trace!("scan: gc node {} became white", s.id);
             s.trace(|t| {
@@ -247,7 +247,7 @@ impl GcCtx {
             return;
         }
         s.data.visited.set(true);
-        s.data.ref_count_adj.set(0);
+        s.data.ref_count_adj.store(0, Ordering::SeqCst);
         s.trace(|t| {
             self.reset_ref_count_adj_step_1_of_2(t);
         });
@@ -355,7 +355,7 @@ impl GcNode {
             data: Arc::new(GcNodeData {
                 freed: AtomicBool::new(false),
                 ref_count: AtomicU32::new(1),
-                ref_count_adj: Cell::new(0),
+                ref_count_adj: AtomicU32::new(0),
                 visited: Cell::new(false),
                 color: Cell::new(Color::Black),
                 buffered: Cell::new(false),
