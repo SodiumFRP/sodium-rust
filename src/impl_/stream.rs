@@ -11,6 +11,7 @@ use crate::impl_::stream_loop::StreamLoop;
 use crate::impl_::stream_sink::StreamSink;
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use parking_lot::Mutex;
 use parking_lot::RwLock;
 use std::sync::Weak;
@@ -221,18 +222,12 @@ impl<A: Send + 'static> Stream<A> {
                     let is_firing =
                         s.with_data(|data: &mut StreamData<A>| data.firing_op.is_some());
                     if is_firing {
-                        {
-                            let s_node = s.node();
-                            let mut changed = s_node.data.changed.write();
-                            *changed = true;
-                        }
+                        s.node().data.changed.store(true, Ordering::SeqCst);
                         let s = s.clone();
                         sodium_ctx2.pre_post(move || {
                             s.with_data(|data: &mut StreamData<A>| {
                                 data.firing_op = None;
-                                let s_node = s.node();
-                                let mut changed = s_node.data.changed.write();
-                                *changed = true;
+                                s.node().data.changed.store(true, Ordering::SeqCst);
                             });
                         });
                     }
@@ -526,21 +521,14 @@ impl<A: Send + 'static> Stream<A> {
                 }
                 is_first
             });
-            {
-                let self_node = self.node();
-                let mut changed = self_node.data.changed.write();
-                *changed = true;
-            }
+            self.node().data.changed.store(true, Ordering::SeqCst);
             if is_first {
                 let _self = self.clone();
                 let self_node = _self.box_clone();
                 sodium_ctx.pre_post(move || {
                     _self.with_data(|data: &mut StreamData<A>| {
                         data.firing_op = None;
-                        {
-                            let mut changed = self_node.data().changed.write();
-                            *changed = false;
-                        }
+                        self_node.data().changed.store(false, Ordering::SeqCst);
                     });
                 });
             }

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use parking_lot::RwLock;
 use std::sync::Weak;
 
@@ -144,8 +145,8 @@ pub struct Node {
 }
 
 pub struct NodeData {
-    pub visited: RwLock<bool>,
-    pub changed: RwLock<bool>,
+    pub visited: AtomicBool,
+    pub changed: AtomicBool,
     pub update: RwLock<Box<dyn FnMut() + Send + Sync>>,
     pub update_dependencies: RwLock<Vec<Dep>>,
     pub dependencies: RwLock<Vec<Box<dyn IsNode + Send + Sync>>>,
@@ -305,8 +306,8 @@ impl Node {
         }
         let result = Node {
             data: Arc::new(NodeData {
-                visited: RwLock::new(false),
-                changed: RwLock::new(false),
+                visited: AtomicBool::new(false),
+                changed: AtomicBool::new(false),
                 update: RwLock::new(Box::new(update)),
                 update_dependencies: RwLock::new(Vec::new()),
                 dependencies: RwLock::new(box_clone_vec_is_node(&dependencies)),

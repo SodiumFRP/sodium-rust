@@ -296,12 +296,7 @@ impl SodiumCtx {
     }
 
     pub fn update_node(&self, node: &Node) {
-        let bail;
-        {
-            let mut visited = node.data.visited.write();
-            bail = *visited;
-            *visited = true;
-        }
+        let bail = node.data.visited.swap(true, Ordering::Release);
         if bail {
             return;
         }
@@ -313,8 +308,7 @@ impl SodiumCtx {
         {
             let node = node.clone();
             self.pre_post(move || {
-                let mut visited = node.data.visited.write();
-                *visited = false;
+                node.data.visited.store(false, Ordering::SeqCst);
             });
         }
         // visit dependencies
@@ -324,8 +318,8 @@ impl SodiumCtx {
             let _self = self.clone();
             handle = self.threaded_mode.spawn(move || {
                 for dependency in &dependencies {
-                    let visit_it = !*dependency.data().visited.read();
-                    if visit_it {
+                    let visited = dependency.data().visited.load(Ordering::SeqCst);
+                    if !visited {
                         _self.update_node(dependency.node());
                     }
                 }
@@ -337,7 +331,7 @@ impl SodiumCtx {
             dependencies
                 .iter()
                 .any(|node: &Box<dyn IsNode + Send + Sync + 'static>| {
-                    *node.node().data().changed.read()
+                    node.node().data().changed.load(Ordering::SeqCst)
                 });
         // if dependencies changed, then execute update on current node
         if any_changed {
@@ -346,7 +340,8 @@ impl SodiumCtx {
             update();
         }
         // if self changed then update dependents
-        if *node.data.changed.read() {
+        let changed = node.data.changed.load(Ordering::SeqCst);
+        if changed {
             let dependents = box_clone_vec_is_weak_node(&node.data().dependents.read());
             {
                 let _self = self.clone();

@@ -20,6 +20,7 @@ use crate::impl_::stream::WeakStream;
 
 use std::mem;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use parking_lot::Mutex;
 use parking_lot::RwLock;
 use std::sync::Weak;
@@ -230,8 +231,7 @@ impl<A: Send + 'static> Cell<A> {
                 spark._send(self_.with_data(|data: &mut CellData<A>| data.value.clone()));
                 let node = spark.node();
                 {
-                    let mut changed = node.data.changed.write();
-                    *changed = true;
+                    node.data.changed.store(true, Ordering::SeqCst);
                 }
                 sodium_ctx.with_data(|data: &mut SodiumCtxData| {
                     data.changed_nodes.push(node.box_clone())
@@ -576,15 +576,8 @@ impl<A: Send + 'static> Cell<A> {
                                 sodium_ctx.update_node(firing.updates().node());
                                 let sa = sa.unwrap();
                                 sa._send(firing.sample());
-                                //
-                                {
-                                    let mut changed = node1.data.changed.write();
-                                    *changed = true;
-                                }
-                                {
-                                    let mut changed = node2.data.changed.write();
-                                    *changed = true;
-                                }
+                                node1.data.changed.store(true, Ordering::SeqCst);
+                                node2.data.changed.store(true, Ordering::SeqCst);
                                 let new_inner_s = firing.updates();
                                 new_inner_s.with_firing_op(|firing2_op: &mut Option<A>| {
                                     if let Some(ref firing2) = firing2_op {
@@ -597,10 +590,7 @@ impl<A: Send + 'static> Cell<A> {
                                     last_inner_s.upgrade().unwrap().node(),
                                 );
                                 <dyn IsNode>::add_dependency(&node2, new_inner_s.clone());
-                                {
-                                    let mut changed = node2.data.changed.write();
-                                    *changed = true;
-                                }
+                                node2.data.changed.store(true, Ordering::SeqCst);
                                 *last_inner_s = Stream::downgrade(&new_inner_s);
                             }
                         });
