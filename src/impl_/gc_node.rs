@@ -4,6 +4,8 @@ use std::cell::Cell;
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use parking_lot::Mutex;
 use parking_lot::RwLock;
 
@@ -42,7 +44,7 @@ impl Clone for GcNode {
 }
 
 struct GcNodeData {
-    freed: Cell<bool>,
+    freed: AtomicBool,
     ref_count: Cell<u32>,
     ref_count_adj: Cell<u32>,
     visited: Cell<bool>,
@@ -137,7 +139,7 @@ impl GcCtx {
                 root.data.buffered.set(false);
                 if root.data.color.get() == Color::Black
                     && root.data.ref_count.get() == 0
-                    && !root.data.freed.get()
+                    && !root.data.freed.load(Ordering::SeqCst)
                 {
                     self.with_data(|data: &mut GcCtxData| data.to_be_freed.push(root));
                 }
@@ -280,7 +282,7 @@ impl GcCtx {
             self.collect_white(root, &mut white);
         }
         for i in &white {
-            if !i.data.freed.get() {
+            if !i.data.freed.load(Ordering::SeqCst) {
                 trace!("collect_roots: freeing white node {} ({})", i.id, i.name);
                 i.free();
                 self.with_data(|data: &mut GcCtxData| {
@@ -291,7 +293,7 @@ impl GcCtx {
         let mut to_be_freed = Vec::new();
         self.with_data(|data: &mut GcCtxData| to_be_freed.append(&mut data.to_be_freed));
         for i in &to_be_freed {
-            if !i.data.freed.get() {
+            if !i.data.freed.load(Ordering::SeqCst) {
                 trace!(
                     "collect_roots: freeing to_be_freed node {} ({})",
                     i.id,
@@ -350,7 +352,7 @@ impl GcNode {
             name,
             gc_ctx: gc_ctx.clone(),
             data: Arc::new(GcNodeData {
-                freed: Cell::new(false),
+                freed: AtomicBool::new(false),
                 ref_count: Cell::new(1),
                 ref_count_adj: Cell::new(0),
                 visited: Cell::new(false),
@@ -367,7 +369,7 @@ impl GcNode {
     }
 
     pub fn inc_ref_if_alive(&self) -> bool {
-        if self.ref_count() != 0 && !self.data.freed.get() {
+        if self.ref_count() != 0 && !self.data.freed.load(Ordering::SeqCst) {
             self.data.ref_count.set(self.data.ref_count.get() + 1);
             self.data.color.set(Color::Black);
             true
@@ -377,7 +379,7 @@ impl GcNode {
     }
 
     pub fn inc_ref(&self) {
-        if self.data.freed.get() {
+        if self.data.freed.load(Ordering::SeqCst) {
             panic!("gc_node {} inc_ref on freed node ({})", self.id, self.name);
         }
         self.data.ref_count.set(self.data.ref_count.get() + 1);
@@ -415,7 +417,7 @@ impl GcNode {
     }
 
     pub fn free(&self) {
-        self.data.freed.set(true);
+        self.data.freed.store(true, Ordering::SeqCst);
         let mut tmp: Box<dyn Fn() + Send + Sync + 'static> = Box::new(|| {});
         {
             let mut deconstructor = self.data.deconstructor.write();
