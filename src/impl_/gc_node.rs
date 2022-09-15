@@ -48,7 +48,7 @@ struct GcNodeData {
     freed: AtomicBool,
     ref_count: AtomicU32,
     ref_count_adj: AtomicU32,
-    visited: Cell<bool>,
+    visited: AtomicBool,
     color: Cell<Color>,
     buffered: Cell<bool>,
     deconstructor: RwLock<Box<dyn Fn() + Send + Sync>>,
@@ -243,10 +243,10 @@ impl GcCtx {
     }
 
     fn reset_ref_count_adj_step_1_of_2(&self, s: &GcNode) {
-        if s.data.visited.get() {
+        if s.data.visited.load(Ordering::SeqCst) {
             return;
         }
-        s.data.visited.set(true);
+        s.data.visited.store(true, Ordering::SeqCst);
         s.data.ref_count_adj.store(0, Ordering::SeqCst);
         s.trace(|t| {
             self.reset_ref_count_adj_step_1_of_2(t);
@@ -254,10 +254,10 @@ impl GcCtx {
     }
 
     fn reset_ref_count_adj_step_2_of_2(&self, s: &GcNode) {
-        if !s.data.visited.get() {
+        if !s.data.visited.load(Ordering::SeqCst) {
             return;
         }
-        s.data.visited.set(false);
+        s.data.visited.store(false, Ordering::SeqCst);
         s.trace(|t| {
             self.reset_ref_count_adj_step_2_of_2(t);
         });
@@ -356,7 +356,7 @@ impl GcNode {
                 freed: AtomicBool::new(false),
                 ref_count: AtomicU32::new(1),
                 ref_count_adj: AtomicU32::new(0),
-                visited: Cell::new(false),
+                visited: AtomicBool::new(false),
                 color: Cell::new(Color::Black),
                 buffered: Cell::new(false),
                 deconstructor: RwLock::new(Box::new(deconstructor)),
