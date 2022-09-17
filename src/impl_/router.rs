@@ -99,11 +99,9 @@ impl<A, K> Router<A, K> {
                 move || {
                     let sodium_ctx = &sodium_ctx2;
                     let keys_firing_op = in_stream2.with_firing_op(|firing_op: &mut Option<A>| {
-                        if let Some(ref firing) = firing_op {
-                            Some((selector(firing), firing.clone()))
-                        } else {
-                            None
-                        }
+                        firing_op
+                            .as_ref()
+                            .map(|firing| (selector(firing), firing.clone()))
                     });
                     if let Some((keys, firing)) = keys_firing_op {
                         for key in keys {
@@ -127,7 +125,7 @@ impl<A, K> Router<A, K> {
                 },
                 vec![in_stream.box_clone()],
             );
-            IsNode::add_update_dependencies(&node, vec![in_stream.to_dep()]);
+            <dyn IsNode>::add_update_dependencies(&node, vec![in_stream.to_dep()]);
         }
         Router {
             sodium_ctx: sodium_ctx.clone(),
@@ -173,6 +171,7 @@ impl<A, K> Router<A, K> {
                     .write()
                     .unwrap()
                     .push(Box::new(move || {
+                        let _ = &weak_s;
                         let mut table = table.write().unwrap();
                         let mut remove_it = false;
                         if let Some(weak_stream) = table.get(&k) {

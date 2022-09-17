@@ -36,7 +36,6 @@ impl<A: Clone + Send + 'static> Stream<Option<A>> {
 }
 
 impl<
-        'a,
         A: Clone + Send + Sync + 'static,
         COLLECTION: IntoIterator<Item = A> + Clone + Send + 'static,
     > Stream<COLLECTION>
@@ -108,12 +107,11 @@ impl<A: Clone + Send + 'static> Stream<A> {
         cc: &Cell<C>,
         mut f: FN,
     ) -> Stream<D> {
-        let mut deps: Vec<Dep>;
-        if let Some(deps2) = f.deps_op() {
-            deps = deps2.clone();
+        let mut deps = if let Some(deps2) = f.deps_op() {
+            deps2.clone()
         } else {
-            deps = Vec::new();
-        }
+            Vec::new()
+        };
         let cc = cc.clone();
         deps.push(cc.to_dep());
         self.snapshot(
@@ -137,12 +135,11 @@ impl<A: Clone + Send + 'static> Stream<A> {
         cd: &Cell<D>,
         mut f: FN,
     ) -> Stream<E> {
-        let mut deps: Vec<Dep>;
-        if let Some(deps2) = f.deps_op() {
-            deps = deps2.clone();
+        let mut deps = if let Some(deps2) = f.deps_op() {
+            deps2.clone()
         } else {
-            deps = Vec::new();
-        }
+            Vec::new()
+        };
         let cc = cc.clone();
         let cd = cd.clone();
         deps.push(cc.to_dep());
@@ -173,12 +170,11 @@ impl<A: Clone + Send + 'static> Stream<A> {
         ce: &Cell<E>,
         mut f: FN,
     ) -> Stream<F> {
-        let mut deps: Vec<Dep>;
-        if let Some(deps2) = f.deps_op() {
-            deps = deps2.clone();
+        let mut deps = if let Some(deps2) = f.deps_op() {
+            deps2.clone()
         } else {
-            deps = Vec::new();
-        }
+            Vec::new()
+        };
         let cc = cc.clone();
         let cd = cd.clone();
         let ce = ce.clone();
@@ -213,12 +209,11 @@ impl<A: Clone + Send + 'static> Stream<A> {
         cf: &Cell<F>,
         mut f: FN,
     ) -> Stream<G> {
-        let mut deps: Vec<Dep>;
-        if let Some(deps2) = f.deps_op() {
-            deps = deps2.clone();
+        let mut deps = if let Some(deps2) = f.deps_op() {
+            deps2.clone()
         } else {
-            deps = Vec::new();
-        }
+            Vec::new()
+        };
         let cc = cc.clone();
         let cd = cd.clone();
         let ce = ce.clone();

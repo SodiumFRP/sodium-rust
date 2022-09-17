@@ -2,7 +2,7 @@
 name = "sodium-rust"
 version = "2.1.1"
 authors = ["Clinton Selke <clinuxrulz@gmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "BSD-3-Clause"
 repository = "https://github.com/SodiumFRP/sodium-rust"
 keywords = ["frp"]
@@ -14,4 +14,4 @@ description = "Sodium FRP (Functional Reactive Programming)"
 log = "0.4.8"
 
 [dev-dependencies]
-env_logger = "0.7.1"
+env_logger = "0.9.0"

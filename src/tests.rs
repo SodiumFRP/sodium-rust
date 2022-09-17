@@ -67,7 +67,7 @@ fn map() {
             l = s
                 .stream()
                 .map(|a: &i32| *a + 1)
-                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(a.clone()));
+                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(*a));
         }
         s.send(7);
         {
@@ -425,7 +425,7 @@ fn snapshot_initial_value() {
                     println!("new {} old {}", new, old);
                     new - old
                 })
-                .listen(move |a: &i8| out.lock().as_mut().unwrap().push(a.clone()));
+                .listen(move |a: &i8| out.lock().as_mut().unwrap().push(*a));
             }
             (sa, l)
         });
@@ -455,7 +455,7 @@ fn value() {
                 l = b
                     .cell()
                     .value()
-                    .listen(move |a: &i8| out.lock().as_mut().unwrap().push(a.clone()));
+                    .listen(move |a: &i8| out.lock().as_mut().unwrap().push(*a));
             }
             (b, l)
         });
@@ -485,7 +485,7 @@ fn value_const() {
                 l = b
                     .cell()
                     .value()
-                    .listen(move |a: &i8| out.lock().as_mut().unwrap().push(a.clone()));
+                    .listen(move |a: &i8| out.lock().as_mut().unwrap().push(*a));
             }
             l
         });
@@ -511,7 +511,7 @@ fn constant_cell() {
         let l;
         {
             let out = out.clone();
-            l = c.listen(move |a: &i32| out.lock().as_mut().unwrap().push(a.clone()));
+            l = c.listen(move |a: &i32| out.lock().as_mut().unwrap().push(*a));
         }
         {
             let l = out.lock();
@@ -535,7 +535,7 @@ fn values() {
             let out = out.clone();
             l = c
                 .cell()
-                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(a.clone()));
+                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(*a));
         }
         c.send(2);
         c.send(7);
@@ -712,7 +712,7 @@ fn lift_from_simultaneous() {
             l = b1
                 .cell()
                 .lift2(&b2.cell(), |x: &i32, y: &i32| x + y)
-                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(a.clone()));
+                .listen(move |a: &i32| out.lock().as_mut().unwrap().push(*a));
         }
         {
             let l = out.lock();
@@ -867,7 +867,7 @@ fn loop_value_hold() {
             l = s_tick
                 .stream()
                 .snapshot1(&value)
-                .listen(move |x: &&'static str| out.lock().as_mut().unwrap().push(x.clone()));
+                .listen(move |x: &&'static str| out.lock().as_mut().unwrap().push(*x));
         }
         s_tick.send(&());
         l.unlisten();
@@ -1152,7 +1152,7 @@ fn split1() {
         let ea = sodium_ctx.new_stream_sink::<&'static str>();
         let eo = ea
             .stream()
-            .map(|text0: &&'static str| text0.split(" "))
+            .map(|text0: &&'static str| text0.split(' '))
             .split();
         let listener;
         {
@@ -1249,25 +1249,13 @@ fn switch_c() {
                 b: Option<&'static str>,
                 sw: Option<&'static str>,
             ) -> SC {
-                SC { a: a, b: b, sw: sw }
+                SC { a, b, sw }
             }
         }
         let ssc = sodium_ctx.new_stream_sink();
-        let ca = ssc
-            .stream()
-            .map(|s: &SC| s.a.clone())
-            .filter_option()
-            .hold("A");
-        let cb = ssc
-            .stream()
-            .map(|s: &SC| s.b.clone())
-            .filter_option()
-            .hold("a");
-        let csw_str = ssc
-            .stream()
-            .map(|s: &SC| s.sw.clone())
-            .filter_option()
-            .hold("ca");
+        let ca = ssc.stream().map(|s: &SC| s.a).filter_option().hold("A");
+        let cb = ssc.stream().map(|s: &SC| s.b).filter_option().hold("a");
+        let csw_str = ssc.stream().map(|s: &SC| s.sw).filter_option().hold("ca");
         let csw_deps = vec![ca.to_dep(), cb.to_dep()];
         let csw = csw_str.map(lambda1(
             move |s: &&'static str| if *s == "ca" { ca.clone() } else { cb.clone() },
@@ -1316,17 +1304,13 @@ fn switch_s() {
         }
         impl SS {
             fn new(a: &'static str, b: &'static str, sw: Option<&'static str>) -> SS {
-                SS { a: a, b: b, sw: sw }
+                SS { a, b, sw }
             }
         }
         let sss = sodium_ctx.new_stream_sink();
-        let sa = sss.stream().map(|s: &SS| s.a.clone());
-        let sb = sss.stream().map(|s: &SS| s.b.clone());
-        let csw_str = sss
-            .stream()
-            .map(|s: &SS| s.sw.clone())
-            .filter_option()
-            .hold("sa");
+        let sa = sss.stream().map(|s: &SS| s.a);
+        let sb = sss.stream().map(|s: &SS| s.b);
+        let csw_str = sss.stream().map(|s: &SS| s.sw).filter_option().hold("sa");
         let csw_deps = vec![sa.to_dep(), sb.to_dep()];
         let csw: Cell<Stream<&'static str>> = csw_str.map(lambda1(
             move |sw: &&'static str| if *sw == "sa" { sa.clone() } else { sb.clone() },

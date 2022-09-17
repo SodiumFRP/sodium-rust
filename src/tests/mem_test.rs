@@ -4,13 +4,11 @@ use crate::StreamSink;
 
 use crate::tests::init;
 
-use log;
-
 // SET RUST_LOG=trace
 #[test]
 fn log_test() {
     init();
-    info!("a");
+    log::info!("a");
     log::debug!("a");
     log::debug!("b");
 }
