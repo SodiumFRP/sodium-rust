@@ -14,4 +14,12 @@ description = "Sodium FRP (Functional Reactive Programming)"
 log = "0.4.8"
 
 [dev-dependencies]
+criterion = "0.3.3"
 env_logger = "0.9.0"
+
+[profile.release]
+debug = 1
+
+[[bench]]
+name = "sodium"
+harness = false
