@@ -110,7 +110,10 @@ impl GcCtx {
         self.display_graph(&old_roots);
         let mut new_roots: Vec<GcNode> = Vec::new();
         for root in &old_roots {
-            self.reset_ref_count_adj(root);
+            self.reset_ref_count_adj_step_1_of_2(root);
+        }
+        for root in &old_roots {
+            self.reset_ref_count_adj_step_2_of_2(root);
         }
         for root in old_roots {
             let color = root.data.color.get();
@@ -199,7 +202,10 @@ impl GcCtx {
             self.scan(root);
         }
         for root in &roots {
-            self.reset_ref_count_adj(root);
+            self.reset_ref_count_adj_step_1_of_2(root);
+        }
+        for root in &roots {
+            self.reset_ref_count_adj_step_2_of_2(root);
         }
         self.with_data(|data: &mut GcCtxData| std::mem::swap(&mut roots, &mut data.roots));
         trace!("end: scan_roots");
@@ -220,16 +226,25 @@ impl GcCtx {
         }
     }
 
-    fn reset_ref_count_adj(&self, s: &GcNode) {
+    fn reset_ref_count_adj_step_1_of_2(&self, s: &GcNode) {
         if s.data.visited.get() {
             return;
         }
         s.data.visited.set(true);
         s.data.ref_count_adj.set(0);
         s.trace(|t| {
-            self.reset_ref_count_adj(t);
+            self.reset_ref_count_adj_step_1_of_2(t);
         });
+    }
+
+    fn reset_ref_count_adj_step_2_of_2(&self, s: &GcNode) {
+        if !s.data.visited.get() {
+            return;
+        }
         s.data.visited.set(false);
+        s.trace(|t| {
+            self.reset_ref_count_adj_step_2_of_2(t);
+        });
     }
 
     fn scan_black(&self, s: &GcNode) {
