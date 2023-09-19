@@ -202,7 +202,7 @@ impl Node {
                 let node_data;
                 {
                     let node1 = result_forward_ref.read().unwrap();
-                    let node2: &Option<Weak<NodeData>> = &*node1;
+                    let node2: &Option<Weak<NodeData>> = &node1;
                     let node3: Option<Weak<NodeData>> = node2.clone();
                     let node_data_op = node3.unwrap().upgrade();
                     if node_data_op.is_none() {
@@ -275,7 +275,7 @@ impl Node {
                 let node_data_op;
                 {
                     let node1 = result_forward_ref.read().unwrap();
-                    let node2: &Option<Weak<NodeData>> = &*node1;
+                    let node2: &Option<Weak<NodeData>> = &node1;
                     let node3: Option<Weak<NodeData>> = node2.clone();
                     node_data_op = node3.unwrap().upgrade();
                 }

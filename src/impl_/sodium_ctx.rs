@@ -309,7 +309,7 @@ impl SodiumCtx {
         let dependencies: Vec<Box<dyn IsNode + Send + Sync + 'static>>;
         {
             let dependencies2 = node.data.dependencies.read().unwrap();
-            dependencies = box_clone_vec_is_node(&*dependencies2);
+            dependencies = box_clone_vec_is_node(&dependencies2);
         }
         {
             let node = node.clone();
@@ -348,7 +348,7 @@ impl SodiumCtx {
         }
         // if self changed then update dependents
         if *node.data.changed.read().unwrap() {
-            let dependents = box_clone_vec_is_weak_node(&*node.data().dependents.read().unwrap());
+            let dependents = box_clone_vec_is_weak_node(&node.data().dependents.read().unwrap());
             {
                 let _self = self.clone();
                 for dependent in dependents {

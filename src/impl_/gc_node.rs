@@ -1,3 +1,5 @@
+#![allow(clippy::only_used_in_recursion)]
+
 use std::cell::Cell;
 use std::collections::HashSet;
 use std::fmt::Write as _;

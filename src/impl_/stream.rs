@@ -47,7 +47,7 @@ impl<A: Send + 'static> StreamWeakForwardRef<A> {
 
     pub fn unwrap(&self) -> Stream<A> {
         let x = self.data.read().unwrap();
-        (&*x).clone().unwrap().upgrade().unwrap()
+        (*x).clone().unwrap().upgrade().unwrap()
     }
 }
 
@@ -457,7 +457,7 @@ impl<A: Send + 'static> Stream<A> {
                                 let deps;
                                 {
                                     let dependencies = node.data().dependencies.read().unwrap();
-                                    deps = box_clone_vec_is_node(&(*dependencies));
+                                    deps = box_clone_vec_is_node(&dependencies);
                                 }
                                 for dep in deps {
                                     <dyn IsNode>::remove_dependency(node.node(), dep.node());

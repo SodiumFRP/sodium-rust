@@ -50,7 +50,7 @@ impl<A: Send + 'static> CellWeakForwardRef<A> {
 
     fn unwrap(&self) -> Cell<A> {
         let x = self.data.read().unwrap();
-        (&*x).clone().unwrap().upgrade().unwrap()
+        (*x).clone().unwrap().upgrade().unwrap()
     }
 }
 
