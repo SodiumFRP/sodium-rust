@@ -9,6 +9,8 @@ use std::sync::RwLock;
 
 use log::trace;
 
+use crate::impl_::name::NodeName;
+
 pub type Tracer<'a> = dyn FnMut(&GcNode) + 'a;
 
 pub type Trace = dyn Fn(&mut Tracer) + Send + Sync;
@@ -21,12 +23,22 @@ enum Color {
     White,
 }
 
-#[derive(Clone)]
 pub struct GcNode {
     id: u32,
-    name: String,
+    name: NodeName,
     gc_ctx: GcCtx,
     data: Arc<GcNodeData>,
+}
+
+impl Clone for GcNode {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            name: self.name.clone(),
+            gc_ctx: self.gc_ctx.clone(),
+            data: Arc::clone(&self.data)
+        }
+    }
 }
 
 struct GcNodeData {
@@ -326,18 +338,17 @@ impl GcCtx {
 
 impl GcNode {
     pub fn new<
-        NAME: ToString,
         DECONSTRUCTOR: 'static + Fn() + Send + Sync,
         TRACE: 'static + Fn(&mut Tracer) + Send + Sync,
     >(
         gc_ctx: &GcCtx,
-        name: NAME,
+        name: NodeName,
         deconstructor: DECONSTRUCTOR,
         trace: TRACE,
     ) -> GcNode {
         GcNode {
             id: gc_ctx.make_id(),
-            name: name.to_string(),
+            name,
             gc_ctx: gc_ctx.clone(),
             data: Arc::new(GcNodeData {
                 freed: Cell::new(false),

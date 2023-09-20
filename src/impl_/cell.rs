@@ -24,6 +24,8 @@ use std::sync::Mutex;
 use std::sync::RwLock;
 use std::sync::Weak;
 
+use super::name::NodeName;
+
 pub struct CellWeakForwardRef<A> {
     data: Arc<RwLock<Option<WeakCell<A>>>>,
 }
@@ -120,7 +122,7 @@ impl<A: Send + 'static> Cell<A> {
         }));
         Cell {
             data: cell_data,
-            node: Node::new(sodium_ctx, "Cell::new", || {}, vec![]),
+            node: Node::new(sodium_ctx, NodeName::CELL_NEW, || {}, vec![]),
         }
     }
 
@@ -145,7 +147,7 @@ impl<A: Send + 'static> Cell<A> {
                 let sodium_ctx2 = sodium_ctx.clone();
                 node = Node::new(
                     &sodium_ctx2,
-                    "Cell::hold",
+                    NodeName::CELL_HOLD,
                     move || {
                         let c = c.unwrap();
                         let firing_op = stream.with_firing_op(|firing_op| firing_op.clone());
@@ -468,7 +470,7 @@ impl<A: Send + 'static> Cell<A> {
                 let inner_s = inner_s.clone();
                 node1 = Node::new(
                     &sodium_ctx,
-                    "switch_s inner node",
+                    NodeName::CELL_SWITCH_S_INNER,
                     move || {
                         let l = inner_s.lock();
                         let inner_s: &WeakStream<A> = l.as_ref().unwrap();
@@ -505,7 +507,7 @@ impl<A: Send + 'static> Cell<A> {
                 let sodium_ctx2 = sodium_ctx.clone();
                 node2 = Node::new(
                     &sodium_ctx2,
-                    "switch_s outer node",
+                    NodeName::CELL_SWITCH_S_OUTER,
                     move || {
                         csa_updates.with_firing_op(|firing_op: &mut Option<Stream<A>>| {
                             if let Some(ref firing) = firing_op {
@@ -547,14 +549,14 @@ impl<A: Send + 'static> Cell<A> {
         Stream::_new(&sodium_ctx, |sa: StreamWeakForwardRef<A>| {
             let node1 = Node::new(
                 &sodium_ctx,
-                "switch_c outer node",
+                NodeName::CELL_SWITCH_C_OUTER,
                 || {},
                 vec![cca.updates().box_clone()],
             );
             let last_inner_s = Arc::new(Mutex::new(Stream::downgrade(&Stream::new(&sodium_ctx))));
             let node2 = Node::new(
                 &sodium_ctx,
-                "switch_c inner node",
+                NodeName::CELL_SWITCH_C_INNER,
                 || {},
                 vec![node1.box_clone()],
             );

@@ -11,6 +11,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 
+use super::name::NodeName;
+
 #[derive(Clone)]
 pub struct SodiumCtx {
     gc_ctx: GcCtx,
@@ -147,7 +149,7 @@ impl SodiumCtx {
     }
 
     pub fn null_node(&self) -> Node {
-        Node::new(self, "null_node", || {}, Vec::new())
+        Node::new(self, NodeName::NullNode, || {}, Vec::new())
     }
 
     pub fn transaction<R, K: FnOnce() -> R>(&self, k: K) -> R {

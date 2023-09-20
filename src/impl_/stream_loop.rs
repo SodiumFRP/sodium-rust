@@ -6,6 +6,8 @@ use crate::impl_::stream::Stream;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use super::name::NodeName;
+
 pub struct StreamLoop<A> {
     pub data: Arc<Mutex<StreamLoopData<A>>>,
     pub gc_node: GcNode,
@@ -71,7 +73,7 @@ impl<A: Clone + Send + 'static> StreamLoop<A> {
             data: stream_loop_data,
             gc_node: GcNode::new(
                 &sodium_ctx.gc_ctx(),
-                "StreamLoop::new",
+                NodeName::STREAM_LOOP_NEW,
                 gc_node_destructor,
                 gc_node_trace,
             ),

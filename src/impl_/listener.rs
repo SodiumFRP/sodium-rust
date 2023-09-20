@@ -7,6 +7,8 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use super::name::NodeName;
+
 pub struct Listener {
     pub data: Arc<Mutex<ListenerData>>,
     pub gc_node: GcNode,
@@ -73,7 +75,7 @@ impl Listener {
             data: listener_data,
             gc_node: GcNode::new(
                 &sodium_ctx.gc_ctx(),
-                "Listener::new",
+                NodeName::ListenerNew,
                 gc_node_desconstructor,
                 gc_node_trace,
             ),

@@ -15,6 +15,8 @@ use std::sync::Mutex;
 use std::sync::RwLock;
 use std::sync::Weak;
 
+use super::name::NodeName;
+
 pub struct StreamWeakForwardRef<A> {
     data: Arc<RwLock<Option<WeakStream<A>>>>,
 }
@@ -168,7 +170,7 @@ impl<A> Stream<A> {
 impl<A: Send + 'static> Stream<A> {
     pub fn new(sodium_ctx: &SodiumCtx) -> Stream<A> {
         Stream::_new(sodium_ctx, |_s: StreamWeakForwardRef<A>| {
-            Node::new(sodium_ctx, "Stream::new", || {}, Vec::new())
+            Node::new(sodium_ctx, NodeName::STREAM_NEW, || {}, Vec::new())
         })
     }
 
@@ -185,7 +187,7 @@ impl<A: Send + 'static> Stream<A> {
                 sodium_ctx: sodium_ctx.clone(),
                 coalescer_op: Some(Box::new(coalescer)),
             })),
-            node: Node::new(sodium_ctx, "Stream::_new_with_coalescer", || {}, vec![]),
+            node: Node::new(sodium_ctx, NodeName::STREAM_NEW_WITH_COALESCER, || {}, vec![]),
         }
     }
 
@@ -270,7 +272,7 @@ impl<A: Send + 'static> Stream<A> {
             let f_deps = lambda1_deps(&f);
             let node = Node::new(
                 &sodium_ctx,
-                "Stream::map",
+                NodeName::STREAM_MAP,
                 move || {
                     self_.with_firing_op(|firing_op: &mut Option<A>| {
                         if let Some(ref firing) = firing_op {
@@ -299,7 +301,7 @@ impl<A: Send + 'static> Stream<A> {
             let pred_deps = lambda1_deps(&pred);
             let node = Node::new(
                 &sodium_ctx,
-                "Stream::filter",
+                NodeName::STREAM_FILTER,
                 move || {
                     self_.with_firing_op(|firing_op: &mut Option<A>| {
                         let firing_op2 = firing_op.clone().filter(|firing| pred.call(firing));
@@ -340,7 +342,7 @@ impl<A: Send + 'static> Stream<A> {
             let f_deps = lambda2_deps(&f);
             let node = Node::new(
                 &sodium_ctx,
-                "Stream::merge",
+                NodeName::STREAM_MERGE,
                 move || {
                     self_.with_firing_op(|firing1_op: &mut Option<A>| {
                         s2.with_firing_op(|firing2_op: &mut Option<A>| {
@@ -446,7 +448,7 @@ impl<A: Send + 'static> Stream<A> {
             let sodium_ctx2 = sodium_ctx.clone();
             let node = Node::new(
                 &sodium_ctx2,
-                "Stream::once",
+                NodeName::STREAM_ONCE,
                 move || {
                     self_.with_firing_op(|firing_op: &mut Option<A>| {
                         if let Some(ref firing) = firing_op {
@@ -483,7 +485,7 @@ impl<A: Send + 'static> Stream<A> {
             let f_deps = lambda1_deps(&k);
             let node = Node::new(
                 &self.sodium_ctx(),
-                "Stream::listen",
+                NodeName::STREAM_LISTEN,
                 move || {
                     self_.with_data(|data: &mut StreamData<A>| {
                         for firing in &data.firing_op {

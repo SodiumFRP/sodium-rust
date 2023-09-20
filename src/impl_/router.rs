@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::{Arc, RwLock};
 
+use super::name::NodeName;
+
 pub struct Router<A, K> {
     sodium_ctx: SodiumCtx,
     table: Arc<RwLock<HashMap<K, WeakStream<A>>>>,
@@ -95,7 +97,7 @@ impl<A, K> Router<A, K> {
             let in_stream2 = in_stream.clone();
             node = Node::new(
                 sodium_ctx,
-                "Router",
+                NodeName::Router,
                 move || {
                     let sodium_ctx = &sodium_ctx2;
                     let keys_firing_op = in_stream2.with_firing_op(|firing_op: &mut Option<A>| {

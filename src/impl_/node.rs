@@ -9,6 +9,8 @@ use crate::impl_::dep::Dep;
 use crate::impl_::gc_node::{GcNode, Tracer};
 use crate::impl_::sodium_ctx::SodiumCtx;
 
+use super::name::NodeName;
+
 pub trait IsNode: Send + Sync {
     fn node(&self) -> &Node;
 
@@ -186,9 +188,9 @@ impl Drop for NodeData {
 }
 
 impl Node {
-    pub fn new<NAME: ToString, UPDATE: FnMut() + Send + Sync + 'static>(
+    pub fn new<UPDATE: FnMut() + Send + Sync + 'static>(
         sodium_ctx: &SodiumCtx,
-        name: NAME,
+        name: NodeName,
         update: UPDATE,
         dependencies: Vec<Box<dyn IsNode + Send + Sync>>,
     ) -> Self {
@@ -313,7 +315,7 @@ impl Node {
                 cleanups: RwLock::new(Vec::new()),
                 sodium_ctx: sodium_ctx.clone(),
             }),
-            gc_node: GcNode::new(&sodium_ctx.gc_ctx(), name.to_string(), deconstructor, trace),
+            gc_node: GcNode::new(&sodium_ctx.gc_ctx(), name, deconstructor, trace),
             sodium_ctx: sodium_ctx.clone(),
         };
         {
