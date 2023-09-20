@@ -15,3 +15,4 @@ pub mod stream;
 pub mod stream_loop;
 pub mod stream_sink;
 pub mod transaction;
+pub mod name;
