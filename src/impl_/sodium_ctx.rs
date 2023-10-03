@@ -344,7 +344,7 @@ impl SodiumCtx {
         if changed {
             let dependents = box_clone_vec_is_weak_node(&node.data().dependents.read());
             {
-                let _self = self.clone();
+                let _self = &self;
                 for dependent in dependents {
                     if let Some(dependent2) = dependent.upgrade() {
                         _self.update_node(dependent2.node());

@@ -226,8 +226,8 @@ impl<A: Send + 'static> Cell<A> {
             let s1 = self.updates();
             let spark: Stream<Lazy<A>> = Stream::new(&sodium_ctx);
             {
-                let spark = spark.clone();
-                let self_ = self.clone();
+                let spark = &spark;
+                let self_ = &self;
                 spark._send(self_.with_data(|data: &mut CellData<A>| data.value.clone()));
                 let node = spark.node();
                 {
