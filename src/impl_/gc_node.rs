@@ -266,10 +266,9 @@ impl GcCtx {
     fn scan_black(&self, s: &GcNode) {
         s.data.color.set(Color::Black);
         trace!("scan: gc node {} became black", s.id);
-        let this = self.clone();
         s.trace(|t| {
             if t.data.color.get() != Color::Black {
-                this.scan_black(t);
+                self.scan_black(t);
             }
         });
     }
