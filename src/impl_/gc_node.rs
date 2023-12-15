@@ -172,7 +172,6 @@ impl GcCtx {
                 }
                 visited.insert(next_ptr);
             }
-            show_names_for.push(next.clone());
             let mut line: String =
                 format!("id {}, ref_count {}: ", next.id, next.data.ref_count.load(Ordering::SeqCst));
             let mut first: bool = true;
@@ -185,6 +184,7 @@ impl GcCtx {
                 write!(line, "{}", t.id).ok();
                 stack.push(t.clone());
             });
+            show_names_for.push(next);
             trace!("{}", line);
         }
         trace!("node names:");
