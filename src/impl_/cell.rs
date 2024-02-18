@@ -26,6 +26,7 @@ use parking_lot::RwLock;
 use std::sync::Weak;
 
 use super::name::NodeName;
+use super::node::IsNodeExt;
 
 pub struct CellWeakForwardRef<A> {
     data: Arc<RwLock<Option<WeakCell<A>>>>,
@@ -173,7 +174,7 @@ impl<A: Send + 'static> Cell<A> {
                     vec![stream_node],
                 );
                 // Hack: Add stream gc node twice, because one is kepted in the cell_data for Cell::update() to return.
-                <dyn IsNode>::add_update_dependencies(&node, vec![stream_dep.clone(), stream_dep]);
+                node.add_update_dependencies(vec![stream_dep.clone(), stream_dep]);
             }
             let c = Cell {
                 data: cell_data,
@@ -484,7 +485,7 @@ impl<A: Send + 'static> Cell<A> {
                     let mut inner_s = inner_s.lock();
                     let s = csa.sample();
                     *inner_s = Stream::downgrade(&s);
-                    <dyn IsNode>::add_dependency(&node1, s);
+                    node1.add_dependency(s);
                 });
             }
             let node2: Node;
@@ -506,11 +507,10 @@ impl<A: Send + 'static> Cell<A> {
                                 let inner_s = inner_s.clone();
                                 sodium_ctx.pre_post(move || {
                                     let mut inner_s = inner_s.lock();
-                                    <dyn IsNode>::remove_dependency(
-                                        &node1,
+                                    node1.remove_dependency(
                                         &inner_s.upgrade().unwrap(),
                                     );
-                                    <dyn IsNode>::add_dependency(&node1, firing.clone());
+                                    node1.add_dependency(firing.clone());
                                     *inner_s = Stream::downgrade(&firing);
                                 });
                             }
@@ -519,11 +519,10 @@ impl<A: Send + 'static> Cell<A> {
                     vec![csa_updates_node.box_clone()],
                 );
             }
-            <dyn IsNode>::add_update_dependencies(
-                &node2,
+            node2.add_update_dependencies(
                 vec![csa_updates_dep, Dep::new(node1.gc_node().clone())],
             );
-            <dyn IsNode>::add_dependency(&node1, node2);
+            node1.add_dependency(node2);
             node1
         })
     }
@@ -557,7 +556,7 @@ impl<A: Send + 'static> Cell<A> {
                     let mut last_inner_s = last_inner_s.lock();
                     let s = cca.sample().updates();
                     *last_inner_s = Stream::downgrade(&s);
-                    <dyn IsNode>::add_dependency(&node2, s);
+                    node2.add_dependency(s);
                 });
             }
             let node1_update;
@@ -585,19 +584,17 @@ impl<A: Send + 'static> Cell<A> {
                                     }
                                 });
                                 let mut last_inner_s = last_inner_s.lock();
-                                <dyn IsNode>::remove_dependency(
-                                    &node2,
+                                node2.remove_dependency(
                                     last_inner_s.upgrade().unwrap().node(),
                                 );
-                                <dyn IsNode>::add_dependency(&node2, new_inner_s.clone());
+                                node2.add_dependency(new_inner_s.clone());
                                 node2.data.changed.store(true, Ordering::SeqCst);
                                 *last_inner_s = Stream::downgrade(&new_inner_s);
                             }
                         });
                 };
             }
-            <dyn IsNode>::add_update_dependencies(
-                &node1,
+            node1.add_update_dependencies(
                 vec![
                     Dep::new(node1.gc_node.clone()),
                     Dep::new(node2.gc_node.clone()),

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 
 use super::name::NodeName;
+use super::node::IsNodeExt;
 
 pub struct StreamLoop<A> {
     pub data: Arc<Mutex<StreamLoopData<A>>>,
@@ -88,8 +89,8 @@ impl<A: Clone + Send + 'static> StreamLoop<A> {
                 panic!("StreamLoop already looped.");
             }
             data.looped = true;
-            <dyn IsNode>::add_dependency(&data.stream, s.clone());
-            <dyn IsNode>::add_update_dependencies(&data.stream, vec![s.to_dep()]);
+            data.stream.add_dependency(s.clone());
+            data.stream.add_update_dependencies(vec![s.to_dep()]);
             {
                 let s = s.clone();
                 let s_out = Stream::downgrade(&data.stream);

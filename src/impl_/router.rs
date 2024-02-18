@@ -6,6 +6,7 @@ use std::hash::Hash;
 use std::sync::{Arc, RwLock};
 
 use super::name::NodeName;
+use super::node::IsNodeExt;
 
 pub struct Router<A, K> {
     sodium_ctx: SodiumCtx,
@@ -127,7 +128,7 @@ impl<A, K> Router<A, K> {
                 },
                 vec![in_stream.box_clone()],
             );
-            <dyn IsNode>::add_update_dependencies(&node, vec![in_stream.to_dep()]);
+            node.add_update_dependencies(vec![in_stream.to_dep()]);
         }
         Router {
             sodium_ctx: sodium_ctx.clone(),

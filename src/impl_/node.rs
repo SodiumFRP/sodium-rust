@@ -28,15 +28,17 @@ pub trait IsNode: Send + Sync {
     }
 }
 
-impl dyn IsNode {
-    pub fn add_update_dependencies(&self, update_dependencies: Vec<Dep>) {
+impl<T: IsNode> IsNodeExt for T {}
+
+pub trait IsNodeExt: IsNode {
+    fn add_update_dependencies(&self, update_dependencies: Vec<Dep>) {
         let mut update_dependencies2 = self.data().update_dependencies.write();
         for dep in update_dependencies {
             update_dependencies2.push(dep);
         }
     }
 
-    pub fn add_dependency<NODE: IsNode + Sync + Sync>(&self, dependency: NODE) {
+    fn add_dependency<NODE: IsNode + Sync + Sync>(&self, dependency: NODE) {
         {
             let mut dependencies = self.data().dependencies.write();
             dependencies.push(dependency.box_clone());
@@ -47,7 +49,7 @@ impl dyn IsNode {
         }
     }
 
-    pub fn remove_dependency<NODE: IsNode + Sync + Sync>(&self, dependency: &NODE) {
+    fn remove_dependency<NODE: IsNode + Sync + Sync>(&self, dependency: &NODE) {
         {
             let mut dependencies = self.data().dependencies.write();
             dependencies.retain(|n: &Box<dyn IsNode + Send + Sync>| {
@@ -66,7 +68,7 @@ impl dyn IsNode {
         }
     }
 
-    pub fn add_keep_alive(&self, gc_node: &GcNode) {
+    fn add_keep_alive(&self, gc_node: &GcNode) {
         gc_node.inc_ref();
         let mut keep_alive = self.data().keep_alive.write();
         keep_alive.push(gc_node.clone());

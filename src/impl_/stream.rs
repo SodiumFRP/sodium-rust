@@ -17,6 +17,7 @@ use parking_lot::RwLock;
 use std::sync::Weak;
 
 use super::name::NodeName;
+use super::node::IsNodeExt;
 
 pub struct StreamWeakForwardRef<A> {
     data: Arc<RwLock<Option<WeakStream<A>>>>,
@@ -138,7 +139,7 @@ impl<
                     sodium_ctx.post(move || ss.send(a.clone()))
                 }
             });
-            <dyn IsNode>::add_keep_alive(&s, &listener.gc_node);
+            s.add_keep_alive(&listener.gc_node);
             s
         })
     }
@@ -276,8 +277,8 @@ impl<A: Send + 'static> Stream<A> {
                 },
                 vec![self.box_clone()],
             );
-            <dyn IsNode>::add_update_dependencies(&node, f_deps);
-            <dyn IsNode>::add_update_dependencies(&node, vec![self.to_dep()]);
+            node.add_update_dependencies(f_deps);
+            node.add_update_dependencies(vec![self.to_dep()]);
             node
         })
     }
@@ -306,8 +307,8 @@ impl<A: Send + 'static> Stream<A> {
                 },
                 vec![self.box_clone()],
             );
-            <dyn IsNode>::add_update_dependencies(&node, pred_deps);
-            <dyn IsNode>::add_update_dependencies(&node, vec![self.to_dep()]);
+            node.add_update_dependencies(pred_deps);
+            node.add_update_dependencies(vec![self.to_dep()]);
             node
         })
     }
@@ -354,8 +355,8 @@ impl<A: Send + 'static> Stream<A> {
                 },
                 vec![self.box_clone(), s2_node],
             );
-            <dyn IsNode>::add_update_dependencies(&node, f_deps);
-            <dyn IsNode>::add_update_dependencies(&node, vec![self.to_dep(), s2_dep]);
+            node.add_update_dependencies(f_deps);
+            node.add_update_dependencies(vec![self.to_dep(), s2_dep]);
             node
         })
     }
@@ -426,7 +427,7 @@ impl<A: Send + 'static> Stream<A> {
                 let a = a.clone();
                 sodium_ctx.post(move || ss.send(a.clone()))
             });
-            <dyn IsNode>::add_keep_alive(&s, &listener.gc_node);
+            s.add_keep_alive(&listener.gc_node);
             s
         })
     }
@@ -456,7 +457,7 @@ impl<A: Send + 'static> Stream<A> {
                                     deps = box_clone_vec_is_node(&dependencies);
                                 }
                                 for dep in deps {
-                                    <dyn IsNode>::remove_dependency(node.node(), dep.node());
+                                    node.node().remove_dependency(dep.node());
                                 }
                             });
                         }
@@ -464,7 +465,7 @@ impl<A: Send + 'static> Stream<A> {
                 },
                 vec![self.box_clone()],
             );
-            <dyn IsNode>::add_update_dependencies(&node, vec![self.to_dep()]);
+            node.add_update_dependencies(vec![self.to_dep()]);
             node
         })
     }
@@ -489,8 +490,8 @@ impl<A: Send + 'static> Stream<A> {
                 },
                 vec![self.box_clone()],
             );
-            <dyn IsNode>::add_update_dependencies(&node, vec![self.to_dep()]);
-            <dyn IsNode>::add_update_dependencies(&node, f_deps);
+            node.add_update_dependencies(vec![self.to_dep()]);
+            node.add_update_dependencies(f_deps);
             Listener::new(&self.sodium_ctx(), weak, node)
         })
     }
