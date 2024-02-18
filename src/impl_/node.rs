@@ -1,9 +1,9 @@
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use parking_lot::RwLock;
+use std::sync::Arc;
 use std::sync::Weak;
 
 use crate::impl_::dep::Dep;
@@ -255,8 +255,7 @@ impl Node {
                 }
                 for dependent in dependents {
                     if let Some(dependent_data) = dependent.data().upgrade() {
-                        let mut dependent_dependencies =
-                            dependent_data.dependencies.write();
+                        let mut dependent_dependencies = dependent_data.dependencies.write();
                         dependent_dependencies
                             .retain(|dependency| !Arc::ptr_eq(dependency.data(), &node_data));
                     }

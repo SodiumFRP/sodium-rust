@@ -3,8 +3,8 @@ use crate::impl_::node::IsNode;
 use crate::impl_::sodium_ctx::SodiumCtx;
 use crate::impl_::stream::Stream;
 
-use std::sync::Arc;
 use parking_lot::Mutex;
+use std::sync::Arc;
 
 use super::name::NodeName;
 use super::node::IsNodeExt;

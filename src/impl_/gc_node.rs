@@ -1,14 +1,14 @@
 #![allow(clippy::only_used_in_recursion)]
 
+use parking_lot::Mutex;
+use parking_lot::RwLock;
 use std::cell::Cell;
 use std::collections::HashSet;
 use std::fmt::Write as _;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
-use parking_lot::Mutex;
-use parking_lot::RwLock;
+use std::sync::Arc;
 
 use log::trace;
 
@@ -39,7 +39,7 @@ impl Clone for GcNode {
             id: self.id,
             name: self.name.clone(),
             gc_ctx: self.gc_ctx.clone(),
-            data: Arc::clone(&self.data)
+            data: Arc::clone(&self.data),
         }
     }
 }
@@ -172,8 +172,11 @@ impl GcCtx {
                 }
                 visited.insert(next_ptr);
             }
-            let mut line: String =
-                format!("id {}, ref_count {}: ", next.id, next.data.ref_count.load(Ordering::SeqCst));
+            let mut line: String = format!(
+                "id {}, ref_count {}: ",
+                next.id,
+                next.data.ref_count.load(Ordering::SeqCst)
+            );
             let mut first: bool = true;
             next.trace(|t| {
                 if first {
@@ -382,7 +385,10 @@ impl GcNode {
         if self.data.freed.load(Ordering::SeqCst) {
             panic!("gc_node {} inc_ref on freed node ({})", self.id, self.name);
         }
-        self.data.ref_count.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x + 1)).ok();
+        self.data
+            .ref_count
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x + 1))
+            .ok();
         self.data.color.set(Color::Black);
     }
 
@@ -390,7 +396,11 @@ impl GcNode {
         if self.data.ref_count.load(Ordering::SeqCst) == 0 {
             return;
         }
-        let ref_count = self.data.ref_count.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x - 1)).unwrap();
+        let ref_count = self
+            .data
+            .ref_count
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x - 1))
+            .unwrap();
         if ref_count == 0 {
             self.release();
         } else {

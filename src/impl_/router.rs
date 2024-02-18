@@ -157,33 +157,25 @@ impl<A, K> Router<A, K> {
             existing
         } else {
             let s = Stream::new(&self.sodium_ctx);
-            s.node()
-                .data()
-                .dependencies
-                .write()
-                .push(self.box_clone());
+            s.node().data().dependencies.write().push(self.box_clone());
             table.insert(k.clone(), Stream::downgrade(&s));
             {
                 let table = self.table.clone();
                 let k = k.clone();
                 let weak_s = Stream::downgrade(&s);
-                s.node()
-                    .data()
-                    .cleanups
-                    .write()
-                    .push(Box::new(move || {
-                        let _ = &weak_s;
-                        let mut table = table.write().unwrap();
-                        let mut remove_it = false;
-                        if let Some(weak_stream) = table.get(&k) {
-                            if weak_stream.data.ptr_eq(&weak_s.data) {
-                                remove_it = true;
-                            }
+                s.node().data().cleanups.write().push(Box::new(move || {
+                    let _ = &weak_s;
+                    let mut table = table.write().unwrap();
+                    let mut remove_it = false;
+                    if let Some(weak_stream) = table.get(&k) {
+                        if weak_stream.data.ptr_eq(&weak_s.data) {
+                            remove_it = true;
                         }
-                        if remove_it {
-                            table.remove(&k);
-                        }
-                    }))
+                    }
+                    if remove_it {
+                        table.remove(&k);
+                    }
+                }))
             }
             s
         }

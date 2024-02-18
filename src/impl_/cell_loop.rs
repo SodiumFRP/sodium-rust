@@ -3,9 +3,9 @@ use crate::impl_::lazy::Lazy;
 use crate::impl_::sodium_ctx::SodiumCtx;
 use crate::impl_::stream_loop::StreamLoop;
 
+use parking_lot::Mutex;
 use std::mem;
 use std::sync::Arc;
-use parking_lot::Mutex;
 
 pub struct CellLoop<A> {
     pub init_value_op: Arc<Mutex<Option<Lazy<A>>>>,

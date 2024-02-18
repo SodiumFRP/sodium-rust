@@ -10,10 +10,10 @@ use crate::impl_::sodium_ctx::SodiumCtx;
 use crate::impl_::stream_loop::StreamLoop;
 use crate::impl_::stream_sink::StreamSink;
 
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use parking_lot::Mutex;
 use parking_lot::RwLock;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::sync::Weak;
 
 use super::name::NodeName;
@@ -188,7 +188,12 @@ impl<A: Send + 'static> Stream<A> {
                 sodium_ctx: sodium_ctx.clone(),
                 coalescer_op: Some(Box::new(coalescer)),
             })),
-            node: Node::new(sodium_ctx, NodeName::STREAM_NEW_WITH_COALESCER, || {}, vec![]),
+            node: Node::new(
+                sodium_ctx,
+                NodeName::STREAM_NEW_WITH_COALESCER,
+                || {},
+                vec![],
+            ),
         }
     }
 

@@ -3,9 +3,9 @@ use crate::impl_::node::{IsNode, Node};
 use crate::impl_::sodium_ctx::SodiumCtx;
 use crate::impl_::sodium_ctx::SodiumCtxData;
 
+use parking_lot::Mutex;
 use std::fmt;
 use std::sync::Arc;
-use parking_lot::Mutex;
 
 use super::name::NodeName;
 

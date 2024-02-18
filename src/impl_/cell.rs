@@ -18,11 +18,11 @@ use crate::impl_::stream::Stream;
 use crate::impl_::stream::StreamWeakForwardRef;
 use crate::impl_::stream::WeakStream;
 
-use std::mem;
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use parking_lot::Mutex;
 use parking_lot::RwLock;
+use std::mem;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::sync::Weak;
 
 use super::name::NodeName;
@@ -507,9 +507,7 @@ impl<A: Send + 'static> Cell<A> {
                                 let inner_s = inner_s.clone();
                                 sodium_ctx.pre_post(move || {
                                     let mut inner_s = inner_s.lock();
-                                    node1.remove_dependency(
-                                        &inner_s.upgrade().unwrap(),
-                                    );
+                                    node1.remove_dependency(&inner_s.upgrade().unwrap());
                                     node1.add_dependency(firing.clone());
                                     *inner_s = Stream::downgrade(&firing);
                                 });
@@ -519,9 +517,7 @@ impl<A: Send + 'static> Cell<A> {
                     vec![csa_updates_node.box_clone()],
                 );
             }
-            node2.add_update_dependencies(
-                vec![csa_updates_dep, Dep::new(node1.gc_node().clone())],
-            );
+            node2.add_update_dependencies(vec![csa_updates_dep, Dep::new(node1.gc_node().clone())]);
             node1.add_dependency(node2);
             node1
         })
@@ -584,9 +580,7 @@ impl<A: Send + 'static> Cell<A> {
                                     }
                                 });
                                 let mut last_inner_s = last_inner_s.lock();
-                                node2.remove_dependency(
-                                    last_inner_s.upgrade().unwrap().node(),
-                                );
+                                node2.remove_dependency(last_inner_s.upgrade().unwrap().node());
                                 node2.add_dependency(new_inner_s.clone());
                                 node2.data.changed.store(true, Ordering::SeqCst);
                                 *last_inner_s = Stream::downgrade(&new_inner_s);
@@ -594,12 +588,10 @@ impl<A: Send + 'static> Cell<A> {
                         });
                 };
             }
-            node1.add_update_dependencies(
-                vec![
-                    Dep::new(node1.gc_node.clone()),
-                    Dep::new(node2.gc_node.clone()),
-                ],
-            );
+            node1.add_update_dependencies(vec![
+                Dep::new(node1.gc_node.clone()),
+                Dep::new(node2.gc_node.clone()),
+            ]);
             {
                 let mut update = node1.data.update.write();
                 *update = Box::new(node1_update);

@@ -4,11 +4,11 @@ use crate::impl_::node::{
     box_clone_vec_is_node, box_clone_vec_is_weak_node, IsNode, IsWeakNode, Node,
 };
 
+use parking_lot::Mutex;
 use std::mem;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use parking_lot::Mutex;
 use std::thread;
 
 use super::name::NodeName;
