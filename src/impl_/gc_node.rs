@@ -37,7 +37,7 @@ impl Clone for GcNode {
     fn clone(&self) -> Self {
         Self {
             id: self.id,
-            name: self.name.clone(),
+            name: self.name,
             gc_ctx: self.gc_ctx.clone(),
             data: Arc::clone(&self.data),
         }
