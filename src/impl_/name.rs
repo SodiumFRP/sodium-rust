@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter, Result};
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum NodeName {
     Node(u8),
     Cell(Cell),
@@ -28,7 +28,7 @@ impl NodeName {
     pub const STREAM_LOOP_NEW: NodeName = NodeName::Stream(Stream::LoopNew);
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Cell {
     New,
     Hold,
@@ -39,7 +39,7 @@ pub enum Cell {
 
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Stream {
     New,
     NewWithCoalescer,
