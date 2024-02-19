@@ -1,5 +1,5 @@
+use parking_lot::Mutex;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 /// A representation for a value that may not be available until the
 /// current transaction is closed.
@@ -40,11 +40,10 @@ impl<A: Send + Clone + 'static> Lazy<A> {
     /// Retrieve the value of this `Lazy` either by running the
     /// supplied function or returning the already computed value.
     pub fn run(&self) -> A {
-        let mut l = self.data.lock();
-        let data: &mut LazyData<A> = l.as_mut().unwrap();
+        let mut data = self.data.lock();
         let next_op: Option<LazyData<A>>;
         let result: A;
-        match data {
+        match &mut *data {
             LazyData::Thunk(ref mut k) => {
                 result = k();
                 next_op = Some(LazyData::Value(result.clone()));

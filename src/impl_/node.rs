@@ -1,13 +1,16 @@
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::sync::RwLock;
 use std::sync::Weak;
 
 use crate::impl_::dep::Dep;
 use crate::impl_::gc_node::{GcNode, Tracer};
 use crate::impl_::sodium_ctx::SodiumCtx;
+
+use super::name::NodeName;
 
 pub trait IsNode: Send + Sync {
     fn node(&self) -> &Node;
@@ -25,34 +28,36 @@ pub trait IsNode: Send + Sync {
     }
 }
 
-impl dyn IsNode {
-    pub fn add_update_dependencies(&self, update_dependencies: Vec<Dep>) {
-        let mut update_dependencies2 = self.data().update_dependencies.write().unwrap();
+impl<T: IsNode> IsNodeExt for T {}
+
+pub trait IsNodeExt: IsNode {
+    fn add_update_dependencies(&self, update_dependencies: Vec<Dep>) {
+        let mut update_dependencies2 = self.data().update_dependencies.write();
         for dep in update_dependencies {
             update_dependencies2.push(dep);
         }
     }
 
-    pub fn add_dependency<NODE: IsNode + Sync + Sync>(&self, dependency: NODE) {
+    fn add_dependency<NODE: IsNode + Sync + Sync>(&self, dependency: NODE) {
         {
-            let mut dependencies = self.data().dependencies.write().unwrap();
+            let mut dependencies = self.data().dependencies.write();
             dependencies.push(dependency.box_clone());
         }
         {
-            let mut dependency_dependents = dependency.data().dependents.write().unwrap();
+            let mut dependency_dependents = dependency.data().dependents.write();
             dependency_dependents.push(self.downgrade());
         }
     }
 
-    pub fn remove_dependency<NODE: IsNode + Sync + Sync>(&self, dependency: &NODE) {
+    fn remove_dependency<NODE: IsNode + Sync + Sync>(&self, dependency: &NODE) {
         {
-            let mut dependencies = self.data().dependencies.write().unwrap();
+            let mut dependencies = self.data().dependencies.write();
             dependencies.retain(|n: &Box<dyn IsNode + Send + Sync>| {
                 !Arc::ptr_eq(n.data(), dependency.data())
             });
         }
         {
-            let mut dependency_dependents = dependency.data().dependents.write().unwrap();
+            let mut dependency_dependents = dependency.data().dependents.write();
             dependency_dependents.retain(|n: &Box<dyn IsWeakNode + Send + Sync>| {
                 if let Some(n_data) = n.data().upgrade() {
                     !Arc::ptr_eq(&n_data, self.data())
@@ -63,9 +68,9 @@ impl dyn IsNode {
         }
     }
 
-    pub fn add_keep_alive(&self, gc_node: &GcNode) {
+    fn add_keep_alive(&self, gc_node: &GcNode) {
         gc_node.inc_ref();
-        let mut keep_alive = self.data().keep_alive.write().unwrap();
+        let mut keep_alive = self.data().keep_alive.write();
         keep_alive.push(gc_node.clone());
     }
 }
@@ -142,8 +147,8 @@ pub struct Node {
 }
 
 pub struct NodeData {
-    pub visited: RwLock<bool>,
-    pub changed: RwLock<bool>,
+    pub visited: AtomicBool,
+    pub changed: AtomicBool,
     pub update: RwLock<Box<dyn FnMut() + Send + Sync>>,
     pub update_dependencies: RwLock<Vec<Dep>>,
     pub dependencies: RwLock<Vec<Box<dyn IsNode + Send + Sync>>>,
@@ -186,9 +191,9 @@ impl Drop for NodeData {
 }
 
 impl Node {
-    pub fn new<NAME: ToString, UPDATE: FnMut() + Send + Sync + 'static>(
+    pub fn new<UPDATE: FnMut() + Send + Sync + 'static>(
         sodium_ctx: &SodiumCtx,
-        name: NAME,
+        name: NodeName,
         update: UPDATE,
         dependencies: Vec<Box<dyn IsNode + Send + Sync>>,
     ) -> Self {
@@ -201,8 +206,8 @@ impl Node {
             deconstructor = move || {
                 let node_data;
                 {
-                    let node1 = result_forward_ref.read().unwrap();
-                    let node2: &Option<Weak<NodeData>> = &*node1;
+                    let node1 = result_forward_ref.read();
+                    let node2: &Option<Weak<NodeData>> = &node1;
                     let node3: Option<Weak<NodeData>> = node2.clone();
                     let node_data_op = node3.unwrap().upgrade();
                     if node_data_op.is_none() {
@@ -212,34 +217,34 @@ impl Node {
                 }
                 let mut dependencies = Vec::new();
                 {
-                    let mut dependencies2 = node_data.dependencies.write().unwrap();
+                    let mut dependencies2 = node_data.dependencies.write();
                     std::mem::swap(&mut *dependencies2, &mut dependencies);
                 }
                 let mut dependents = Vec::new();
                 {
-                    let mut dependents2 = node_data.dependents.write().unwrap();
+                    let mut dependents2 = node_data.dependents.write();
                     std::mem::swap(&mut *dependents2, &mut dependents);
                 }
                 let mut keep_alive = Vec::new();
                 {
-                    let mut keep_alive2 = node_data.keep_alive.write().unwrap();
+                    let mut keep_alive2 = node_data.keep_alive.write();
                     std::mem::swap(&mut *keep_alive2, &mut keep_alive);
                 }
                 {
-                    let mut update_dependencies = node_data.update_dependencies.write().unwrap();
+                    let mut update_dependencies = node_data.update_dependencies.write();
                     update_dependencies.clear();
                 }
                 {
-                    let mut update = node_data.update.write().unwrap();
+                    let mut update = node_data.update.write();
                     *update = Box::new(|| {});
                 }
                 let mut cleanups = Vec::new();
                 {
-                    let mut cleanups2 = node_data.cleanups.write().unwrap();
+                    let mut cleanups2 = node_data.cleanups.write();
                     std::mem::swap(&mut *cleanups2, &mut cleanups);
                 }
                 for dependency in dependencies {
-                    let mut dependency_dependents = dependency.data().dependents.write().unwrap();
+                    let mut dependency_dependents = dependency.data().dependents.write();
                     dependency_dependents.retain(|dependent| {
                         if let Some(dependent_data) = dependent.data().upgrade() {
                             !Arc::ptr_eq(&dependent_data, &node_data)
@@ -250,8 +255,7 @@ impl Node {
                 }
                 for dependent in dependents {
                     if let Some(dependent_data) = dependent.data().upgrade() {
-                        let mut dependent_dependencies =
-                            dependent_data.dependencies.write().unwrap();
+                        let mut dependent_dependencies = dependent_data.dependencies.write();
                         dependent_dependencies
                             .retain(|dependency| !Arc::ptr_eq(dependency.data(), &node_data));
                     }
@@ -263,7 +267,7 @@ impl Node {
                     cleanup();
                 }
                 {
-                    let mut node = result_forward_ref.write().unwrap();
+                    let mut node = result_forward_ref.write();
                     *node = None;
                 }
             };
@@ -274,26 +278,26 @@ impl Node {
             trace = move |tracer: &mut Tracer| {
                 let node_data_op;
                 {
-                    let node1 = result_forward_ref.read().unwrap();
-                    let node2: &Option<Weak<NodeData>> = &*node1;
+                    let node1 = result_forward_ref.read();
+                    let node2: &Option<Weak<NodeData>> = &node1;
                     let node3: Option<Weak<NodeData>> = node2.clone();
                     node_data_op = node3.unwrap().upgrade();
                 }
                 if let Some(node_data) = node_data_op {
                     {
-                        let dependencies = node_data.dependencies.read().unwrap();
+                        let dependencies = node_data.dependencies.read();
                         for dependency in &*dependencies {
                             tracer(dependency.gc_node());
                         }
                     }
                     {
-                        let update_dependencies = node_data.update_dependencies.read().unwrap();
+                        let update_dependencies = node_data.update_dependencies.read();
                         for update_dependency in &*update_dependencies {
                             tracer(update_dependency.gc_node());
                         }
                     }
                     {
-                        let keep_alive = node_data.keep_alive.read().unwrap();
+                        let keep_alive = node_data.keep_alive.read();
                         for gc_node in &*keep_alive {
                             tracer(gc_node);
                         }
@@ -303,8 +307,8 @@ impl Node {
         }
         let result = Node {
             data: Arc::new(NodeData {
-                visited: RwLock::new(false),
-                changed: RwLock::new(false),
+                visited: AtomicBool::new(false),
+                changed: AtomicBool::new(false),
                 update: RwLock::new(Box::new(update)),
                 update_dependencies: RwLock::new(Vec::new()),
                 dependencies: RwLock::new(box_clone_vec_is_node(&dependencies)),
@@ -313,15 +317,15 @@ impl Node {
                 cleanups: RwLock::new(Vec::new()),
                 sodium_ctx: sodium_ctx.clone(),
             }),
-            gc_node: GcNode::new(&sodium_ctx.gc_ctx(), name.to_string(), deconstructor, trace),
+            gc_node: GcNode::new(&sodium_ctx.gc_ctx(), name, deconstructor, trace),
             sodium_ctx: sodium_ctx.clone(),
         };
         {
-            let mut result_forward_ref = result_forward_ref.write().unwrap();
+            let mut result_forward_ref = result_forward_ref.write();
             *result_forward_ref = Some(Arc::downgrade(&result.data));
         }
         for dependency in dependencies {
-            let mut dependency_dependents = dependency.data().dependents.write().unwrap();
+            let mut dependency_dependents = dependency.data().dependents.write();
             dependency_dependents.push(result.downgrade());
         }
         sodium_ctx.inc_node_ref_count();
@@ -409,7 +413,7 @@ impl fmt::Debug for dyn IsNode + Sync + Sync {
             }
             util.mark_visitied(node);
             write!(f, "(Node {} (dependencies [", node_to_id(node))?;
-            let dependencies = node.data().dependencies.read().unwrap();
+            let dependencies = node.data().dependencies.read();
             {
                 let mut first: bool = true;
                 for dependency in &*dependencies {
@@ -423,7 +427,7 @@ impl fmt::Debug for dyn IsNode + Sync + Sync {
                 }
             }
             write!(f, "]) (dependents [")?;
-            let dependents = node.data().dependents.read().unwrap();
+            let dependents = node.data().dependents.read();
             {
                 let mut first: bool = true;
                 for dependent in &*dependents {

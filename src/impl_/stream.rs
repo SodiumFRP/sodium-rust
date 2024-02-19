@@ -10,10 +10,14 @@ use crate::impl_::sodium_ctx::SodiumCtx;
 use crate::impl_::stream_loop::StreamLoop;
 use crate::impl_::stream_sink::StreamSink;
 
+use parking_lot::Mutex;
+use parking_lot::RwLock;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::RwLock;
 use std::sync::Weak;
+
+use super::name::NodeName;
+use super::node::IsNodeExt;
 
 pub struct StreamWeakForwardRef<A> {
     data: Arc<RwLock<Option<WeakStream<A>>>>,
@@ -41,13 +45,13 @@ impl<A: Send + 'static> StreamWeakForwardRef<A> {
     }
 
     pub fn assign(&self, s: &Stream<A>) {
-        let mut x = self.data.write().unwrap();
+        let mut x = self.data.write();
         *x = Some(Stream::downgrade(s))
     }
 
     pub fn unwrap(&self) -> Stream<A> {
-        let x = self.data.read().unwrap();
-        (&*x).clone().unwrap().upgrade().unwrap()
+        let x = self.data.read();
+        x.clone().unwrap().upgrade().unwrap()
     }
 }
 
@@ -135,7 +139,7 @@ impl<
                     sodium_ctx.post(move || ss.send(a.clone()))
                 }
             });
-            <dyn IsNode>::add_keep_alive(&s, &listener.gc_node);
+            s.add_keep_alive(&listener.gc_node);
             s
         })
     }
@@ -143,9 +147,8 @@ impl<
 
 impl<A> Stream<A> {
     pub fn with_data<R, K: FnOnce(&mut StreamData<A>) -> R>(&self, k: K) -> R {
-        let mut l = self.data.lock();
-        let data: &mut StreamData<A> = l.as_mut().unwrap();
-        k(data)
+        let mut data = self.data.lock();
+        k(&mut data)
     }
 
     pub fn with_firing_op<R, K: FnOnce(&mut Option<A>) -> R>(&self, k: K) -> R {
@@ -168,7 +171,7 @@ impl<A> Stream<A> {
 impl<A: Send + 'static> Stream<A> {
     pub fn new(sodium_ctx: &SodiumCtx) -> Stream<A> {
         Stream::_new(sodium_ctx, |_s: StreamWeakForwardRef<A>| {
-            Node::new(sodium_ctx, "Stream::new", || {}, Vec::new())
+            Node::new(sodium_ctx, NodeName::STREAM_NEW, || {}, Vec::new())
         })
     }
 
@@ -185,7 +188,12 @@ impl<A: Send + 'static> Stream<A> {
                 sodium_ctx: sodium_ctx.clone(),
                 coalescer_op: Some(Box::new(coalescer)),
             })),
-            node: Node::new(sodium_ctx, "Stream::_new_with_coalescer", || {}, vec![]),
+            node: Node::new(
+                sodium_ctx,
+                NodeName::STREAM_NEW_WITH_COALESCER,
+                || {},
+                vec![],
+            ),
         }
     }
 
@@ -213,25 +221,19 @@ impl<A: Send + 'static> Stream<A> {
                 let sodium_ctx2 = sodium_ctx.clone();
                 sodium_ctx.pre_eot(move || {
                     {
-                        let mut update = node.data.update.write().unwrap();
+                        let mut update = node.data.update.write();
                         let update: &mut Box<_> = &mut update;
                         update();
                     }
                     let is_firing =
                         s.with_data(|data: &mut StreamData<A>| data.firing_op.is_some());
                     if is_firing {
-                        {
-                            let s_node = s.node();
-                            let mut changed = s_node.data.changed.write().unwrap();
-                            *changed = true;
-                        }
+                        s.node().data.changed.store(true, Ordering::SeqCst);
                         let s = s.clone();
                         sodium_ctx2.pre_post(move || {
                             s.with_data(|data: &mut StreamData<A>| {
                                 data.firing_op = None;
-                                let s_node = s.node();
-                                let mut changed = s_node.data.changed.write().unwrap();
-                                *changed = true;
+                                s.node().data.changed.store(true, Ordering::SeqCst);
                             });
                         });
                     }
@@ -270,7 +272,7 @@ impl<A: Send + 'static> Stream<A> {
             let f_deps = lambda1_deps(&f);
             let node = Node::new(
                 &sodium_ctx,
-                "Stream::map",
+                NodeName::STREAM_MAP,
                 move || {
                     self_.with_firing_op(|firing_op: &mut Option<A>| {
                         if let Some(ref firing) = firing_op {
@@ -280,8 +282,8 @@ impl<A: Send + 'static> Stream<A> {
                 },
                 vec![self.box_clone()],
             );
-            <dyn IsNode>::add_update_dependencies(&node, f_deps);
-            <dyn IsNode>::add_update_dependencies(&node, vec![self.to_dep()]);
+            node.add_update_dependencies(f_deps);
+            node.add_update_dependencies(vec![self.to_dep()]);
             node
         })
     }
@@ -299,7 +301,7 @@ impl<A: Send + 'static> Stream<A> {
             let pred_deps = lambda1_deps(&pred);
             let node = Node::new(
                 &sodium_ctx,
-                "Stream::filter",
+                NodeName::STREAM_FILTER,
                 move || {
                     self_.with_firing_op(|firing_op: &mut Option<A>| {
                         let firing_op2 = firing_op.clone().filter(|firing| pred.call(firing));
@@ -310,8 +312,8 @@ impl<A: Send + 'static> Stream<A> {
                 },
                 vec![self.box_clone()],
             );
-            <dyn IsNode>::add_update_dependencies(&node, pred_deps);
-            <dyn IsNode>::add_update_dependencies(&node, vec![self.to_dep()]);
+            node.add_update_dependencies(pred_deps);
+            node.add_update_dependencies(vec![self.to_dep()]);
             node
         })
     }
@@ -340,7 +342,7 @@ impl<A: Send + 'static> Stream<A> {
             let f_deps = lambda2_deps(&f);
             let node = Node::new(
                 &sodium_ctx,
-                "Stream::merge",
+                NodeName::STREAM_MERGE,
                 move || {
                     self_.with_firing_op(|firing1_op: &mut Option<A>| {
                         s2.with_firing_op(|firing2_op: &mut Option<A>| {
@@ -358,8 +360,8 @@ impl<A: Send + 'static> Stream<A> {
                 },
                 vec![self.box_clone(), s2_node],
             );
-            <dyn IsNode>::add_update_dependencies(&node, f_deps);
-            <dyn IsNode>::add_update_dependencies(&node, vec![self.to_dep(), s2_dep]);
+            node.add_update_dependencies(f_deps);
+            node.add_update_dependencies(vec![self.to_dep(), s2_dep]);
             node
         })
     }
@@ -430,7 +432,7 @@ impl<A: Send + 'static> Stream<A> {
                 let a = a.clone();
                 sodium_ctx.post(move || ss.send(a.clone()))
             });
-            <dyn IsNode>::add_keep_alive(&s, &listener.gc_node);
+            s.add_keep_alive(&listener.gc_node);
             s
         })
     }
@@ -446,7 +448,7 @@ impl<A: Send + 'static> Stream<A> {
             let sodium_ctx2 = sodium_ctx.clone();
             let node = Node::new(
                 &sodium_ctx2,
-                "Stream::once",
+                NodeName::STREAM_ONCE,
                 move || {
                     self_.with_firing_op(|firing_op: &mut Option<A>| {
                         if let Some(ref firing) = firing_op {
@@ -456,11 +458,11 @@ impl<A: Send + 'static> Stream<A> {
                             sodium_ctx.post(move || {
                                 let deps;
                                 {
-                                    let dependencies = node.data().dependencies.read().unwrap();
-                                    deps = box_clone_vec_is_node(&(*dependencies));
+                                    let dependencies = node.data().dependencies.read();
+                                    deps = box_clone_vec_is_node(&dependencies);
                                 }
                                 for dep in deps {
-                                    <dyn IsNode>::remove_dependency(node.node(), dep.node());
+                                    node.node().remove_dependency(dep.node());
                                 }
                             });
                         }
@@ -468,7 +470,7 @@ impl<A: Send + 'static> Stream<A> {
                 },
                 vec![self.box_clone()],
             );
-            <dyn IsNode>::add_update_dependencies(&node, vec![self.to_dep()]);
+            node.add_update_dependencies(vec![self.to_dep()]);
             node
         })
     }
@@ -483,7 +485,7 @@ impl<A: Send + 'static> Stream<A> {
             let f_deps = lambda1_deps(&k);
             let node = Node::new(
                 &self.sodium_ctx(),
-                "Stream::listen",
+                NodeName::STREAM_LISTEN,
                 move || {
                     self_.with_data(|data: &mut StreamData<A>| {
                         for firing in &data.firing_op {
@@ -493,8 +495,8 @@ impl<A: Send + 'static> Stream<A> {
                 },
                 vec![self.box_clone()],
             );
-            <dyn IsNode>::add_update_dependencies(&node, vec![self.to_dep()]);
-            <dyn IsNode>::add_update_dependencies(&node, f_deps);
+            node.add_update_dependencies(vec![self.to_dep()]);
+            node.add_update_dependencies(f_deps);
             Listener::new(&self.sodium_ctx(), weak, node)
         })
     }
@@ -525,21 +527,14 @@ impl<A: Send + 'static> Stream<A> {
                 }
                 is_first
             });
-            {
-                let self_node = self.node();
-                let mut changed = self_node.data.changed.write().unwrap();
-                *changed = true;
-            }
+            self.node().data.changed.store(true, Ordering::SeqCst);
             if is_first {
                 let _self = self.clone();
                 let self_node = _self.box_clone();
                 sodium_ctx.pre_post(move || {
                     _self.with_data(|data: &mut StreamData<A>| {
                         data.firing_op = None;
-                        {
-                            let mut changed = self_node.data().changed.write().unwrap();
-                            *changed = false;
-                        }
+                        self_node.data().changed.store(false, Ordering::SeqCst);
                     });
                 });
             }

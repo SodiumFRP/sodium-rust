@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use crate::impl_::node::IsNode;
 use crate::impl_::sodium_ctx::SodiumCtx;
 use crate::impl_::sodium_ctx::SodiumCtxData;
@@ -45,13 +47,14 @@ impl<A: Send + 'static> StreamSink<A> {
         self.stream.clone()
     }
 
+    pub fn stream_ref(&self) -> &Stream<A> {
+        &self.stream
+    }
+
     pub fn send(&self, a: A) {
         self.sodium_ctx.transaction(|| {
-            let node = self.stream();
-            {
-                let mut changed = node.data().changed.write().unwrap();
-                *changed = true;
-            }
+            let node = self.stream_ref();
+            node.data().changed.store(true, Ordering::SeqCst);
             self.sodium_ctx.with_data(|data: &mut SodiumCtxData| {
                 data.changed_nodes.push(node.box_clone());
             });

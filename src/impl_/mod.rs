@@ -8,6 +8,7 @@ pub mod gc_node;
 pub mod lambda;
 pub mod lazy;
 pub mod listener;
+pub mod name;
 pub mod node;
 pub mod router;
 pub mod sodium_ctx;

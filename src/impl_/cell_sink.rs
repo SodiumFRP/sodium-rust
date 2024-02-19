@@ -20,7 +20,7 @@ impl<A: Send + Clone + 'static> CellSink<A> {
     pub fn new(sodium_ctx: &SodiumCtx, a: A) -> CellSink<A> {
         let stream_sink = StreamSink::new(sodium_ctx);
         CellSink {
-            cell: stream_sink.stream().hold(a),
+            cell: stream_sink.stream_ref().hold(a),
             stream_sink,
         }
     }

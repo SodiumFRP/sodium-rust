@@ -1,11 +1,18 @@
+#![allow(clippy::only_used_in_recursion)]
+
+use parking_lot::Mutex;
+use parking_lot::RwLock;
 use std::cell::Cell;
 use std::collections::HashSet;
 use std::fmt::Write as _;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::RwLock;
 
 use log::trace;
+
+use crate::impl_::name::NodeName;
 
 pub type Tracer<'a> = dyn FnMut(&GcNode) + 'a;
 
@@ -19,21 +26,31 @@ enum Color {
     White,
 }
 
-#[derive(Clone)]
 pub struct GcNode {
     id: u32,
-    name: String,
+    name: NodeName,
     gc_ctx: GcCtx,
     data: Arc<GcNodeData>,
 }
 
+impl Clone for GcNode {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            name: self.name,
+            gc_ctx: self.gc_ctx.clone(),
+            data: Arc::clone(&self.data),
+        }
+    }
+}
+
 struct GcNodeData {
-    freed: Cell<bool>,
-    ref_count: Cell<u32>,
-    ref_count_adj: Cell<u32>,
-    visited: Cell<bool>,
+    freed: AtomicBool,
+    ref_count: AtomicU32,
+    ref_count_adj: AtomicU32,
+    visited: AtomicBool,
     color: Cell<Color>,
-    buffered: Cell<bool>,
+    buffered: AtomicBool,
     deconstructor: RwLock<Box<dyn Fn() + Send + Sync>>,
     trace: RwLock<Box<Trace>>,
 }
@@ -70,9 +87,8 @@ impl GcCtx {
     }
 
     fn with_data<R, K: FnOnce(&mut GcCtxData) -> R>(&self, k: K) -> R {
-        let mut l = self.data.lock();
-        let data = l.as_mut().unwrap();
-        k(data)
+        let mut data = self.data.lock();
+        k(&mut data)
     }
 
     pub fn make_id(&self) -> u32 {
@@ -121,10 +137,10 @@ impl GcCtx {
                 self.mark_gray(&root);
                 new_roots.push(root);
             } else {
-                root.data.buffered.set(false);
+                root.data.buffered.store(false, Ordering::SeqCst);
                 if root.data.color.get() == Color::Black
-                    && root.data.ref_count.get() == 0
-                    && !root.data.freed.get()
+                    && root.data.ref_count.load(Ordering::SeqCst) == 0
+                    && !root.data.freed.load(Ordering::SeqCst)
                 {
                     self.with_data(|data: &mut GcCtxData| data.to_be_freed.push(root));
                 }
@@ -156,9 +172,11 @@ impl GcCtx {
                 }
                 visited.insert(next_ptr);
             }
-            show_names_for.push(next.clone());
-            let mut line: String =
-                format!("id {}, ref_count {}: ", next.id, next.data.ref_count.get());
+            let mut line: String = format!(
+                "id {}, ref_count {}: ",
+                next.id,
+                next.data.ref_count.load(Ordering::SeqCst)
+            );
             let mut first: bool = true;
             next.trace(|t| {
                 if first {
@@ -169,6 +187,7 @@ impl GcCtx {
                 write!(line, "{}", t.id).ok();
                 stack.push(t.clone());
             });
+            show_names_for.push(next);
             trace!("{}", line);
         }
         trace!("node names:");
@@ -186,9 +205,9 @@ impl GcCtx {
 
         s.trace(&mut |t: &GcNode| {
             trace!("mark_gray: gc node {} dec ref count", t.id);
-            t.data.ref_count_adj.set(t.data.ref_count_adj.get() + 1);
-            if t.data.ref_count_adj.get() > t.data.ref_count.get() {
-                panic!("ref count adj was larger than ref count for node {} ({}) (ref adj {}) (ref cnt {})", t.id, t.name, t.data.ref_count_adj.get(), t.data.ref_count.get());
+            let ref_count_adj = t.data.ref_count_adj.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x + 1)).unwrap();
+            if ref_count_adj > t.data.ref_count.load(Ordering::SeqCst) {
+                panic!("ref count adj was larger than ref count for node {} ({}) (ref adj {}) (ref cnt {})", t.id, t.name, t.data.ref_count_adj.load(Ordering::SeqCst), t.data.ref_count.load(Ordering::SeqCst));
             }
             self.mark_gray(t);
         });
@@ -215,7 +234,7 @@ impl GcCtx {
         if s.data.color.get() != Color::Gray {
             return;
         }
-        if s.data.ref_count_adj.get() == s.data.ref_count.get() {
+        if s.data.ref_count_adj.load(Ordering::SeqCst) == s.data.ref_count.load(Ordering::SeqCst) {
             s.data.color.set(Color::White);
             trace!("scan: gc node {} became white", s.id);
             s.trace(|t| {
@@ -227,21 +246,21 @@ impl GcCtx {
     }
 
     fn reset_ref_count_adj_step_1_of_2(&self, s: &GcNode) {
-        if s.data.visited.get() {
+        if s.data.visited.load(Ordering::SeqCst) {
             return;
         }
-        s.data.visited.set(true);
-        s.data.ref_count_adj.set(0);
+        s.data.visited.store(true, Ordering::SeqCst);
+        s.data.ref_count_adj.store(0, Ordering::SeqCst);
         s.trace(|t| {
             self.reset_ref_count_adj_step_1_of_2(t);
         });
     }
 
     fn reset_ref_count_adj_step_2_of_2(&self, s: &GcNode) {
-        if !s.data.visited.get() {
+        if !s.data.visited.load(Ordering::SeqCst) {
             return;
         }
-        s.data.visited.set(false);
+        s.data.visited.store(false, Ordering::SeqCst);
         s.trace(|t| {
             self.reset_ref_count_adj_step_2_of_2(t);
         });
@@ -250,10 +269,9 @@ impl GcCtx {
     fn scan_black(&self, s: &GcNode) {
         s.data.color.set(Color::Black);
         trace!("scan: gc node {} became black", s.id);
-        let this = self.clone();
         s.trace(|t| {
             if t.data.color.get() != Color::Black {
-                this.scan_black(t);
+                self.scan_black(t);
             }
         });
     }
@@ -263,11 +281,11 @@ impl GcCtx {
         let mut roots = Vec::new();
         self.with_data(|data: &mut GcCtxData| roots.append(&mut data.roots));
         for root in &roots {
-            root.data.buffered.set(false);
+            root.data.buffered.store(false, Ordering::SeqCst);
             self.collect_white(root, &mut white);
         }
         for i in &white {
-            if !i.data.freed.get() {
+            if !i.data.freed.load(Ordering::SeqCst) {
                 trace!("collect_roots: freeing white node {} ({})", i.id, i.name);
                 i.free();
                 self.with_data(|data: &mut GcCtxData| {
@@ -278,7 +296,7 @@ impl GcCtx {
         let mut to_be_freed = Vec::new();
         self.with_data(|data: &mut GcCtxData| to_be_freed.append(&mut data.to_be_freed));
         for i in &to_be_freed {
-            if !i.data.freed.get() {
+            if !i.data.freed.load(Ordering::SeqCst) {
                 trace!(
                     "collect_roots: freeing to_be_freed node {} ({})",
                     i.id,
@@ -324,26 +342,25 @@ impl GcCtx {
 
 impl GcNode {
     pub fn new<
-        NAME: ToString,
         DECONSTRUCTOR: 'static + Fn() + Send + Sync,
         TRACE: 'static + Fn(&mut Tracer) + Send + Sync,
     >(
         gc_ctx: &GcCtx,
-        name: NAME,
+        name: NodeName,
         deconstructor: DECONSTRUCTOR,
         trace: TRACE,
     ) -> GcNode {
         GcNode {
             id: gc_ctx.make_id(),
-            name: name.to_string(),
+            name,
             gc_ctx: gc_ctx.clone(),
             data: Arc::new(GcNodeData {
-                freed: Cell::new(false),
-                ref_count: Cell::new(1),
-                ref_count_adj: Cell::new(0),
-                visited: Cell::new(false),
+                freed: AtomicBool::new(false),
+                ref_count: AtomicU32::new(1),
+                ref_count_adj: AtomicU32::new(0),
+                visited: AtomicBool::new(false),
                 color: Cell::new(Color::Black),
-                buffered: Cell::new(false),
+                buffered: AtomicBool::new(false),
                 deconstructor: RwLock::new(Box::new(deconstructor)),
                 trace: RwLock::new(Box::new(trace)),
             }),
@@ -351,12 +368,12 @@ impl GcNode {
     }
 
     pub fn ref_count(&self) -> u32 {
-        self.data.ref_count.get()
+        self.data.ref_count.load(Ordering::SeqCst)
     }
 
     pub fn inc_ref_if_alive(&self) -> bool {
-        if self.ref_count() != 0 && !self.data.freed.get() {
-            self.data.ref_count.set(self.data.ref_count.get() + 1);
+        if self.ref_count() != 0 && !self.data.freed.load(Ordering::SeqCst) {
+            self.data.ref_count.fetch_add(1, Ordering::SeqCst);
             self.data.color.set(Color::Black);
             true
         } else {
@@ -365,19 +382,26 @@ impl GcNode {
     }
 
     pub fn inc_ref(&self) {
-        if self.data.freed.get() {
+        if self.data.freed.load(Ordering::SeqCst) {
             panic!("gc_node {} inc_ref on freed node ({})", self.id, self.name);
         }
-        self.data.ref_count.set(self.data.ref_count.get() + 1);
+        self.data
+            .ref_count
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x + 1))
+            .ok();
         self.data.color.set(Color::Black);
     }
 
     pub fn dec_ref(&self) {
-        if self.data.ref_count.get() == 0 {
+        if self.data.ref_count.load(Ordering::SeqCst) == 0 {
             return;
         }
-        self.data.ref_count.set(self.data.ref_count.get() - 1);
-        if self.data.ref_count.get() == 0 {
+        let ref_count = self
+            .data
+            .ref_count
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x - 1))
+            .unwrap();
+        if ref_count == 0 {
             self.release();
         } else {
             self.possible_root();
@@ -386,7 +410,7 @@ impl GcNode {
 
     pub fn release(&self) {
         self.data.color.set(Color::Black);
-        if !self.data.buffered.get() {
+        if !self.data.buffered.load(Ordering::SeqCst) {
             trace!("release: freeing gc_node {} ({})", self.id, self.name);
             self.free();
         }
@@ -395,27 +419,27 @@ impl GcNode {
     pub fn possible_root(&self) {
         if self.data.color.get() != Color::Purple {
             self.data.color.set(Color::Purple);
-            if !self.data.buffered.get() {
-                self.data.buffered.set(true);
+            if !self.data.buffered.load(Ordering::SeqCst) {
+                self.data.buffered.store(true, Ordering::SeqCst);
                 self.gc_ctx.add_possible_root(self.clone());
             }
         }
     }
 
     pub fn free(&self) {
-        self.data.freed.set(true);
+        self.data.freed.store(true, Ordering::SeqCst);
         let mut tmp: Box<dyn Fn() + Send + Sync + 'static> = Box::new(|| {});
         {
-            let mut deconstructor = self.data.deconstructor.write().unwrap();
+            let mut deconstructor = self.data.deconstructor.write();
             std::mem::swap(&mut *deconstructor, &mut tmp);
         }
         tmp();
-        let mut trace = self.data.trace.write().unwrap();
+        let mut trace = self.data.trace.write();
         *trace = Box::new(|_tracer: &mut Tracer| {});
     }
 
     pub fn trace<TRACER: FnMut(&GcNode)>(&self, mut tracer: TRACER) {
-        let trace = self.data.trace.read().unwrap();
+        let trace = self.data.trace.read();
         trace(&mut tracer);
     }
 }
