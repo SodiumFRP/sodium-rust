@@ -5,7 +5,8 @@ authors = ["Clinton Selke <clinuxrulz@gmail.com>"]
 edition = "2021"
 license = "BSD-3-Clause"
 repository = "https://github.com/SodiumFRP/sodium-rust"
-keywords = ["frp"]
+categories = ["asynchronous", "rust-patterns"]
+keywords = ["frp", "functional", "reactive", "observer", "events"]
 description = "Sodium FRP (Functional Reactive Programming)"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
